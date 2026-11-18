@@ -2,12 +2,13 @@
 
 Main navigation between the parent app's top-level places. One component, three looks.
 
-**Consumer provides:** `items` (`icon`, `label`, `href`, `current`, `onClick`), optional `brand` (defaults to the Treeline leaf and wordmark), `footer` (household name and a settings button; sidebar only), `label` (`aria-label`, default "Main").
+**Consumer provides:** `items` (`icon`, `label`, `href`, `current`, `onClick`, optional `badge` count and `badgeLabel`), optional `brand` (defaults to the Treeline leaf and wordmark), `footer` (household name and a settings button; sidebar only), `label` (`aria-label`, default "Main").
 
 - **Four destinations, always the same four, in this order:** Home (`home`), Friends (`users`), Calls (`phone`), Quiet hours (`clock`). Settings is not a tab: it lives behind the avatar in the AppBar on phones and in the sidebar footer on desktop.
 - **Under 768, bottom tabs:** icon over a 12px label, equal widths, `tabbar-h` tall, a `surface` bar with a `card-edge` top line. The current tab gets a `canopy` bar along its top edge and a `canopy-strong` icon.
 - **768–1023, icon rail:** `rail-w` wide, the leaf mark on top, icon over label, 64px tall items. The current item gets a `surface-sunk` pill and a `canopy` bar on its left edge.
 - **1024 and up, sidebar:** `sidebar-w` wide, leaf and wordmark, icon beside a 15px label, 44px rows, household footer pinned to the bottom.
+- A `badge` (berry count) marks a place that needs the parent, like waiting approvals on Friends: on the icon in the tabs and rail, at the end of the row in the sidebar. Plain HTML: wrap the icon in `.tl-badge-anchor` with a `.tl-badge` and a `.tl-sr` label (see Badge).
 - Labels never disappear. Every item is a link with `aria-current="page"` on the current one.
 
 ## HTML

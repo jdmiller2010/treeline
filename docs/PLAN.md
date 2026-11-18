@@ -97,7 +97,7 @@ This plan turns the decisions on the Treeline planning whiteboard into phases. E
 
 **Build**
 
-1. **The softphone:** a web app that looks like a 1960s desk rotary. Drag a finger round the dial; lift the handset to answer, hang it up to end. It plays the same sounds as the real phones and shows "Can't call 911 or outside numbers" on its screen.
+1. **The softphone:** a web app built on the design system's `RotaryPhone` component, a 1960s desk rotary in Treeline's ink-and-watercolor hand with a finger wheel that turns and a handset that lifts. Drag a finger round the dial; lift the handset to answer, hang it up to end; each dial pulse can play a click. It plays the same sounds as the real phones and shows "Can't call 911 or outside numbers" on its screen.
 2. **Calls in the browser:** WebRTC to Asterisk over secure WebSockets (PJSIP's WebSocket transport) with a small SIP library in the page.
 3. **Sign in with a QR code:** the softphone shows a QR code; a parent scans it in the parent app and approves; the tablet becomes a handset of that treehouse. Parents can remove it at any time and it stops working at once (lost or stolen tablets).
 4. **Kid-proof:** nothing to set up or sign out of, no other screens. It only rings while open, so the docs recommend a dedicated tablet with the screen kept on and the tablet's kid lock (Guided Access or screen pinning).
