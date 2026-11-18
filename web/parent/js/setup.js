@@ -3,6 +3,7 @@ import { get, post } from "/shared/api.js";
 import { alert, art, button, checkRow, html, raw, selectField, setBusy, steps, textField, NO_911, str, icon } from "/shared/ui.js";
 import { addHandsetDialog } from "./house.js";
 import { showLadderCode } from "./strings.js";
+import { privacyAccordion } from "./privacy-content.js";
 
 const NAMES = ["Your treehouse", "No 911", "Add a phone", "Invite a friend"];
 const COMMON_ZONES = [["America/New_York", "Eastern"], ["America/Chicago", "Central"], ["America/Denver", "Mountain"],
@@ -63,7 +64,10 @@ export async function setup(ctx) {
           <p class="body tl-measure" style="color:var(--ink-muted)">Phones on Treeline only connect to treehouses on the Treeline. Outside numbers can't call in, either. Make sure your kids know who to ask, and how to reach help, when they need it.</p>
         </section>
         <section class="tl-card"><form class="tl-stack tl-stack--group" novalidate>
-          ${checkRow({ id: "ack", label: "I understand Treeline can't call 911 or any outside number", desc: "You need to tick this to continue." })}
+          ${checkRow({ id: "ack", label: "I understand Treeline can't call 911 or any outside number" })}
+          <div class="tl-stack tl-stack--tight"><h2 class="tl-card__title">How Treeline treats your family's information</h2><p class="tl-card__body">Short answers. You can read them again any time under Privacy and safety.</p></div>
+          ${privacyAccordion()}
+          ${checkRow({ id: "consent", label: "I'm a parent or guardian, and I've read how Treeline handles our information", desc: "You need to tick both boxes to continue." })}
           <div data-error></div>
           <div class="tl-actions tl-actions--stack">
             ${button({ label: "Back", variant: "quiet", attrs: "data-back" })}
@@ -71,13 +75,15 @@ export async function setup(ctx) {
           </div>
         </form></section>`);
         const form = body.querySelector("form"), submit = form.querySelector("[type=submit]");
-        form.querySelector("#ack").addEventListener("change", (e) => { submit.disabled = !e.target.checked; });
+        const ready = () => { submit.disabled = !(form.querySelector("#ack").checked && form.querySelector("#consent").checked); };
+        form.querySelector("#ack").addEventListener("change", ready);
+        form.querySelector("#consent").addEventListener("change", ready);
         form.querySelector("[data-back]").addEventListener("click", () => { state.step = 1; step1(); });
         form.addEventListener("submit", async (e) => {
           e.preventDefault();
           setBusy(submit, true, "Creating");
           try {
-            ctx.me = await post("/api/treehouse", { name: state.name, your_name: state.yourName, timezone: state.tz, ack_911: true });
+            ctx.me = await post("/api/treehouse", { name: state.name, your_name: state.yourName, timezone: state.tz, ack_911: true, consent: true });
             state.house = ctx.me.treehouse; state.step = 3; step3();
           } catch (err) { error(err.message); setBusy(submit, false); }
         });

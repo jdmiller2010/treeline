@@ -57,7 +57,7 @@ export function buildPhone(number) {
 
   // The finger stop, which does not turn.
   const [sx, sy] = polar(STOP, 134);
-  svg.append(svgEl("path", { class: "rp-stop", d: `M${sx - 4} ${sy - 14}q22 -4 22 18q-2 14 -14 18q6 -14 -8 -26Z`, transform: `rotate(${STOP - 120} ${sx} ${sy})` }));
+  svg.append(svgEl("path", { class: "rp-stop", d: `M${sx - 4} ${sy - 14}q22 -4 22 18q-2 14 -14 18q6 -14 -8 -26Z` }));
 
   // The number card in the middle.
   svg.append(svgEl("circle", { class: "rp-card", cx: CX, cy: CY, r: 44 }));
@@ -94,7 +94,7 @@ export function attachDial(svg, wheel, { enabled, onDigit }) {
       const due = Math.floor(k * n);
       while (ticks < due) { ticks++; click(0.25); }
       if (k < 1 && !reduce) requestAnimationFrame(step);
-      else { setAngle(0); while (ticks < n) { ticks++; } spinning = false; done?.(); }
+      else { setAngle(0); spinning = false; done?.(); }
     };
     requestAnimationFrame(step);
   }
@@ -103,7 +103,7 @@ export function attachDial(svg, wheel, { enabled, onDigit }) {
     const hole = e.target.closest(".rp-hole");
     if (!hole || spinning || !enabled()) return;
     const d = Number(hole.dataset.digit);
-    drag = { d, start: pointAngle(e), last: pointAngle(e), turned: 0, max: travel(d) };
+    drag = { d, last: pointAngle(e), turned: 0, max: travel(d) };
     svg.setPointerCapture(e.pointerId);
     e.preventDefault();
   });

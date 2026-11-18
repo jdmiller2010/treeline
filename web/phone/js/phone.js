@@ -1,6 +1,6 @@
 // The Treeline rotary phone for a tablet: a real dial, real tones, calls over WebRTC.
 import { api } from "/shared/api.js";
-import { brand, footer, html, presence, raw, str, tag } from "/shared/ui.js";
+import { brand, footer, html, presence, str } from "/shared/ui.js";
 import { attachDial, buildPhone } from "./dial.js";
 import { forgetPhone, pairScreen, savedPhone } from "./pair.js";
 import * as tones from "./tones.js";
@@ -17,9 +17,12 @@ applyTheme(); dark.addEventListener?.("change", applyTheme);
 
 const S = {
   creds: null, hook: "on", phase: "idle", digits: "", session: null, incoming: null,
-  registered: false, line: "idle", number: "", ua: null, timers: {}, iceServers: [], talkBytes: 0,
+  registered: false, line: "idle", number: "", ua: null, timers: {}, iceServers: [], noJoinUntil: 0, pairing: false,
 };
 let ui = null;
+// Everything start() attaches to the page hangs off this, so starting again (after a
+// tablet is removed and added back) doesn't stack listeners and timers.
+let life = new AbortController();
 
 const say = (main, sub = "") => { if (ui) { ui.status.textContent = main; ui.sub.textContent = sub; } document.body.dataset.state = S.phase; };
 const later = (name, ms, fn) => { clearTimeout(S.timers[name]); S.timers[name] = setTimeout(fn, ms); };
@@ -54,7 +57,7 @@ function draw() {
   handset.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleHook(); } });
   document.addEventListener("keydown", (e) => {
     if (/^[0-9]$/.test(e.key) && !e.metaKey && !e.ctrlKey && !e.altKey && !/input|textarea|select/i.test(e.target.tagName)) S.dial?.(Number(e.key));
-  });
+  }, { signal: life.signal });
   ui.wake.querySelector("#wake-btn").addEventListener("click", async () => { await tones.unlock(); ui.wake.hidden = true; });
   setRegistration();
   render();
@@ -95,9 +98,12 @@ async function refreshLine() {
 }
 
 function removed() {
-  forgetPhone(); stopUa();
-  tones.stop();
-  pairScreen(root, "This tablet was removed from its treehouse. Add it again to keep using it.").then((c) => start(c));
+  if (S.pairing) return;
+  S.pairing = true;
+  forgetPhone(); stopUa(); tones.stop();
+  life.abort(); clearInterval(S.timers.refresh);
+  S.creds = null; S.registered = false; S.session = null; S.incoming = null; S.hook = "on"; S.phase = "idle";
+  pairScreen(root, "This tablet was removed from its treehouse. Add it again to keep using it.").then((c) => { S.pairing = false; start(c); });
 }
 
 // ------------------------------------------------------------------ hook
@@ -123,9 +129,10 @@ async function lift() {
 /** What to do the moment the handset comes up, given the line's state. */
 function decideLift(state) {
   cancel("howl", "inter", "after");
+  if (S.insecure) { S.phase = "busy"; tones.play("fastbusy"); say("This tablet can't use its microphone", "Open the phone from a secure (https) address."); render(); return; }
   if (!S.registered) { S.phase = "busy"; tones.play("fastbusy"); say("Can't connect right now", "The phone is still getting online."); render(); return; }
   if (state === "quiet") { S.phase = "sleep"; tones.play("fastbusy"); say("The phone is sleeping", "Try again later."); render(); return; }
-  if (state === "in_call") { joinCall(); return; }
+  if (state === "in_call" && Date.now() >= S.noJoinUntil) { joinCall(); return; }
   S.phase = "dialtone"; tones.play("dial"); say("Dial a number", ""); render();
   later("howl", HOWL_AFTER, howl);
 }
@@ -176,33 +183,42 @@ function place(number) {
   cancel("inter");
   if (!S.ua || !S.registered) { S.phase = "busy"; tones.play("fastbusy"); say("Can't connect right now", ""); render(); return; }
   S.phase = "calling"; say("Ringing", ""); render();
+  let session = null;
+  const mine = (fn) => (...args) => { if (session && S.session === session) fn(...args); };
   try {
-    const session = S.ua.call(`sip:${number}@${S.creds.server}`, callOptions({
+    session = S.ua.call(`sip:${number}@${S.creds.server}`, callOptions({
       eventHandlers: {
-        progress: () => { if (S.phase === "calling") tones.play("ringback"); },
-        accepted: () => { if (S.session) { tones.stop(); S.phase = "talking"; say("Talking", ""); render(); } },
-        confirmed: () => { tones.stop(); S.phase = "talking"; say("Talking", ""); render(); },
-        failed: (e) => ended(e.cause),
-        ended: () => ended("ended"),
+        progress: mine(() => { if (S.phase === "calling") tones.play("ringback"); }),
+        accepted: mine(() => { tones.stop(); S.phase = "talking"; say("Talking", ""); render(); }),
+        confirmed: mine(() => { tones.stop(); S.phase = "talking"; say("Talking", ""); render(); }),
+        failed: mine(() => ended()),
+        ended: mine(() => ended()),
       },
     }));
     S.session = session;
     hookAudio(session);
-  } catch (e) { ended("error"); }
+  } catch { ended(); }
 }
 
 function joinCall() {
   S.phase = "calling"; say("Joining the call", ""); render();
+  const startedAt = Date.now();
+  let session = null;
+  const mine = (fn) => (...args) => { if (session && S.session === session) fn(...args); };
   try {
-    const session = S.ua.call(`sip:${JOIN}@${S.creds.server}`, callOptions({
-      eventHandlers: { confirmed: () => { S.phase = "talking"; say("Talking", ""); render(); }, failed: (e) => ended(e.cause), ended: () => ended("ended") },
+    session = S.ua.call(`sip:${JOIN}@${S.creds.server}`, callOptions({
+      eventHandlers: {
+        confirmed: mine(() => { S.phase = "talking"; say("Talking", ""); render(); }),
+        failed: mine(() => { S.noJoinUntil = Date.now() + 10000; ended(); }),   // don't try again at once: fall back to dial tone
+        ended: mine(() => { if (Date.now() - startedAt < 3000) S.noJoinUntil = Date.now() + 10000; ended(); }),
+      },
     }));
     S.session = session; hookAudio(session);
-  } catch { ended("error"); }
+  } catch { S.noJoinUntil = Date.now() + 10000; ended(); }
 }
 
 /** The other side hung up, or the call failed. A click, a moment of quiet, then dial tone. */
-function ended(cause) {
+function ended() {
   S.session = null;
   tones.stop();
   if (S.hook !== "off") return;
@@ -218,14 +234,20 @@ function ended(cause) {
 // ------------------------------------------------------------------ answering and ringing
 
 function onIncoming(session) {
-  // Off the hook and busy with something else: tell the caller we can't take it.
-  if (S.hook === "off" && !["dialtone", "dialing", "howl"].includes(S.phase)) { session.terminate({ status_code: 486 }); return; }
+  // Off the hook and busy with something else, or already ringing for another caller: not now.
+  const busy = S.hook === "off" && !["dialtone", "dialing", "howl"].includes(S.phase);
+  if (busy || S.incoming) { session.terminate({ status_code: 486 }); return; }
   S.incoming = session;
   hookAudio(session);
-  const gone = () => { if (S.incoming === session) { S.incoming = null; if (S.phase === "ringing") { tones.stop(); S.phase = "idle"; say("Lift the handset to make a call", ""); render(); } } };
-  session.on("failed", gone);
-  session.on("ended", () => { if (S.session === session) ended("ended"); gone(); });
-  session.on("confirmed", () => { S.phase = "talking"; say("Talking", ""); render(); });
+  const over = () => {
+    if (S.incoming === session) {                      // it stopped ringing before we answered
+      S.incoming = null;
+      if (S.phase === "ringing") { tones.stop(); S.phase = "idle"; say("Lift the handset to make a call", ""); render(); }
+    } else if (S.session === session) ended();         // it ended or failed after we answered
+  };
+  session.on("failed", over);
+  session.on("ended", over);
+  session.on("confirmed", () => { if (S.session === session) { S.phase = "talking"; say("Talking", ""); render(); } });
   if (S.hook === "off") { answer(); return; }
   S.phase = "ringing"; tones.play("bell"); say("Ringing", "Lift the handset to answer."); render();
 }
@@ -235,7 +257,7 @@ function answer() {
   S.incoming = null; S.session = session;
   tones.stop(); cancel("howl", "inter");
   S.phase = "talking"; say("Talking", ""); render();
-  try { session.answer(callOptions()); } catch { ended("error"); }
+  try { session.answer(callOptions()); } catch { ended(); }
 }
 
 // ------------------------------------------------------------------ SIP
@@ -257,20 +279,24 @@ function startUa() {
 }
 
 async function start(creds) {
-  S.creds = creds; S.hook = "on"; S.phase = "idle"; S.incoming = null; S.session = null;
-  try { const cfg = await api("GET", "/api/phone/config", undefined, { auth: "none" }); S.iceServers = cfg.ice_servers || []; } catch { /* LAN needs none */ }
+  life.abort(); life = new AbortController(); clearInterval(S.timers.refresh);
+  S.creds = creds; S.hook = "on"; S.phase = "idle"; S.incoming = null; S.session = null; S.registered = false;
+  S.insecure = !window.isSecureContext || !navigator.mediaDevices;
+  try { const cfg = await api("GET", "/api/phone/config", undefined, { auth: "none" }); S.iceServers = cfg.ice_servers || []; } catch { /* a LAN needs none */ }
   draw();
   say("Lift the handset to make a call", "");
-  startUa();
+  if (S.insecure) say("This tablet can't use its microphone", "Open the phone from a secure (https) address. See docs/DEPLOY.md.");
+  stopUa(); startUa();
   refreshLine();
-  setInterval(() => { if (S.hook === "on") refreshLine(); }, 15000);
+  S.timers.refresh = setInterval(() => { if (S.hook === "on") refreshLine(); }, 15000);
   // Keep the tablet awake: a phone that sleeps can't ring.
   const keepAwake = async () => { try { await navigator.wakeLock?.request("screen"); } catch { /* not allowed here */ } };
-  keepAwake(); document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") keepAwake(); });
+  keepAwake();
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") keepAwake(); }, { signal: life.signal });
   // The browser wants one tap before it will make sound.
   if (!(await tones.unlock())) ui.wake.hidden = false;
-  document.addEventListener("pointerdown", () => tones.unlock(), { once: true });
-  window.addEventListener("pagehide", () => { try { S.session?.terminate(); } catch { /* closing */ } });
+  document.addEventListener("pointerdown", () => tones.unlock(), { once: true, signal: life.signal });
+  window.addEventListener("pagehide", () => { try { S.session?.terminate(); } catch { /* closing */ } }, { signal: life.signal });
 }
 
 async function boot() {
@@ -279,9 +305,11 @@ async function boot() {
   start(await pairScreen(root));
 }
 
-if (location.search.includes("test=1")) {
-  window.__phone = { S, lift: () => toggleHook(), dial: (d) => S.dial?.(d), tones,
-    async stats() { const pc = S.session?.connection; if (!pc) return null; const r = await pc.getStats(); let rx = 0, tx = 0; r.forEach((s) => { if (s.type === "inbound-rtp" && s.kind === "audio") rx += s.bytesReceived; if (s.type === "outbound-rtp" && s.kind === "audio") tx += s.bytesSent; }); return { rx, tx }; } };
+// A hook for the browser tests, on this machine only, and without the SIP secret.
+if (location.search.includes("test=1") && ["localhost", "127.0.0.1"].includes(location.hostname)) {
+  const view = new Proxy(S, { get: (t, k) => (k === "creds" ? undefined : t[k]), set: (t, k, v) => { t[k] = v; return true; } });
+  window.__phone = { S: view, lift: () => toggleHook(), dial: (d) => S.dial?.(d), tones,
+    async stats() { const pc = S.session?.connection; if (!pc) return null; const r = await pc.getStats(); let rx = 0, tx = 0; r.forEach((x) => { if (x.type === "inbound-rtp" && x.kind === "audio") rx += x.bytesReceived; if (x.type === "outbound-rtp" && x.kind === "audio") tx += x.bytesSent; }); return { rx, tx }; } };
 }
 
 boot();

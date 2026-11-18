@@ -1,0 +1,10 @@
+# Copy both files to /etc/fail2ban/ on the machine, set logpath to the real path, then
+#   sudo systemctl restart fail2ban
+[treeline-asterisk]
+enabled  = true
+filter   = treeline-asterisk
+logpath  = /home/YOU/treeline/data/logs/messages
+maxretry = 8
+findtime = 10m
+bantime  = 1h
+port     = 5061,8080

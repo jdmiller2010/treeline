@@ -31,6 +31,7 @@ app = Flask(__name__, static_folder=None)
 WEB = os.environ.get("TREELINE_WEB", "/web")
 DEV_CODES = os.environ.get("TREELINE_DEV_CODES") == "1"
 CORS_ORIGINS = {o.strip() for o in os.environ.get("TREELINE_CORS_ORIGINS", "").split(",") if o.strip()}
+PRIVACY_VERSION = "2026-11"      # bump when the privacy notes change in a way parents should re-read
 SESSION_DAYS = 30
 CODE_MINUTES = 10
 LADDER_DAYS = 7
@@ -340,8 +341,10 @@ def calls_for(th, since=None, limit=300):
 
 @app.get("/api/health")
 def health():
+    """For an uptime monitor: 200 only if the database answers and Asterisk is reachable."""
     conn().execute("SELECT 1")
-    return jsonify(ok=True)
+    asterisk = ari_mod.Ari().online_users() is not None
+    return jsonify(ok=asterisk, database=True, asterisk=asterisk), (200 if asterisk else 503)
 
 
 # ================================================================ sign-in
@@ -442,10 +445,14 @@ def treehouse_create():
     if not data.get("ack_911"):
         raise ApiError("Please tick the box to say you understand Treeline can't call 911.",
                        400, "ack_911")
+    if not data.get("consent"):
+        raise ApiError("Please tick the box to say you've read how Treeline handles your family's information.",
+                       400, "consent")
     name = clean_name(data.get("name"), "treehouse name")
     tz = valid_tz(data.get("timezone") or "America/Los_Angeles")
     who = " ".join(str(data.get("your_name") or "").split())[:60] or None
-    tid = db.create_treehouse(conn(), name, timezone=tz, ack_911=True)
+    tid = db.create_treehouse(conn(), name, timezone=tz, ack_911=True,
+                              consent_at=db.iso(), consent_version=PRIVACY_VERSION)
     conn().execute("INSERT INTO grown_up(email,name,treehouse_id,role,created_at) VALUES(?,?,?,?,?)",
                    (g.email, who, tid, "parent", db.iso()))
     db.log_action(conn(), tid, g.email, "treehouse_created", name)
@@ -953,6 +960,31 @@ def pair_start():
     return jsonify(code=code, token=token, expires_at=exp), 201
 
 
+FACTORY_KEY = os.environ.get("TREELINE_FACTORY_KEY", "")
+
+
+@app.post("/api/factory/devices")
+def factory_register():
+    """Called by the factory (or you, with the programming jig) to register a Treeline phone's
+    pairing code and secret before it ships. Off unless TREELINE_FACTORY_KEY is set.
+
+    The code printed under the phone is at least 10 digits: unlike a tablet's code, it lives for
+    years, so it must not be guessable by another family trying codes."""
+    given = request.headers.get("X-Factory-Key", "")
+    if not FACTORY_KEY or not secrets.compare_digest(given.encode(), FACTORY_KEY.encode()):
+        raise ApiError("That page isn't here.", 404)
+    data = body()
+    code = "".join(c for c in str(data.get("code", "")) if c.isdigit())
+    token = str(data.get("token", ""))
+    if not (10 <= len(code) <= 12) or len(token) < 24:
+        raise ApiError("Use a code of 10 to 12 digits and a device secret of at least 24 characters.")
+    if conn().execute("SELECT 1 FROM pairing WHERE code=?", (code,)).fetchone():
+        raise ApiError("That code is already registered.", 409)
+    conn().execute("INSERT INTO pairing(code,token_hash,created_at,expires_at) VALUES(?,?,?,?)",
+                   (code, db.hash_token(token), db.iso(), db.iso(now() + dt.timedelta(days=3 * 365))))
+    return jsonify(ok=True), 201
+
+
 @app.get("/api/pair/status")
 def pair_status():
     token = request.args.get("token", "")
@@ -970,6 +1002,7 @@ def pair_status():
 @auth(parent=True)
 def pair_claim():
     rate_limit(f"claim:{g.email}", 10, 600)
+    rate_limit("claim:everyone", 300, 3600)
     data = body()
     code = "".join(c for c in str(data.get("code", "")) if c.isdigit())
     kind = data.get("kind") or "softphone"
@@ -1134,6 +1167,40 @@ def grown_up_remove(gid):
     conn().execute("DELETE FROM grown_up WHERE id=?", (gid,))
     conn().execute("DELETE FROM session WHERE email=?", (row["email"],))
     audit("grown_up_removed", row["email"], row["role"], None)
+    return jsonify(ok=True)
+
+
+# ================================================================ push notifications
+
+VAPID_PUBLIC = os.environ.get("TREELINE_VAPID_PUBLIC", "")
+
+
+@app.get("/api/push/key")
+def push_key():
+    if not VAPID_PUBLIC:
+        raise ApiError("Notifications aren't set up on this server.", 404)
+    return jsonify(key=VAPID_PUBLIC)
+
+
+@app.post("/api/push/subscribe")
+@auth()
+def push_subscribe():
+    data = body()
+    keys = data.get("keys") if isinstance(data.get("keys"), dict) else {}
+    endpoint = str(data.get("endpoint", ""))
+    if not (endpoint.startswith("https://") and keys.get("p256dh") and keys.get("auth")) or len(endpoint) > 1000:
+        raise ApiError("That device couldn't turn on notifications.")
+    conn().execute("INSERT INTO push_subscription(email,endpoint,p256dh,auth,created_at) VALUES(?,?,?,?,?) "
+                   "ON CONFLICT(endpoint) DO UPDATE SET email=excluded.email, p256dh=excluded.p256dh, auth=excluded.auth",
+                   (g.email, endpoint, keys["p256dh"], keys["auth"], db.iso()))
+    return jsonify(ok=True), 201
+
+
+@app.delete("/api/push/subscribe")
+@auth()
+def push_unsubscribe():
+    conn().execute("DELETE FROM push_subscription WHERE endpoint=? AND email=?",
+                   (str(body().get("endpoint", "")), g.email))
     return jsonify(ok=True)
 
 

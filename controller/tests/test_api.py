@@ -48,7 +48,7 @@ class Person:
 
 def make_house(name="Bennett house", tz="America/Los_Angeles", email=None):
     p = Person(email)
-    r = p.post("/api/treehouse", {"name": name, "timezone": tz, "ack_911": True, "your_name": "Pat"})
+    r = p.post("/api/treehouse", {"name": name, "timezone": tz, "ack_911": True, "consent": True, "your_name": "Pat"})
     assert r.status_code == 201, r.get_json()
     p.house = r.get_json()["treehouse"]
     return p
@@ -117,8 +117,19 @@ class SignIn(unittest.TestCase):
 class Treehouse(unittest.TestCase):
     def test_setup_requires_the_911_box(self):
         p = Person()
-        r = p.post("/api/treehouse", {"name": "Pine house", "ack_911": False})
+        r = p.post("/api/treehouse", {"name": "Pine house", "ack_911": False, "consent": True})
         self.assertEqual((r.status_code, r.get_json()["code"]), (400, "ack_911"))
+
+    def test_setup_requires_agreeing_to_the_privacy_notes_and_records_when(self):
+        p = Person()
+        r = p.post("/api/treehouse", {"name": "Pine house", "ack_911": True})
+        self.assertEqual((r.status_code, r.get_json()["code"]), (400, "consent"))
+        r = p.post("/api/treehouse", {"name": "Pine house", "ack_911": True, "consent": True})
+        self.assertEqual(r.status_code, 201)
+        row = helpers.db.connect().execute("SELECT consent_at, consent_version FROM treehouse WHERE id=?",
+                                           (r.get_json()["treehouse"]["id"],)).fetchone()
+        self.assertTrue(row["consent_at"])
+        self.assertEqual(row["consent_version"], api.PRIVACY_VERSION)
 
     def test_setup_gives_a_number_and_safe_defaults(self):
         p = make_house()
@@ -130,7 +141,7 @@ class Treehouse(unittest.TestCase):
 
     def test_one_treehouse_per_email(self):
         p = make_house()
-        self.assertEqual(p.post("/api/treehouse", {"name": "x", "ack_911": True}).status_code, 409)
+        self.assertEqual(p.post("/api/treehouse", {"name": "x", "ack_911": True, "consent": True}).status_code, 409)
 
     def test_no_treehouse_yet(self):
         p = Person()
@@ -408,6 +419,56 @@ class Pairing(unittest.TestCase):
         self.assertEqual((r.status_code, r.get_json()["code"]), (401, "removed"))
 
 
+class FactoryDevices(unittest.TestCase):
+    KEY = "factory-secret-key"
+
+    def setUp(self):
+        api.FACTORY_KEY = self.KEY
+
+    def tearDown(self):
+        api.FACTORY_KEY = ""
+
+    def register(self, code="1234567890", token="t" * 32, key=None):
+        return client.post("/api/factory/devices", json={"code": code, "token": token},
+                           headers={"X-Factory-Key": key if key is not None else self.KEY})
+
+    def test_a_registered_phone_pairs_with_its_printed_code(self):
+        parent = make_house()
+        self.assertEqual(self.register().status_code, 201)
+        r = parent.post("/api/pair/claim", {"code": "123 456 7890", "name": "Hall phone", "kind": "rotary"})
+        self.assertEqual(r.status_code, 201)
+        self.assertEqual(r.get_json()["handset"]["kind"], "rotary")
+        got = client.get("/api/pair/status", query_string={"token": "t" * 32}).get_json()
+        self.assertEqual(got["status"], "paired")
+        self.assertIn(f"[{got['sip_user']}](phone-endpoint)", read_pjsip())        # a phone, not a browser
+
+    def test_off_without_the_key_and_closed_to_the_wrong_one(self):
+        self.assertEqual(self.register(key="nope").status_code, 404)
+        self.assertEqual(self.register(key="").status_code, 404)
+        api.FACTORY_KEY = ""
+        self.assertEqual(self.register(key="").status_code, 404)
+
+    def test_codes_must_be_long_and_secrets_strong(self):
+        self.assertEqual(self.register(code="123456").status_code, 400)
+        self.assertEqual(self.register(token="short").status_code, 400)
+        self.assertEqual(self.register(code="1" * 13).status_code, 400)
+
+    def test_a_code_registers_once(self):
+        self.assertEqual(self.register(code="5555555555").status_code, 201)
+        self.assertEqual(self.register(code="5555555555").status_code, 409)
+
+    def test_a_claimed_phone_cannot_be_claimed_again(self):
+        a, b = make_house(), make_house()
+        self.register(code="4444444444")
+        self.assertEqual(a.post("/api/pair/claim", {"code": "4444444444", "kind": "rotary"}).status_code, 201)
+        self.assertEqual(b.post("/api/pair/claim", {"code": "4444444444", "kind": "rotary"}).status_code, 400)
+
+    def test_tablet_pairing_still_only_takes_a_tablet_or_a_treeline_phone(self):
+        p = make_house()
+        start = client.post("/api/pair/start").get_json()
+        self.assertEqual(p.post("/api/pair/claim", {"code": start["code"], "kind": "ata"}).status_code, 400)
+
+
 class CallLogs(unittest.TestCase):
     def setUp(self):
         self.a, self.b = make_house("Alex's"), make_house("Sam's")
@@ -511,6 +572,54 @@ class Alerts(unittest.TestCase):
         self.assertEqual(len(a.get("/api/home").get_json()["notices"]), 1)
         a.post(f"/api/notices/{n['id']}/dismiss")
         self.assertEqual(a.get("/api/home").get_json()["notices"], [])
+
+
+class Health(unittest.TestCase):
+    def test_ok_when_asterisk_answers_and_503_when_it_does_not(self):
+        self.assertEqual(client.get("/api/health").status_code, 200)
+        real = api.ari_mod.Ari.online_users
+        api.ari_mod.Ari.online_users = lambda self: None          # Asterisk unreachable
+        try:
+            r = client.get("/api/health")
+            self.assertEqual(r.status_code, 503)
+            self.assertEqual((r.get_json()["database"], r.get_json()["asterisk"]), (True, False))
+        finally:
+            api.ari_mod.Ari.online_users = real
+
+
+class Push(unittest.TestCase):
+    SUB = {"endpoint": "https://push.example.net/abc", "keys": {"p256dh": "k", "auth": "a"}}
+
+    def test_subscribe_replaces_and_unsubscribe_removes(self):
+        p = make_house()
+        self.assertEqual(p.post("/api/push/subscribe", self.SUB).status_code, 201)
+        self.assertEqual(p.post("/api/push/subscribe", self.SUB).status_code, 201)     # same device again
+        c = helpers.db.connect()
+        self.assertEqual(c.execute("SELECT COUNT(*) n FROM push_subscription WHERE email=?", (p.email,)).fetchone()["n"], 1)
+        p.delete("/api/push/subscribe", {"endpoint": self.SUB["endpoint"]})
+        self.assertEqual(c.execute("SELECT COUNT(*) n FROM push_subscription WHERE email=?", (p.email,)).fetchone()["n"], 0)
+
+    def test_rejects_junk_and_needs_a_sign_in(self):
+        p = make_house()
+        for bad in ({}, {"endpoint": "http://insecure/x", "keys": {"p256dh": "k", "auth": "a"}}, {"endpoint": "https://x/y"}):
+            self.assertEqual(p.post("/api/push/subscribe", bad).status_code, 400)
+        self.assertEqual(client.post("/api/push/subscribe", json=self.SUB).status_code, 401)
+
+    def test_nobody_can_remove_someone_elses_device(self):
+        a, b = make_house(), make_house()
+        a.post("/api/push/subscribe", self.SUB)
+        b.delete("/api/push/subscribe", {"endpoint": self.SUB["endpoint"]})
+        n = helpers.db.connect().execute("SELECT COUNT(*) n FROM push_subscription WHERE email=?", (a.email,)).fetchone()["n"]
+        self.assertEqual(n, 1)
+
+    def test_key_is_only_offered_when_configured(self):
+        self.assertEqual(client.get("/api/push/key").status_code, 404)
+        old = api.VAPID_PUBLIC
+        api.VAPID_PUBLIC = "BKEY"
+        try:
+            self.assertEqual(client.get("/api/push/key").get_json(), {"key": "BKEY"})
+        finally:
+            api.VAPID_PUBLIC = old
 
 
 class Pages(unittest.TestCase):

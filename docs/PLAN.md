@@ -4,8 +4,8 @@ Treeline is a house-to-house phone network for neighborhood kids. Every househol
 
 This plan turns the decisions on the Treeline planning whiteboard into phases. Each phase ends with something that works end to end and can be tested.
 
-- **Where we are:** the server devspace works (Asterisk, the control app, scripted test phones, 9/9 scenarios passing), and the design system is in `design/`.
-- **What changes first:** the control app is built around phones with speed dials. Phase 1 rebuilds it around treehouses, numbers and strings.
+- **Where we are:** Phases 1, 2 and 3 are built and tested (see the README's status table). Phase 4's deployment files, backups, alerts and privacy are built but haven't run on a public server, and the pilot hasn't happened. Phase 5 has a server side and a guide but hasn't been tried on an adapter. Phase 6 has server-side pairing and a design, with no firmware or board.
+- **Where the plan and the build differ:** the nav's second tab is "Strings" (the design system had "Friends"); the printed pairing code on the Treeline phone is 10+ digits, not 6 (a code that lives for years must not be guessable); tablets pair by a short-lived six-digit code or QR. Everything else follows the phases below.
 
 ---
 

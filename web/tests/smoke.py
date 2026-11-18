@@ -74,7 +74,9 @@ def make_family(browser, email, name, tz="America/Los_Angeles"):
     page.click("button[type=submit]")
     page.wait_for_selector("#ack")
     check(page.locator("button[type=submit]").is_disabled(), f"{name}: can't continue without the 911 box")
-    page.check("#ack", force=True) if False else page.click("label[for=ack]")
+    page.click("label[for=ack]")
+    check(page.locator("button[type=submit]").is_disabled(), f"{name}: one box isn't enough, the privacy box is needed too")
+    page.click("label[for=consent]")
     page.click("button[type=submit]")
     page.wait_for_selector("[data-skip]")
     return ctx, page
@@ -220,7 +222,7 @@ def main():
         a.click(".tl-avatar-btn")
         a.click("[data-sign-out]")
         a.wait_for_selector("#email")
-        check(True, "sign out works")
+        check(a.locator("#email").count() == 1 and a.locator("#app-title").count() == 0, "sign out returns to the sign-in screen")
         browser.close()
 
     if errors:

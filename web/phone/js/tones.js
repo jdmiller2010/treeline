@@ -3,6 +3,7 @@
 let ctx = null;
 let master = null;
 let current = null;       // the tone playing now: { stop() }
+let wanted = null;        // the tone someone asked for while the sound was still locked
 
 export function audioReady() { return !!ctx && ctx.state === "running"; }
 
@@ -17,7 +18,9 @@ export async function unlock() {
     master.connect(ctx.destination);
   }
   if (ctx.state !== "running") { try { await ctx.resume(); } catch { /* not yet */ } }
-  return ctx.state === "running";
+  const ok = ctx.state === "running";
+  if (ok && wanted && !current) play(wanted);      // a bell that rang while the tap was pending
+  return ok;
 }
 
 function osc(freq, gain, dest) {
@@ -105,12 +108,14 @@ const TONES = {
 
 export function play(name) {
   stop();
+  wanted = name;
   if (!ctx || ctx.state !== "running") return;
   current = TONES[name]();
   current.name = name;
 }
 
 export function stop() {
+  wanted = null;
   if (current) { current.stop(); current = null; }
 }
 

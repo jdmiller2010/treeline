@@ -3,14 +3,25 @@ import { api, apiUrl, del, get, patch, post, token } from "/shared/api.js";
 import { alert, button, card, emptyState, html, icon, raw, selectField, tag, textField, toast, NO_911 } from "/shared/ui.js";
 import { time12, when } from "/shared/format.js";
 import { formDialog } from "./dialogs.js";
+import { privacyAccordion } from "./privacy-content.js";
+import { disablePush, enablePush, pushState } from "./push.js";
 import { redeemDialog, strings } from "./strings.js";
 
 const ZONES = [["America/New_York", "Eastern"], ["America/Chicago", "Central"], ["America/Denver", "Mountain"], ["America/Phoenix", "Arizona"],
   ["America/Los_Angeles", "Pacific"], ["America/Anchorage", "Alaska"], ["Pacific/Honolulu", "Hawaii"]];
 const KEEP = [[30, "30 days"], [60, "60 days"], [90, "90 days"], [180, "6 months"], [365, "1 year"]];
 
+const PUSH_TEXT = {
+  unsupported: "This browser can't show notifications. Email still works.",
+  unconfigured: "Notifications on this device aren't set up on this server. Email still works.",
+  denied: "Notifications are blocked for this site. Allow them in your browser's settings to turn them on.",
+  on: "On for this device.",
+  off: "Off for this device.",
+};
+
 export async function account(ctx) {
   const th = ctx.me.treehouse, me = ctx.me, parent = ctx.isParent();
+  const push = await pushState().catch(() => "unsupported");
   const zones = ZONES.map(([v, l]) => [v, `${l} (${v.split("/")[1].replace("_", " ")})`]);
   if (!ZONES.some(([v]) => v === th.timezone)) zones.unshift([th.timezone, th.timezone.replace("_", " ")]);
   const keep = KEEP.slice();
@@ -36,6 +47,12 @@ export async function account(ctx) {
   </div></form>` : ""}
 
   <section class="tl-card"><div class="tl-stack tl-stack--group">
+    <h2 class="tl-card__title">Notifications</h2>
+    <p class="tl-card__body">We email you when a string needs an answer, a phone goes offline, or someone dials numbers that aren't strung. ${PUSH_TEXT[push]}</p>
+    ${push === "on" || push === "off" ? html`<div class="tl-actions tl-actions--stack">${push === "on" ? button({ label: "Turn off on this device", attrs: "data-push-off" }) : button({ label: "Turn on for this device", attrs: "data-push-on" })}</div>` : ""}
+  </div></section>
+
+  <section class="tl-card"><div class="tl-stack tl-stack--group">
     <h2 class="tl-card__title">Records</h2>
     <p class="tl-card__body">Every change a grown-up makes is written to the action log, so you can see who changed what.</p>
     <div class="tl-actions tl-actions--stack">${button({ label: "Action log", attrs: 'data-href="#/actions"' })}</div>
@@ -54,6 +71,12 @@ export async function account(ctx) {
     title: "Settings", back: "#/home", nav: null, template: "settings", content,
     mount(root) {
       root.querySelector("[data-sign-out-btn]").addEventListener("click", () => root.querySelector("[data-sign-out]").click());
+      root.querySelector("[data-push-on]")?.addEventListener("click", async () => {
+        try { await enablePush(); toast("Notifications are on for this device", "success"); ctx.render(); } catch (e) { toast(e.message, "warning"); }
+      });
+      root.querySelector("[data-push-off]")?.addEventListener("click", async () => {
+        try { await disablePush(); toast("Notifications are off for this device", "neutral"); ctx.render(); } catch (e) { toast(e.message, "warning"); }
+      });
       root.querySelector("#house-form")?.addEventListener("submit", async (e) => {
         e.preventDefault();
         try {
@@ -79,21 +102,11 @@ export async function account(ctx) {
 }
 
 export async function privacy(ctx) {
-  const q = (summary, ...paras) => html`<details class="tl-disclosure"><summary><span>${summary}</span>${icon("chevron-down")}</summary><div class="tl-disclosure__body">${paras.map((p) => html`<p>${p}</p>`)}</div></details>`;
   const content = html`
   ${alert({ tone: "info", title: "Treeline can't call 911", body: NO_911 })}
   <section class="tl-stack"><h2 class="title-lg">How Treeline treats your family's information</h2>
   <p class="tl-measure" style="color:var(--ink-muted)">Plain answers. If something here isn't clear, write to jdmiller2010@gmail.com.</p>
-  <div class="tl-card"><div class="tl-accordion">
-    ${q("Can Treeline call 911 or outside numbers?", "No. Treeline connects treehouses to treehouses, nothing else. Outside numbers can't call in either. Kids need another way to reach help.")}
-    ${q("Who can my kids call?", "Only treehouses you're strung with, where both families said yes. Nobody else can ring your phones, and there are no caller names or announcements.")}
-    ${q("Can I listen to calls?", "No. Treeline never records or listens to what's said on a call.")}
-    ${q("What does Treeline store?", "Your email address and name; your treehouse's name, number and rules; the names of your phones; your strings; and a record of every call attempt: who, when, how long and how it ended. Parent actions, like approving a string, are logged too.")}
-    ${q("How long is it kept?", "Call records are kept for 90 days unless you choose a different time in Settings (7 days to a year). The action log is kept for a year. Sign-in codes last 10 minutes.")}
-    ${q("Who can see it?", "Only the grown-ups in your treehouse. A family you're strung with sees the calls between your two treehouses: name, number, time and length. They never see your quiet hours or limits, or why a call to you didn't connect.")}
-    ${q("How do I delete it?", "Settings, then Delete everything. That erases your treehouse, phones, strings and call records. Other families keep their side of past calls, without your name.")}
-    ${q("What about children's privacy rules?", "Kids never have an account or give Treeline any information: only parents sign in. If Treeline grows beyond friends and neighbors, we'll get legal advice about children's privacy laws, like COPPA, before inviting more families.")}
-  </div></div></section>`;
+  <div class="tl-card">${privacyAccordion()}</div></section>`;
   return { title: "Privacy and safety", back: "#/home", nav: null, content };
 }
 

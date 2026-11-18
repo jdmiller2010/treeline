@@ -1,0 +1,93 @@
+# Treeline in production: one small VM.
+#
+#   cp deploy/env.example deploy/.env      # then edit it
+#   docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env up -d --build
+#
+# See docs/DEPLOY.md for DNS, firewall ports and the first-run checklist.
+# Host networking keeps SIP and call audio simple. The database lives in ./data.
+
+services:
+  asterisk:
+    build: ../asterisk
+    network_mode: host
+    restart: always
+    environment:
+      TREELINE_DOMAIN: ${TREELINE_DOMAIN:?set TREELINE_DOMAIN in deploy/.env}
+      ARI_PASS: ${ARI_PASS:?set ARI_PASS in deploy/.env}
+    volumes:
+      - ../asterisk/config:/kidphone-config:ro
+      - ./asterisk:/kidphone-config-prod:ro
+      - ../data/generated:/generated
+      - ../data/logs:/var/log/asterisk   # for fail2ban
+      - caddy_data:/caddy:ro          # the certificate Caddy gets, for SIP over TLS
+
+  controller:
+    build: ../controller
+    command: ["python", "-u", "run_controller.py"]
+    network_mode: host
+    restart: always
+    depends_on: [asterisk]
+    environment: &app_env
+      ARI_URL: http://127.0.0.1:8088/ari
+      ARI_USER: treeline
+      ARI_PASS: ${ARI_PASS}
+      TREELINE_DB: /data/treeline.db
+      TREELINE_SMTP_HOST: ${TREELINE_SMTP_HOST:-}
+      TREELINE_SMTP_PORT: ${TREELINE_SMTP_PORT:-587}
+      TREELINE_SMTP_USER: ${TREELINE_SMTP_USER:-}
+      TREELINE_SMTP_PASS: ${TREELINE_SMTP_PASS:-}
+      TREELINE_MAIL_FROM: ${TREELINE_MAIL_FROM:-Treeline <no-reply@localhost>}
+      TREELINE_VAPID_PRIVATE: ${TREELINE_VAPID_PRIVATE:-}
+      TREELINE_VAPID_SUBJECT: ${TREELINE_VAPID_SUBJECT:-mailto:admin@localhost}
+    volumes:
+      - ../data:/data
+
+  api:
+    build: ../controller
+    command: ["gunicorn", "--bind", "127.0.0.1:8080", "--workers", "1", "--threads", "8",
+              "--access-logfile", "-", "treeline.api:app"]
+    network_mode: host
+    restart: always
+    depends_on: [asterisk]
+    environment:
+      <<: *app_env
+      TREELINE_PJSIP_FILE: /generated/pjsip_handsets.conf
+      TREELINE_WEB: /web
+      TREELINE_PUBLIC_HOST: ${TREELINE_DOMAIN}
+      TREELINE_PUBLIC_WS_URL: wss://${TREELINE_DOMAIN}/ws
+      TREELINE_TRUST_PROXY: "1"           # we are behind Caddy
+      TREELINE_VAPID_PUBLIC: ${TREELINE_VAPID_PUBLIC:-}
+      TREELINE_ICE_SERVERS: ${TREELINE_ICE_SERVERS:-[]}
+      # TREELINE_DEV_CODES is deliberately not set: sign-in codes only go by email.
+    volumes:
+      - ../data:/data
+      - ../data/generated:/generated
+      - ../web:/web/site:ro
+      - ../design/ui:/web/ui:ro
+
+  caddy:
+    image: caddy:2
+    network_mode: host
+    restart: always
+    environment:
+      TREELINE_DOMAIN: ${TREELINE_DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+  backup:
+    build: ../controller
+    command: ["python", "-u", "backup.py", "--daemon"]
+    restart: always
+    environment:
+      TREELINE_DB: /data/treeline.db
+      BACKUP_DIR: /backups
+      BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-14}
+    volumes:
+      - ../data:/data                     # read-write only because SQLite's WAL files need it; backup.py opens read-only
+      - ../data/backups:/backups
+
+volumes:
+  caddy_data:
+  caddy_config:

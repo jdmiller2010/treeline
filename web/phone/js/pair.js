@@ -1,6 +1,6 @@
 // The screen a tablet shows until a parent adds it to a treehouse: a QR code and six digits.
-import { alert, art, brand, button, footer, html, raw, str } from "/shared/ui.js";
-import { api, get, post } from "/shared/api.js";
+import { alert, art, footer, html, raw, str } from "/shared/ui.js";
+import { get, post } from "/shared/api.js";
 
 export function savedPhone() {
   try { return JSON.parse(localStorage.getItem("treeline.phone")); } catch { return null; }

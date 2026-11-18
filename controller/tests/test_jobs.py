@@ -70,6 +70,31 @@ class Jobs(unittest.TestCase):
         jobs.purge(self.c)                                  # now both are past retention
         self.assertIsNone(self.c.execute("SELECT 1 FROM call WHERE id=?", (cur.lastrowid,)).fetchone())
 
+    def test_push_goes_to_each_device_and_forgets_dead_ones(self):
+        self.c.execute("INSERT INTO push_subscription(email,endpoint,p256dh,auth,created_at) VALUES(?,?,?,?,?)",
+                       ("mom@example.com", "https://push/a", "k", "a", db.iso()))
+        self.c.execute("INSERT INTO push_subscription(email,endpoint,p256dh,auth,created_at) VALUES(?,?,?,?,?)",
+                       ("mom@example.com", "https://push/gone", "k", "a", db.iso()))
+        seen = []
+
+        def send(sub, payload):
+            if sub["endpoint"].endswith("gone"):
+                raise LookupError("gone")
+            seen.append((sub["endpoint"], payload))
+        old = jobs.VAPID_PRIVATE
+        jobs.VAPID_PRIVATE = "configured"
+        try:
+            n = jobs.push_to(self.c, "mom@example.com", "Hello", "Body", send=send)
+        finally:
+            jobs.VAPID_PRIVATE = old
+        self.assertEqual(n, 1)
+        self.assertIn('"title": "Hello"', seen[0][1])
+        left = [r["endpoint"] for r in self.c.execute("SELECT endpoint FROM push_subscription")]
+        self.assertEqual(left, ["https://push/a"])
+
+    def test_no_push_without_keys(self):
+        self.assertEqual(jobs.push_to(self.c, "mom@example.com", "x", "y", send=lambda *a: 1 / 0), 0)
+
     def test_emails_go_to_parents_once(self):
         self.c.execute("INSERT INTO grown_up(email,treehouse_id,role,created_at) VALUES(?,?,?,?)",
                        ("mom@example.com", self.tid, "parent", db.iso()))

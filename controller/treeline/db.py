@@ -29,6 +29,8 @@ CREATE TABLE IF NOT EXISTS treehouse (
   daily_minutes REAL,
   retention_days INTEGER NOT NULL DEFAULT 90,
   ack_911 INTEGER NOT NULL DEFAULT 0,
+  consent_at TEXT,
+  consent_version TEXT,
   system INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL,
   left_at TEXT
@@ -214,6 +216,9 @@ def _add_column(conn, table, column, decl):
 MIGRATIONS = [
     # 1: adapters fetch their settings by a private link, which needs the secret kept.
     lambda c: _add_column(c, "handset", "provision_secret", "TEXT"),
+    # 2: a parent agrees to the privacy notes when setting up; we keep when, and which version.
+    lambda c: _add_column(c, "treehouse", "consent_at", "TEXT"),
+    lambda c: _add_column(c, "treehouse", "consent_version", "TEXT"),
 ]
 
 

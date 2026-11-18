@@ -1,44 +1,56 @@
-# Treeline: server devspace
+# Treeline
 
-The server side of a Tin Can-style kids' phone network, ready to run on your
-PC. Asterisk handles the calls. A small control app decides which calls may
-connect, based on parent rules in `config/family.json`. Scripted fake phones
-test the rules, and you can call in from a real softphone on your cell phone.
+A house-to-house phone for kids who live near each other, with parents holding
+the keys. Every household is a **treehouse** with one phone line and one
+**4-digit number**. A kid lifts a real rotary phone (or a rotary phone on a
+tablet), hears a dial tone, dials four digits, and the other treehouse's phone
+rings. It only connects when both families' parents have approved a **string**
+between their treehouses. It sounds like a 1960s phone, and it can't call 911
+or any outside number.
+
+This repository is the whole system: the call server, the parent app, the
+tablet phone, and the plan for real phones. [docs/PLAN.md](docs/PLAN.md) is the
+phased plan; the status of each phase is below.
 
 ```
-kid phone (softphone today, SIP adapter next, rotary phone later)
-        │  SIP + audio
-        ▼
-   Asterisk ──every call──▶ control app ──reads──▶ config/family.json
-                                │
-                                └──writes──▶ data/calls.jsonl
+ tablet phone (WebRTC) ─┐
+ phone adapter + rotary ─┼── SIP/WebRTC ──▶ Asterisk ──every call──▶ control app ──▶ SQLite
+ Treeline rotary phone ─┘                                   ▲                         ▲
+                                           parent app ──▶ API ───────────────────────┘
 ```
+
+## Status
+
+| Phase | What | State |
+| --- | --- | --- |
+| 1 | **Platform core**: treehouses, numbers, strings, call rules, classic tones, call audit, API | Built and tested: 124 unit tests and 17 scripted SIP scenarios |
+| 2 | **Parent app**: setup, strings, calls, quiet hours, phone book, settings, privacy | Built and tested in a real browser (169 checks; 6 widths, both themes) |
+| 3 | **Tablet rotary phone** and several phones on one line | Built and tested with real browser tablets on real calls (25 checks, with audio) |
+| 4 | **Deploy and pilot** | Deployment files, backups, health check, push alerts and privacy are built. **Not run on a public server, and the pilot hasn't happened.** See [docs/DEPLOY.md](docs/DEPLOY.md), [docs/PILOT.md](docs/PILOT.md) |
+| 5 | **A real rotary phone** through an adapter | Server side tested; guide written. **Not tried on an adapter.** See [docs/ADAPTER.md](docs/ADAPTER.md) |
+| 6 | **Custom rotary phone** (ESP32-S3) | Server-side pairing built and tested. **No firmware or board.** See [docs/HARDWARE.md](docs/HARDWARE.md) |
 
 ## What the control app enforces
 
-| Rule | Where it's set |
+Every call is checked in this order (see `controller/treeline/rules.py`):
+
+| Rule | What happens |
 | --- | --- |
-| **Mutual approval**: a call connects only if both households approved each other | `households.<name>.approves` |
-| **Speed dials**: Sam presses `1` for Alex, `2` for Grandma | `phones.<ext>.speed_dials` |
-| **Quiet hours**, per phone, for calling and being called | `phones.<ext>.quiet_hours` |
-| **Pause** a phone instantly | `phones.<ext>.paused` |
-| **Time limit** per call, with a warning beep before hanging up | `phones.<ext>.max_call_minutes` |
-| **Call log** of every attempt, allowed or blocked, with the reason | `data/calls.jsonl` |
+| **911** or a wrong-length number | The phone says it can't call 911 |
+| The caller's line is **paused**, in **quiet hours**, out of **daily minutes** or **busy** | Fast busy (or busy) |
+| Too many **calls to a number that isn't strung** (hunting) | Fast busy, and the parents get a note |
+| The number doesn't exist | Three rising tones, "The number you have dialed is not in service" |
+| **No live string** between the two treehouses | "You can't call that number from this phone. Ask a grown-up." The parents get a note |
+| Too many **repeat calls** to one treehouse | Fast busy |
+| The other line is **paused**, in **quiet hours** or out of minutes | "The treehouse you're calling isn't taking calls right now." (The same words for each, so one family's schedule isn't revealed) |
+| The other line is **in use** | Busy |
+| Nothing on the other line is **online** | Fast busy |
+| Otherwise | Every phone on that line rings; the first to answer takes the call |
 
-The rules file is re-read on every call, so edits take effect immediately.
-No restart needed.
-
-The sample network has four phones:
-
-| Ext | Name | Household | Password (dev only) |
-| --- | --- | --- | --- |
-| 1001 | Sam | jordan | dev-1001 |
-| 1002 | Alex | alex | dev-1002 |
-| 1003 | Riley | riley | dev-1003 |
-| 1004 | Grandma | grandma | dev-1004 |
-
-Riley's household hasn't approved anyone yet, so Riley's calls are blocked.
-That's on purpose, to show mutual approval working.
+A call ends at the shorter of both treehouses' **call-length limits**, with three
+pips a minute before. Another phone on a line can **join** a call in progress.
+Every attempt, allowed or blocked, is written to the **call audit** with its
+result. Audio is never recorded.
 
 ## Setup on Windows with WSL 3
 
@@ -70,6 +82,8 @@ PowerShell:
 # Windows Firewall
 New-NetFirewallRule -DisplayName "KidPhone SIP+audio" -Direction Inbound `
   -Protocol UDP -LocalPort 5060,10000-10100 -Action Allow
+New-NetFirewallRule -DisplayName "Treeline web" -Direction Inbound `
+  -Protocol TCP -LocalPort 8080 -Action Allow
 
 # Hyper-V firewall that sits in front of WSL in mirrored mode
 Set-NetFirewallHyperVVMSetting -Name '{40E0AC32-46A5-438A-A0B2-2B479E8F2E90}' `
@@ -102,96 +116,82 @@ Put the project in your Linux home folder (much faster than under `/mnt/c`):
 ```bash
 git clone https://github.com/<you>/treeline.git ~/treeline
 cd ~/treeline
-docker compose up -d --build       # Asterisk + control app
-docker compose run --rm testphones # scripted test calls
+docker compose up -d --build       # Asterisk, the control app and the API
+```
+
+Then open **http://localhost:8080/** (the parent app) and sign in. This is a
+test server on your own network: it shows your sign-in code on the page, so no
+email is needed. The tablet phone is at **http://localhost:8080/phone/**.
+
+```bash
 docker compose logs -f controller  # watch calls being allowed or blocked
 ```
 
-A passing run ends with `9/9 scenarios passed`.
+## Tests
 
-## Call in from your cell phone
+| What | Command | Proves |
+| --- | --- | --- |
+| Unit tests | `docker compose run --rm --no-deps --entrypoint python controller -m unittest discover -s tests -t .` | The rules, the API, the database, backups |
+| Scripted SIP phones | `docker compose run --rm testphones` | 17 scenarios: real SIP calls through Asterisk and the rules |
+| Tablet phones | `docker compose run --rm webtests` | Two and three real browser tablets on real WebRTC calls, with audio |
+| The tablet's screen | `docker compose run --rm webtests phone_ui.py` | Pairing and the dial |
+| The parent app | `python3 web/tests/smoke.py` | Needs Playwright and a running API (see the file's header); 169 checks across screens and widths |
 
-1. Install **Linphone** (free, iOS and Android). Zoiper works too.
-2. Find your PC's Wi-Fi address: `ipconfig` in PowerShell, under "IPv4 Address".
-3. Add a SIP account in Linphone:
-   - Username: `1004` (Grandma), password: `dev-1004`
-   - Domain: your PC's IPv4 address, for example `192.168.1.50`
-   - Transport: **UDP**
-4. Set up a second softphone as Sam (`1001` / `dev-1001`). Linphone also
-   runs on Windows, or use another phone or tablet.
-5. From Grandma's phone, dial **1** (Grandma's speed dial for Sam). Sam's
-   phone rings. From Sam's phone, **2** calls Grandma.
+A passing scripted run ends with `17/17 scenarios passed`. The scripted tests
+make a small world of treehouses numbered `01xx` (a range real families never
+get) and remove it afterwards. Run them on a development database, not one with
+real families in it.
 
-Try changing `config/family.json` while you test: pause Sam, set quiet hours
-to now, or remove an approval. The next call follows the new rules.
+> **If your Docker is Docker Desktop** (rather than Docker Engine inside
+> Ubuntu), host-networked ports aren't reachable from the host itself, so run
+> the browser tests through the `webtests` container as above.
 
-## Scripted test scenarios
+## Try it with phones
 
-| Scenario | Checks |
-| --- | --- |
-| `approved_call` | Sam presses 1 (Alex): both houses approved, so it connects |
-| `one_sided_approval` | Sam presses 3 (Riley): Riley's house hasn't approved, so it's blocked |
-| `stranger_calls_in` | Riley dials Sam directly: blocked |
-| `unknown_number` | Sam dials a number not on the network: blocked |
-| `paused_phone` | Alex's phone is paused: blocked |
-| `quiet_hours` | Sam's quiet hours cover right now: blocked |
-| `grandma_call` | Sam presses 2 (Grandma): connects |
-| `time_limit` | A 9-second limit cuts the call off on time |
-| `callee_offline` | Alex's phone is unplugged: the call fails cleanly |
+**A tablet or a laptop.** Open `http://localhost:8080/phone/` on the same machine
+(a browser only lets a page use the microphone on `localhost` or over HTTPS, so
+another tablet needs the deployed, HTTPS setup in [docs/DEPLOY.md](docs/DEPLOY.md)).
+Sign in to the parent app, then Our treehouse, Add a phone, Tablet, and type the
+six digits the phone shows. Make two treehouses, string them with a ladder code,
+and call one from the other.
 
-Run one: `docker compose run --rm testphones time_limit`
-
-The test phones are baresip with a test tone as their "voice", so no sound
-card is needed. Scenarios that change the rules restore them afterward.
-
-## What has been tested
-
-All 9 scenarios pass against **Asterisk 20.6 and baresip 1.0 from the Ubuntu
-24.04 packages**, the same versions these Docker images install, with these
-exact config files and scripts. The Docker images themselves weren't built
-in that test environment, because it couldn't reach Docker Hub. If a build
-fails on your machine, that's the first place to look.
+**A softphone on your cell phone** (SIP over UDP, on your Wi-Fi). In the parent
+app add a **Phone adapter** (it gives you a user ID and password), then in
+Linphone or Zoiper add a SIP account with that user ID and password, the domain
+set to your PC's address, and transport UDP. Dial another treehouse's four digits.
 
 ## Files
 
 ```
-docker-compose.yml       the three services
-asterisk/config/         PJSIP accounts, dialplan, ARI (control-app login)
-controller/app.py        the parent-rules engine (Python, ~300 lines)
-config/family.json       households, phones, approvals, speed dials, limits
-testphones/              scripted fake phones and test scenarios
-data/calls.jsonl         call log (created on first call)
+docker-compose.yml        the development stack (Asterisk, control app, API, test containers)
+asterisk/                 Asterisk image, config, indications (tones), operator messages
+controller/treeline/      rules.py (the rules), calls.py (call engine), api.py (the API),
+                          db.py (SQLite and migrations), jobs.py (alerts, retention), pjsip.py
+controller/tests/         unit tests
+testphones/               scripted SIP phones and the 17 scenarios
+web/parent/               the parent app    web/phone/   the tablet rotary phone
+web/shared/               API client and UI builders    web/tests/   browser tests
+design/                   the design system (tokens, components, logo)
+deploy/                   production compose, Caddy, Asterisk overlay, backups, fail2ban
+docs/                     PLAN, DEPLOY, ADAPTER, HARDWARE, PILOT
+scripts/                  build_web_assets.py, build_licenses.py, build_static.py
 ```
 
 ## Before this leaves your house
 
-These settings are for a private test network only:
-
-- **Passwords:** change every `dev-*` password and the ARI password.
-- **Encryption:** turn on TLS for SIP and SRTP for audio, so calls are encrypted.
-- **Ports:** don't expose ARI (port 8088) to the internet.
+The files at the project root are for your own network only: sign-in codes
+appear on the page, passwords are defaults, and SIP isn't encrypted. For
+anything beyond that, use the production setup in [docs/DEPLOY.md](docs/DEPLOY.md):
+HTTPS everywhere, SIP over TLS with SRTP, a private ARI, unique passwords for
+every phone, and nightly backups.
 
 ## Next steps
 
-The full phased plan is in **[docs/PLAN.md](docs/PLAN.md)**:
-
-1. **Platform core:** treehouses, 4-digit numbers, strings, classic phone sounds and a full call audit (replaces speed dials).
-2. **Parent app:** setup, strings, rules, calls and the phone book, built from `design/`.
-3. **Tablet rotary softphone** and several handsets on one line.
-4. **Deploy and pilot** with 2–3 friend families on tablet softphones.
-5. **A real rotary phone** through a SIP adapter (Grandstream HT801).
-6. **Custom rotary phone:** ESP32-S3, ES8388 codec and AG1171 SLIC.
-
-## Hosting later
-
-- **Parent web app:** Firebase Hosting or GitHub Pages can host it for free.
-- **Asterisk:** can't run on Firebase, GitHub or Cloud Run. It needs an
-  always-on machine that accepts UDP, so plan on a small VM:
-  - **Oracle Cloud Always Free:** an ARM VM at no cost (recently cut to
-    2 OCPU / 12 GB). Capacity can be hard to get, and idle VMs can be
-    reclaimed.
-  - **AWS Lightsail:** about $3.50–5/month, often with 3 months free.
-  - **Any $5/month VPS:** for example Hetzner or DigitalOcean.
+Phases 1 to 3 are done. What's left needs things this repository can't supply:
+a public server and real families for the pilot ([docs/PILOT.md](docs/PILOT.md)),
+an adapter and a rotary phone to check [docs/ADAPTER.md](docs/ADAPTER.md)
+against, and the hardware for [docs/HARDWARE.md](docs/HARDWARE.md). Also still
+to do: record the operator messages (`asterisk/sounds/README.md`).
 
 ## Not an emergency phone
 

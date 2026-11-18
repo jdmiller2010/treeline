@@ -20,9 +20,9 @@ CHROME = os.environ.get("CHROME") or next(iter(glob.glob(os.path.expanduser(
 errors, count = [], [0]
 
 
-def check(cond, what):
+def check(cond, what, detail=""):
     count[0] += 1
-    print(("ok   " if cond else "FAIL ") + what, flush=True)
+    print(("ok   " if cond else "FAIL ") + what + (f"  [{detail}]" if detail and not cond else ""), flush=True)
     if not cond:
         errors.append(what)
 
@@ -31,8 +31,16 @@ def parent_session(api, email, house):
     code = api.post(f"{BASE}/api/auth/request", data={"email": email}).json()["dev_code"]
     token = api.post(f"{BASE}/api/auth/verify", data={"email": email, "code": code}).json()["token"]
     h = {"Authorization": f"Bearer {token}"}
-    r = api.post(f"{BASE}/api/treehouse", headers=h, data={"name": house, "ack_911": True})
+    r = api.post(f"{BASE}/api/treehouse", headers=h, data={"name": house, "ack_911": True, "consent": True})
     return h, r.json()["treehouse"]
+
+
+def digits_become(page, want, timeout=5000):
+    try:
+        page.wait_for_function("(d) => document.body.dataset.digits === d", arg=want, timeout=timeout)
+        return True
+    except Exception:
+        return False
 
 
 def wheel_center(page):
@@ -78,11 +86,11 @@ def main():
         tablet.screenshot(path=f"{SHOTS}/phone-pair.png", full_page=True)
 
         # ---- a parent claims it
-        h, house = parent_session(api, "phone-parent@example.com", "Dial house")
+        h, house = parent_session(api, f"phone-parent-{int(__import__('time').time())}@example.com", "Dial house")
         r = api.post(f"{BASE}/api/pair/claim", headers=h, data={"code": code, "name": "Kitchen tablet"})
         check(r.status == 201, "a parent claims the code")
         tablet.wait_for_selector(".rp", timeout=15000)
-        check(True, "the tablet becomes a phone")
+        check(tablet.locator(".rp").count() == 1 and tablet.locator(".ph-code").count() == 0, "the tablet becomes a phone")
         tablet.wait_for_function("(n) => document.querySelector('#rp-number').textContent === n", arg=house["number"], timeout=15000)
         check(tablet.text_content("#rp-number") == house["number"], "the number card shows the treehouse's number")
 
@@ -91,7 +99,6 @@ def main():
         check(tablet.locator(".rp-digit").count() == 10, "ten numerals under the holes")
         check("Can't call 911 or outside numbers" in tablet.inner_text("body"), "the phone's main screen says it can't call 911")
         check("Open-source licenses" in tablet.inner_text("body"), "the footer is there")
-        check(tablet.locator("h1").count() == 0 or True, "no stray headings")
         wide = tablet.evaluate("document.documentElement.scrollWidth > document.documentElement.clientWidth + 1")
         check(not wide, "nothing scrolls sideways")
         for theme in ("light", "dark"):
@@ -103,8 +110,7 @@ def main():
         tablet.evaluate("() => { __phone.S.hook = 'off'; __phone.S.phase = 'dialtone'; document.querySelector('.rp').classList.add('is-off'); }")
         tablet.screenshot(path=f"{SHOTS}/phone-lifted.png", full_page=True)
         drag_digit(tablet, 7)
-        tablet.wait_for_function("(d) => document.body.dataset.digits === d", arg="7", timeout=5000)
-        check(True, "turning the wheel to the stop dials the digit")
+        check(digits_become(tablet, "7"), "turning the wheel to the stop dials the digit")
         before = tablet.evaluate("document.body.dataset.digits")
         # A short turn that doesn't reach the stop dials nothing.
         c = wheel_center(tablet)
@@ -115,13 +121,14 @@ def main():
         tablet.wait_for_timeout(600)
         check(tablet.evaluate("document.body.dataset.digits") == before, "a short turn dials nothing")
         drag_digit(tablet, 0)
-        tablet.wait_for_function("(d) => document.body.dataset.digits === d", arg="70", timeout=5000)
-        check(True, "0 takes the long way round and still counts")
+        check(digits_become(tablet, "70"), "0 takes the long way round and still counts")
         tablet.keyboard.press("5")
-        tablet.wait_for_function("(d) => document.body.dataset.digits === d", arg="705", timeout=5000)
-        check(True, "a keyboard can dial too")
+        check(digits_become(tablet, "705"), "a keyboard can dial too")
         angle = tablet.evaluate("document.querySelector('#wheel').getAttribute('transform')")
-        check(angle in ("rotate(0 180 292)",) or angle is None, "the wheel is back at rest after dialing")
+        check(angle in ("rotate(0 180 292)", None), "the wheel is back at rest after dialing", str(angle))
+
+        # ---- the debug hook never exposes the SIP secret
+        check(tablet.evaluate("() => window.__phone.S.creds === undefined"), "the test hook can't read the SIP secret")
 
         # ---- removing the tablet from the treehouse is noticed
         hs = api.get(f"{BASE}/api/handsets", headers=h).json()["handsets"]
@@ -130,6 +137,7 @@ def main():
         tablet.reload()
         tablet.wait_for_selector(".ph-code", timeout=20000)
         check("removed" in tablet.inner_text("body"), "a removed tablet says so and offers to be added again")
+        api.delete(f"{BASE}/api/treehouse", headers=h, data={"confirm": house["name"]})     # leave the database as we found it
         browser.close()
 
     if errors:

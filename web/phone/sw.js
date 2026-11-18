@@ -8,7 +8,8 @@ self.addEventListener("fetch", (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== "GET" || url.origin !== location.origin || url.pathname.startsWith("/api/")) return;
   e.respondWith(fetch(e.request).then((res) => {
-    if (res.ok) { const copy = res.clone(); caches.open(CACHE).then((c) => c.put(e.request, copy)); }
+    // Only whole, successful pages and files: a partial (206) response can't be cached.
+    if (res.status === 200 && res.type === "basic") { const copy = res.clone(); e.waitUntil(caches.open(CACHE).then((c) => c.put(e.request, copy)).catch(() => {})); }
     return res;
-  }).catch(() => caches.match(e.request)));
+  }).catch(() => caches.match(e.request, { ignoreSearch: true })));
 });

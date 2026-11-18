@@ -41,7 +41,7 @@ class Family:
         self.email = f"{tag}-{int(time.time())}@example.com"
         code = api("POST", "/api/auth/request", {"email": self.email})["dev_code"]
         self.token = api("POST", "/api/auth/verify", {"email": self.email, "code": code})["token"]
-        self.house = api("POST", "/api/treehouse", {"name": name, "ack_911": True}, self.token)["treehouse"]
+        self.house = api("POST", "/api/treehouse", {"name": name, "ack_911": True, "consent": True}, self.token)["treehouse"]
         # Quiet hours would make results depend on the time of day.
         api("PATCH", "/api/treehouse", {"quiet": {"enabled": False}}, self.token)
         self.number = self.house["number"]
@@ -228,6 +228,24 @@ def run(families):
         time.sleep(4)
         check(newest_call(alex)["result"] == "offline", "calling a treehouse with no phones fails cleanly")
         a.lift()
+
+        # ---- the removed tablet notices on its next pickup, and can be added again
+        s.lift()
+        try:
+            s.page.wait_for_selector(".ph-code", timeout=20000)
+            gone = True
+        except Exception:
+            gone = False
+        check(gone and "removed" in s.page.inner_text("body"), "a removed tablet goes back to the pairing screen and says why")
+        if gone:
+            code = "".join(c for c in s.page.inner_text(".ph-code") if c.isdigit())
+            sam.call("POST", "/api/pair/claim", {"code": code, "name": "Sam tablet again"})
+            s.page.wait_for_selector(".rp", timeout=20000)
+            s.page.wait_for_function("() => window.__phone.S.registered === true", timeout=30000)
+            s.page.wait_for_function("() => window.__phone.S.number", timeout=15000)
+            s.lift()
+            check(s.wait_phase("dialtone"), "once added again it works, with no leftover state")
+            s.lift()
         browser.close()
 
 

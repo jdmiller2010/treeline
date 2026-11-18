@@ -1,7 +1,9 @@
 """Background chores: handset check-ins, alerts by email, and cleanup."""
 
 import datetime as dt
+import json
 import logging
+import os
 import time
 
 from . import db, mail
@@ -34,8 +36,45 @@ def check_handsets(conn, ari, now=None):
                 "It hasn't checked in for a while, so calls can't reach it.", key)
 
 
-def send_alert_emails(conn):
-    """Email new notes to the treehouse's parents."""
+VAPID_PRIVATE = os.environ.get("TREELINE_VAPID_PRIVATE", "")
+VAPID_SUBJECT = os.environ.get("TREELINE_VAPID_SUBJECT", "mailto:admin@treeline.invalid")
+
+
+def push_to(conn, email, title, body, send=None):
+    """Send a Web Push to every device this grown-up turned notifications on for.
+    Devices that have gone away (404 or 410) are forgotten."""
+    if not VAPID_PRIVATE:
+        return 0
+    if send is None:
+        try:
+            from pywebpush import WebPushException, webpush
+        except ImportError:
+            return 0
+
+        def send(sub, payload):
+            try:
+                webpush(subscription_info=sub, data=payload, vapid_private_key=VAPID_PRIVATE,
+                        vapid_claims={"sub": VAPID_SUBJECT}, ttl=3600)
+            except WebPushException as err:
+                code = getattr(err.response, "status_code", None)
+                if code in (404, 410):
+                    raise LookupError("gone") from err
+                raise
+    sent = 0
+    for row in conn.execute("SELECT * FROM push_subscription WHERE email=?", (email,)).fetchall():
+        sub = {"endpoint": row["endpoint"], "keys": {"p256dh": row["p256dh"], "auth": row["auth"]}}
+        try:
+            send(sub, json.dumps({"title": title, "body": body or "", "tag": "treeline"}))
+            sent += 1
+        except LookupError:
+            conn.execute("DELETE FROM push_subscription WHERE id=?", (row["id"],))
+        except Exception:
+            log.exception("push to %s failed", email)
+    return sent
+
+
+def send_alert_emails(conn, push=push_to):
+    """Tell a treehouse's parents about new notes, by email and, where they've turned it on, push."""
     rows = conn.execute("SELECT * FROM notice WHERE emailed_at IS NULL AND dismissed_at IS NULL "
                         "AND created_at >= ?", (db.iso(db.utcnow() - dt.timedelta(days=1)),)).fetchall()
     for n in rows:
@@ -45,6 +84,7 @@ def send_alert_emails(conn):
         for p in parents:
             ok = mail.send(p["email"], f"Treeline: {n['title']}",
                            f"{n['title']}\n\n{n['body'] or ''}\n\nOpen the Treeline app to see more.") and ok
+            push(conn, p["email"], n["title"], n["body"])
         if ok:
             conn.execute("UPDATE notice SET emailed_at=? WHERE id=?", (db.iso(), n["id"]))
 
