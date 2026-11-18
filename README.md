@@ -191,3 +191,32 @@ These settings are for a private test network only:
     reclaimed.
   - **AWS Lightsail:** about $3.50–5/month, often with 3 months free.
   - **Any $5/month VPS:** for example Hetzner or DigitalOcean.
+
+## Not an emergency phone
+
+Treeline only connects treehouses on the Treeline. **It cannot call 911** or any
+outside number, and outside numbers can't call in. Every phone, softphone and
+the parent app must say so plainly. Kids need another way to reach help.
+
+## License
+
+Copyright (c) 2026 Jordan Miller.
+
+- **Code:** [PolyForm Noncommercial 1.0.0](LICENSE). Use it, change it and share
+  it for any noncommercial purpose, keeping the copyright notice. Making money
+  from it needs permission: email jdmiller2010@gmail.com.
+- **Design assets** (logo, art, icons, guidelines in `design/`):
+  [CC BY-NC 4.0](design/LICENSE-ASSETS.txt), credit "Treeline by Jordan Miller".
+  The Treeline name and logo aren't licensed as your own brand.
+- **Third-party software** keeps its own licenses: see
+  [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+Because commercial use is restricted, Treeline is *source-available* rather than
+"open source" in the OSI sense.
+
+## Contact and support
+
+Questions, ideas or bug reports: **jdmiller2010@gmail.com**
+
+If Treeline helps your neighborhood, you can buy me a coffee:
+**https://buymeacoffee.com/REPLACE-ME** *(link coming soon)*
