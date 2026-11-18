@@ -185,13 +185,13 @@
   //   "tl-rotary-hook"  { offHook }            when the handset is lifted or hung up
   //   "tl-rotary-pulse" { digit, pulse }       once per pulse while the dial returns (for click sounds)
   //   "tl-rotary-digit" { digit, offHook }     when a dialed digit finishes returning
-  var ROTARY = {"cx": 200, "cy": 292, "r": 73, "sq": 0.93, "stop": 32, "holeK": 0.79, "holeR": 11.5, "gap": 30, "holeAngle": {"1": -28, "2": -58, "3": -88, "4": -118, "5": -148, "6": -178, "7": -208, "8": -238, "9": -268, "0": -298}, "travel": {"1": 60, "2": 90, "3": 120, "4": 150, "5": 180, "6": 210, "7": 240, "8": 270, "9": 300, "0": 330}, "cordStart": [70, 352], "cordEnd": [62, 192], "lift": {"tx": 4, "ty": -74, "rot": 4, "ox": 94, "oy": 150}};
+  var ROTARY = {"cx": 200, "cy": 292, "r": 73, "sq": 0.93, "stop": 32, "holeK": 0.79, "holeR": 11.5, "gap": 30, "holeAngle": {"1": -28, "2": -58, "3": -88, "4": -118, "5": -148, "6": -178, "7": -208, "8": -238, "9": -268, "0": -298}, "travel": {"1": 60, "2": 90, "3": 120, "4": 150, "5": 180, "6": 210, "7": 240, "8": 270, "9": 300, "0": 330}, "cordStart": [68, 350], "cordEnd": [70, 206], "lift": {"tx": -4, "ty": -50, "rot": 24, "ox": 318, "oy": 200}};
   function rotaryCordPath(x1, y1, x2, y2) {
-    var loops = 16, r = 6.5, n = loops * 12, dx = x2 - x1, dy = y2 - y1, L = Math.hypot(dx, dy) || 1;
+    var loops = 15, r = 6.5, n = loops * 12, dx = x2 - x1, dy = y2 - y1, L = Math.hypot(dx, dy) || 1;
     var nx = -dy / L, ny = dx / L, d = "";
     for (var i = 0; i <= n; i++) {
-      var t = i / n, sag = Math.sin(Math.PI * t) * Math.min(60, L * 0.35), a = 2 * Math.PI * loops * t;
-      var bx = x1 + dx * t, by = y1 + dy * t + sag;
+      var t = i / n, b = Math.sin(Math.PI * t) * -34 * Math.min(1, L / 160), a = 2 * Math.PI * loops * t;
+      var bx = x1 + dx * t + nx * b, by = y1 + dy * t + ny * b;
       var px = bx + nx * r * Math.cos(a) + dx / L * r * 0.55 * Math.sin(a);
       var py = by + ny * r * Math.cos(a) + dy / L * r * 0.55 * Math.sin(a);
       d += (i ? " L" : "M") + px.toFixed(1) + " " + py.toFixed(1);

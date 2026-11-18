@@ -802,9 +802,9 @@ body {
 .tl-rotary .tlp-wheel { cursor: grab; }
 .tl-rotary.is-dialing .tl-rotary__svg, .tl-rotary.is-dialing .tlp-wheel { cursor: grabbing; }
 /* A real button over the handset, so a keyboard or screen reader can lift and hang up too. */
-.tl-rotary__hook { position: absolute; left: 11%; right: 11%; top: 21%; height: 24%; padding: 0; border: 0; border-radius: var(--radius-lg); background: none; cursor: pointer; }
+.tl-rotary__hook { position: absolute; left: 12%; right: 12%; top: 31%; height: 25%; padding: 0; border: 0; border-radius: var(--radius-lg); background: none; cursor: pointer; }
 .tl-rotary__hook:focus-visible { outline: var(--border-focus) solid var(--focus); outline-offset: 2px; }
-.tl-rotary[data-hook="off"] .tl-rotary__hook { top: 5%; }
+.tl-rotary[data-hook="off"] .tl-rotary__hook { left: 19%; right: 9%; top: 8%; height: 37%; }
 .tl-rotary__notice { margin: 0; display: inline-flex; align-items: center; gap: var(--space-2); padding: 6px var(--space-4); border-radius: var(--radius-pill);
   background: var(--surface); box-shadow: inset 0 0 0 1px var(--card-edge); font: 600 14px/20px var(--font-sans); color: var(--ink); }
 .tl-rotary__notice .tl-icon { color: var(--berry); }
