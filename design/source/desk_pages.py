@@ -31,7 +31,7 @@ def warranty_detail():
             f'<text x="10" y="44" {SERIF} font-size="14" font-weight="600" fill="{INK}">Owner’s</text>'
             f'<text x="10" y="60" {SERIF} font-size="14" font-weight="600" fill="{INK}">Warranty</text>'
             f'<text x="10" y="74" {SANS} font-size="7.4" font-weight="700" fill="{CANOPY}">&amp; OPEN-SOURCE LICENSES</text>'
-            + t + f'<rect x="10" y="{wh-14}" width="9" height="9" fill="none" stroke="{INK}" stroke-width="1"/><text x="24" y="{wh-6}" {SANS} font-size="7.5" fill="{INK}">I have read the fine print</text>')
+            + t)
 
 def pickups():
     k = "tlk"
@@ -82,13 +82,27 @@ def hole(d):
 
 def pages():
     out = []
-    # 0 the cover (front of the first leaf)
-    cover = desk.book()
-    inner = cover[cover.index('<g>') + 3: cover.rindex('</g>')]
-    inner = re.sub(r'<path d="M0 -178[^>]*translate\(8 2\)[^>]*/>', '', inner)
-    inner = re.sub(r'<g filter="url\(#tls-wash\)"><path d="M150 -176[^<]*</g>', '', inner)
-    inner = inner.replace("translate(136 -120) rotate(12)", "translate(124 -150) rotate(12)")
-    cov = f'<g transform="scale(2) translate(0 178)">{fix(inner, "tlb")}</g>'
+    # 0 the cover (front of the first leaf): set like a real paperback, on a clean grid
+    burst = " ".join(f"{'M' if i == 0 else 'L'}{(31 if i % 2 == 0 else 24) * math.cos(math.radians(i * 15 - 90)):.1f} {(31 if i % 2 == 0 else 24) * math.sin(math.radians(i * 15 - 90)):.1f}" for i in range(24)) + " Z"
+    cov = (f'<rect width="{PW}" height="{PH}" fill="#fbf3df"/>'
+           f'<rect width="{PW}" height="122" fill="{SKY}"/>'
+           f'<rect y="122" width="{PW}" height="5" fill="{SUN}"/>'
+           f'<text x="26" y="56" {SERIF} font-size="36" font-weight="700" letter-spacing="3" fill="#fff">ROTARY</text>'
+           f'<text x="26" y="98" {SERIF} font-size="36" font-weight="700" letter-spacing="3" fill="#fff">PHONES</text>'
+           f'<text x="26" y="166" {SERIF} font-size="30" font-style="italic" fill="{INK}">the easy way</text>'
+           f'<path d="M26 182 L138 182" stroke="{SKY}" stroke-width="1.4"/>'
+           f'<text x="26" y="204" {SANS} font-size="12" fill="#5e5546">How to call a friend</text>'
+           f'<text x="26" y="220" {SANS} font-size="12" fill="#5e5546">from your treehouse</text>'
+           f'<text x="26" y="286" {SANS} font-size="11" font-weight="700" letter-spacing="1.2" fill="{INK}">FOR KIDS</text>'
+           f'<text x="26" y="302" {SANS} font-size="11" font-weight="700" letter-spacing="1.2" fill="{INK}">&amp; GROWN-UPS</text>'
+           + phone("c", False, 156, 168, 120)
+           + f'<g transform="translate(246 122) rotate(14)"><path d="{burst}" fill="{BERRY}"/>'
+           f'<text x="0" y="-3" text-anchor="middle" {SANS} font-size="10" font-weight="800" letter-spacing=".5" fill="#fff">4-DIGIT</text>'
+           f'<text x="0" y="9" text-anchor="middle" {SANS} font-size="10" font-weight="800" letter-spacing=".5" fill="#fff">DIALING!</text></g>'
+           f'<path d="M26 326 L{PW-26} 326" stroke="{SKY}" stroke-width="1.2"/>'
+           f'<text x="26" y="344" {SANS} font-size="10" font-weight="700" letter-spacing="1.6" fill="{SKY}">TREELINE PRESS</text>'
+           f'<text x="{PW-26}" y="344" text-anchor="end" {SANS} font-size="10" font-weight="700" letter-spacing="1.6" fill="{SKY}">2ND EDITION</text>'
+           f'<rect width="{PW}" height="{PH}" fill="url(#tlb-pagegrad)"/>')
     out.append(page("c", cov, "Rotary Phones the easy way. A Treeline guide."))
     # 1 title page
     t = (f'<text x="{PW/2}" y="110" text-anchor="middle" {SERIF} font-size="28" font-weight="700" letter-spacing="2" fill="{SKY}">ROTARY PHONES</text>'

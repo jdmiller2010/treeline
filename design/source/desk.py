@@ -136,11 +136,11 @@ def certificate(turn=3):
          f'<path d="{rrect(x+13, y+13, w-26, h-26, 2)}" fill="none" stroke="{CANOPY}" stroke-width=".9" stroke-dasharray="1 3"/>']
     for cx_, cy_, rot in ((x+20, y+20, 45), (x+w-20, y+20, 135), (x+w-20, y+h-20, 225), (x+20, y+h-20, 315)):   # leaf corners
         g.append(f'<path transform="translate({cx_} {cy_}) rotate({rot})" d="M0 -7 C5 -3 5 3 0 7 C-5 3 -5 -3 0 -7Z" fill="{CANOPY}" opacity=".8"/>')
-    g += [f'<text x="{x+w/2}" y="{y+40}" text-anchor="middle" {SERIF} font-size="19" font-weight="600" letter-spacing="2.5" fill="{INK}">GIFT CERTIFICATE</text>',
+    g += [f'<text x="{x+w/2}" y="{y+40}" text-anchor="middle" {SERIF} font-size="19" font-weight="600" letter-spacing="2.5" fill="{INK}">BUY ME A COFFEE</text>',
           f'<path d="M{x+56} {y+50} L{x+w-56} {y+50}" stroke="{CANOPY}" stroke-width="1"/>',
           f'<text x="{x+w/2}" y="{y+75}" text-anchor="middle" {SERIF} font-size="17" font-style="italic" fill="{INK}">Good for one cup of coffee</text>',
           f'<text x="{x+w/2}" y="{y+94}" text-anchor="middle" {SANS} font-size="11.5" fill="#5e5546">for the person who built Treeline</text>',
-          f'<text x="{x+w/2}" y="{y+120}" text-anchor="middle" {SANS} font-size="12.5" font-weight="700" letter-spacing=".5" fill="{CANOPY}">REDEEM AT BUY ME A COFFEE</text>',
+          f'<text x="{x+w/2}" y="{y+120}" text-anchor="middle" {SANS} font-size="11.5" font-weight="700" letter-spacing="2" fill="{CANOPY}">A GIFT CERTIFICATE</text>',
                     pin(x+w/2, y+10), '</g>']
     return "".join(g)
 
@@ -251,7 +251,7 @@ def warranty():
              f'<text x="10" y="{wy+44}" {SERIF} font-size="14" font-weight="600" fill="{INK}">Owner’s</text>'
              f'<text x="10" y="{wy+60}" {SERIF} font-size="14" font-weight="600" fill="{INK}">Warranty</text>'
              f'<text x="10" y="{wy+74}" {SANS} font-size="7.4" font-weight="700" fill="{CANOPY}">&amp; OPEN-SOURCE LICENSES</text>'
-             + lines + f'<rect x="10" y="{wy+wh-14}" width="9" height="9" fill="none" stroke="{INK}" stroke-width="1"/><text x="24" y="{wy+wh-6}" {SANS} font-size="7.5" fill="{INK}">I have read the fine print</text>'
+             + lines + f'<text x="10" y="{wy+wh-8}" {SANS} font-size="7.5" fill="{INK}" opacity=".7">Treeline Telephone Co.</text>'
              '</g>')
     return "".join(g)
 
