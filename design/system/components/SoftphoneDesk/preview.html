@@ -1,0 +1,14 @@
+<!-- @dsCard group="Softphone" height=1000 page subtitle="The tablet softphone screen: the phone on a side table in a 90s room. Tap the card file to flip through the phone book." -->
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>SoftphoneDesk — Treeline</title></head>
+<body>
+<div id="root" class="tl-root" style="height:1000px"></div>
+<script>
+  var T = window.Treeline, h = React.createElement;
+  var strings = [{name:'The Parks', number:'3317'}, {name:'Grandma Jo', number:'5520'}, {name:'Maya’s house', number:'2094'}];
+  ReactDOM.createRoot(document.getElementById('root')).render(
+    h(T.SoftphoneDesk, {id:'desk', fill:true, number:'4821', treehouseName:'Sam’s treehouse', quietTime:'8 pm – 7 am', contacts:strings}));
+</script>
+</body>
+</html>

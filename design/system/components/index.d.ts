@@ -118,6 +118,33 @@ export declare function StatTile(props: StatTileProps): React.ReactElement;
 export interface TabsProps { label: string; tabs: Array<{ value: string; label: string; content: React.ReactNode; badge?: number }>; value?: string; defaultValue?: string; onChange?: (v: string) => void; id?: string; className?: string }
 export declare function Tabs(props: TabsProps): React.ReactElement;
 export interface RotaryPhoneApi { lift(): void; hangUp(): void; dial(digit: number): void; isOffHook(): boolean }
+export interface DeskContact { name: string; number: string; }
+export interface SoftphoneDeskApi { next(): void; prev(): void; setContacts(c: DeskContact[]): void; index(): number; }
+export interface SoftphoneDeskProps {
+  /** The treehouse's own 4 digits, shown in the middle of the dial. */
+  number?: string;
+  colorway?: "moss" | "ivory" | "berry";
+  /** Printed on the label tape on the drawer, in capitals. */
+  treehouseName?: string;
+  /** The approved strings, one card each in the card file (the phone book). */
+  contacts?: DeskContact[];
+  /** Written on the sticky note, e.g. "8 pm – 7 am". */
+  quietTime?: string;
+  guideHref?: string; onGuide?: (e: any) => void;
+  coffeeHref?: string;
+  licensesHref?: string; onLicenses?: (e: any) => void;
+  email?: string;
+  /** Passed to the RotaryPhone on the table. */
+  offHook?: boolean; defaultOffHook?: boolean;
+  onDigit?: (digit: number) => void; onHook?: (offHook: boolean) => void; onPulse?: (detail: any) => void;
+  apiRef?: { current: RotaryPhoneApi | null };
+  onCard?: (contact: DeskContact, index: number) => void;
+  deskRef?: { current: SoftphoneDeskApi | null };
+  /** Fill the parent's height instead of the screen's. */
+  fill?: boolean;
+  id?: string; className?: string;
+}
+
 export interface RotaryPhoneProps {
   /** The treehouse's own 4-digit number, shown in the middle of the dial. */ number?: string;
   colorway?: "moss" | "ivory" | "berry";
@@ -130,6 +157,7 @@ export interface RotaryPhoneProps {
   apiRef?: { current: RotaryPhoneApi | null }; id?: string; className?: string;
 }
 export declare function RotaryPhone(props: RotaryPhoneProps): React.ReactElement;
+export declare function SoftphoneDesk(props: SoftphoneDeskProps): React.ReactElement;
 export interface NavItem { icon: string; label: string; href?: string; current?: boolean; /** A count badge on the icon, e.g. waiting approvals. */ badge?: number; badgeLabel?: string; onClick?: (e: any) => void }
 export interface NavBarProps { items: NavItem[]; brand?: React.ReactNode; footer?: React.ReactNode; label?: string; className?: string }
 export declare function NavBar(props: NavBarProps): React.ReactElement;
@@ -153,7 +181,7 @@ declare global {
       Switch: typeof Switch; Checkbox: typeof Checkbox; TextField: typeof TextField; Card: typeof Card;
       FriendRow: typeof FriendRow; ApprovalCard: typeof ApprovalCard; QuietHours: typeof QuietHours; CallLogItem: typeof CallLogItem;
       Illustration: typeof Illustration; EmptyState: typeof EmptyState; LeafDivider: typeof LeafDivider; LeafLoader: typeof LeafLoader;
-      Alert: typeof Alert; Toast: typeof Toast; Toasts: typeof Toasts; Select: typeof Select; TimeField: typeof TimeField; TimeRange: typeof TimeRange; SegmentedControl: typeof SegmentedControl; Menu: typeof Menu; RadioGroup: typeof RadioGroup; Textarea: typeof Textarea; PasswordField: typeof PasswordField; CodeInput: typeof CodeInput; Slider: typeof Slider; Badge: typeof Badge; Steps: typeof Steps; ProgressBar: typeof ProgressBar; DescriptionList: typeof DescriptionList; Skeleton: typeof Skeleton; Disclosure: typeof Disclosure; Accordion: typeof Accordion; StatTile: typeof StatTile; Tabs: typeof Tabs; RotaryPhone: typeof RotaryPhone;
+      Alert: typeof Alert; Toast: typeof Toast; Toasts: typeof Toasts; Select: typeof Select; TimeField: typeof TimeField; TimeRange: typeof TimeRange; SegmentedControl: typeof SegmentedControl; Menu: typeof Menu; RadioGroup: typeof RadioGroup; Textarea: typeof Textarea; PasswordField: typeof PasswordField; CodeInput: typeof CodeInput; Slider: typeof Slider; Badge: typeof Badge; Steps: typeof Steps; ProgressBar: typeof ProgressBar; DescriptionList: typeof DescriptionList; Skeleton: typeof Skeleton; Disclosure: typeof Disclosure; Accordion: typeof Accordion; StatTile: typeof StatTile; Tabs: typeof Tabs; RotaryPhone: typeof RotaryPhone; SoftphoneDesk: typeof SoftphoneDesk;
       Brand: typeof Brand; NavBar: typeof NavBar; AppBar: typeof AppBar; AppShell: typeof AppShell; Sheet: typeof Sheet;
       iconNames: IconName[]; illustrationNames: IllustrationName[];
     };

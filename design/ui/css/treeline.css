@@ -3,6 +3,8 @@
 @font-face { font-family: "Fraunces"; font-style: normal; font-display: swap; font-weight: 100 900; src: url("../fonts/fraunces-latin-full-normal.woff2") format("woff2-variations"), url("../fonts/fraunces-latin-full-normal.woff2") format("woff2"); unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD; }
 @font-face { font-family: "Figtree"; font-style: normal; font-display: swap; font-weight: 300 900; src: url("../fonts/figtree-latin-ext-wght-normal.woff2") format("woff2-variations"), url("../fonts/figtree-latin-ext-wght-normal.woff2") format("woff2"); unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF; }
 @font-face { font-family: "Figtree"; font-style: normal; font-display: swap; font-weight: 300 900; src: url("../fonts/figtree-latin-wght-normal.woff2") format("woff2-variations"), url("../fonts/figtree-latin-wght-normal.woff2") format("woff2"); unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD; }
+@font-face { font-family: "Caveat"; font-style: normal; font-display: swap; font-weight: 400; src: url("../fonts/caveat-latin-400-normal.woff2") format("woff2"); }
+@font-face { font-family: "Caveat"; font-style: normal; font-display: swap; font-weight: 700; src: url("../fonts/caveat-latin-700-normal.woff2") format("woff2"); }700&display=swap");
 
 /* Treeline components. Colors, sizes and shadows come from tokens.css.
    The watercolor recipes below are built only from those tokens, so both
@@ -808,3 +810,29 @@ body {
 .tl-rotary__notice { margin: 0; display: inline-flex; align-items: center; gap: var(--space-2); padding: 6px var(--space-4); border-radius: var(--radius-pill);
   background: var(--surface); box-shadow: inset 0 0 0 1px var(--card-edge); font: 600 14px/20px var(--font-sans); color: var(--ink); }
 .tl-rotary__notice .tl-icon { color: var(--berry); }
+
+/* >>> SoftphoneDesk — the tablet softphone screen: the phone on a side table in a 90s room.
+   The room is a still picture (1000 × 1300); the phone and the props on it are live. */
+.tl-desk { container-type: size; position: relative; width: 100%; height: 100dvh; overflow: hidden; display: flex; align-items: flex-end; justify-content: center;
+  background:
+    linear-gradient(to bottom, transparent 0 86.3%, #efe6d2 86.3% 89.3%, #a77a4c 89.3%, #c99e6e 100%),
+    repeating-linear-gradient(90deg, transparent 0 1.06cqh, #dfe6cf 1.06cqh 2.14cqh, transparent 2.14cqh 3.38cqh),
+    linear-gradient(to bottom, #ead9b4, #f1e5c8 35%, #e9dbbb 86%); }
+.tl-desk--fill { height: 100%; }
+.tl-desk__stage { position: relative; flex: none; width: min(100cqw, 76.923cqh); aspect-ratio: 1000 / 1300; }
+.tl-desk__art, .tl-desk__art > svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.tl-desk__phone { position: absolute; left: 26.500%; top: 7.769%; width: 47.000%; }
+.tl-desk__phone .tl-rotary { max-width: none; gap: 0; }
+.tl-desk__hot { position: absolute; display: block; padding: 0; border: 0; border-radius: 14px; background: none; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.tl-desk__hot:focus-visible { outline: var(--border-focus, 3px) solid var(--focus); outline-offset: 2px; }
+.tl-desk__hot--guide { left: 19.200%; top: 65.538%; width: 18.600%; height: 15.077%; }
+.tl-desk__hot--licenses { left: 51.200%; top: 68.000%; width: 15.000%; height: 12.308%; }
+.tl-desk__hot--coffee { left: 68.800%; top: 6.154%; width: 26.800%; height: 12.769%; }
+.tl-desk__hot--card { left: 68.800%; top: 18.923%; width: 23.600%; height: 10.923%; }
+.tl-desk__hot--cardfile { left: 68.400%; top: 36.154%; width: 23.200%; height: 15.692%; }
+.tl-desk__card { transform-box: fill-box; transform-origin: 50% 100%; }
+.tl-desk__card.is-flipping { animation: tl-desk-flip .3s ease; }
+@keyframes tl-desk-flip { 50% { opacity: 0; transform: translateY(-10px); } }
+@media (prefers-reduced-motion: reduce) { .tl-desk__card.is-flipping { animation: none; } }
+.tl-desk__sr { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+/* <<< SoftphoneDesk */
