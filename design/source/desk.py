@@ -59,27 +59,13 @@ def pin(x, y, color=BERRY):
             f'<g {WOB}><circle cx="{x}" cy="{y}" r="8" {LN}/></g>')
 
 # ---------------------------------------------------------------- wall and floor
-def wall():
-    g = [f'<rect x="0" y="0" width="{W}" height="1160" fill="url(#tls-wall)"/>']
-    for i, x in enumerate(range(18, W, 44)):          # 90s pinstripe wallpaper, a sage stripe and a fine rule
-        g.append(f'<rect x="{x}" y="0" width="14" height="1160" fill="{STRIPE}" opacity=".7"/>')
-        g.append(f'<path d="M{x+29} 0 L{x+29} 1160" stroke="{WALL_D}" stroke-width="1.2" opacity=".8"/>')
-    g.append(f'<g opacity=".12" filter="url(#tls-grain)"><rect x="0" y="0" width="{W}" height="1160" fill="#000"/></g>')
-    g.append(f'<ellipse cx="500" cy="420" rx="430" ry="300" fill="#fff6dd" opacity=".45" filter="url(#tls-soft)"/>')
-    # baseboard
-    g.append(shape("M0 1122 L1000 1122 L1000 1162 L0 1162 Z", "#efe6d2"))
-    g.append(f'<path d="M0 1131 L1000 1131" {LNS}/>')
-    return "".join(g)
-
-def floor():
-    g = [f'<rect x="0" y="1160" width="{W}" height="140" fill="url(#tls-floor)"/>']
-    for y in (1192, 1232, 1278):
-        g.append(f'<g {WOB}><path d="M0 {y} L1000 {y}" {LNS}/></g>')
-    for y0, y1, xs in ((1162, 1192, (140, 520, 860)), (1192, 1232, (60, 330, 700)), (1232, 1278, (210, 590, 930)), (1278, 1300, (40, 420, 780))):
-        for x in xs:
-            g.append(f'<g {WOB}><path d="M{x} {y0+2} L{x} {y1-2}" {LNS}/></g>')
-    g.append(f'<g opacity=".14" filter="url(#tls-grain)"><rect x="0" y="1160" width="{W}" height="140" fill="#000"/></g>')
-    g.append(f'<ellipse cx="500" cy="1172" rx="440" ry="26" fill="{WOOD_S}" opacity=".35" filter="url(#tls-soft)"/>')
+def wall(w, h):
+    g = [f'<rect x="0" y="0" width="{w}" height="{h}" fill="url(#tls-wall)"/>']
+    for x in range(18, w, 44):          # 90s pinstripe wallpaper, a sage stripe and a fine rule
+        g.append(f'<rect x="{x}" y="0" width="14" height="{h}" fill="{STRIPE}" opacity=".7"/>')
+        g.append(f'<path d="M{x+29} 0 L{x+29} {h}" stroke="{WALL_D}" stroke-width="1.2" opacity=".8"/>')
+    g.append(f'<g opacity=".12" filter="url(#tls-grain)"><rect x="0" y="0" width="{w}" height="{h}" fill="#000"/></g>')
+    g.append(f'<ellipse cx="{w/2}" cy="{h*.36:.0f}" rx="{w*.43:.0f}" ry="{h*.25:.0f}" fill="#fff6dd" opacity=".45" filter="url(#tls-soft)"/>')
     return "".join(g)
 
 # ---------------------------------------------------------------- wall things
@@ -153,50 +139,13 @@ def business_card():
          pin(x+w-24, y+14, SKY), '</g>']
     return "".join(g)
 
-# ---------------------------------------------------------------- the table
-TOP = "M150 588 C150 584 154 582 160 582 L840 582 C846 582 850 584 850 588 L928 696 C930 700 928 702 922 702 L78 702 C72 702 70 700 72 696 Z"
-APRON = "M72 702 L928 702 L928 742 C928 748 924 750 918 750 L82 750 C76 750 72 748 72 742 Z"
-CARCASS = "M104 750 L896 750 L896 836 L104 836 Z"
-DRAWER = rrect(286, 760, 428, 66, 6)
-SHELF_TOP = "M132 1022 L868 1022 L902 1048 L98 1048 Z"
-SHELF_FRONT = "M98 1048 L902 1048 L902 1072 C902 1076 899 1078 895 1078 L105 1078 C101 1078 98 1076 98 1072 Z"
-def leg(x0, x1, y0, y1, taper=4):
-    return f"M{x0} {y0} L{x1} {y0} L{x1-taper} {y1} C{x1-taper} {y1+4} {x0+taper} {y1+4} {x0+taper} {y1} Z"
 
-def table_back():
-    """Back legs, the shelf and what sits on it. Drawn before the front legs."""
-    g = [shape(leg(156, 182, 836, 1136, 2), WOOD_D), shape(leg(818, 844, 836, 1136, 2), WOOD_D),
-         shape(SHELF_TOP, "url(#tls-top)")]
-    g.append(f'<g {WOB}><path d="M140 1028 C300 1026 700 1026 860 1028" {LNS}/></g>')
-    g.append(f'<g transform="translate(0 38)">{shelf_things()}</g>')
-    g.append(shape(SHELF_FRONT, "url(#tls-front)", edge=WOOD_S))
-    g.append(f'<g opacity=".18" filter="url(#tls-grain)"><path d="{SHELF_TOP} {SHELF_FRONT}" fill="#000"/></g>')
-    return "".join(g)
-
-def table_front():
-    g = [shape(leg(104, 142, 836, 1150), "url(#tls-leg)", edge=WOOD_S), shape(leg(858, 896, 836, 1150), "url(#tls-leg)", edge=WOOD_S),
-         shape(CARCASS, "url(#tls-front)", edge=WOOD_S),
-         shape(DRAWER, WOOD_M, edge=WOOD_S, extra=f'<path d="M300 770 L700 770" stroke="#fff" stroke-opacity=".3" stroke-width="3" stroke-linecap="round"/>'),
-         # label tape on the drawer: the treehouse's name goes in the overlay
-         f'<path d="M356 770 L644 768 L645 800 L355 802 Z" fill="{CANOPY}"/><path d="M356 770 L644 768 L644 776 L356 778 Z" fill="#fff" opacity=".14"/>',
-         f'<g {WOB}><path d="M356 770 L644 768 L645 800 L355 802 Z" {LNS}/></g>',
-         # knob
-         f'<ellipse cx="500" cy="815" rx="11" ry="7" fill="{WOOD_S}" opacity=".5" transform="translate(1 3)"/>',
-         f'<circle cx="500" cy="813" r="9" fill="url(#tls-metal)"/><g {WOB}><circle cx="500" cy="813" r="9" {LN}/></g>',
-         shape(APRON, "url(#tls-front)", edge=WOOD_S),
-         shape(TOP, "url(#tls-top)", extra=f'<path d="M160 590 L840 590" stroke="#fff" stroke-opacity=".25" stroke-width="3"/>')]
-    for y, x0, x1 in ((604, 168, 834), (628, 150, 856), (655, 126, 878), (684, 96, 906)):   # wood grain
-        g.append(f'<g {WOB}><path d="M{x0} {y} C{x0+150} {y-3} {x0+260} {y+3} {(x0+x1)/2} {y} S{x1-120} {y-3} {x1} {y+1}" fill="none" stroke="{WOOD_D}" stroke-width="1" opacity=".35"/></g>')
-    g.append(f'<g opacity=".16" filter="url(#tls-grain)"><path d="{TOP} {APRON} {CARCASS}" fill="#000"/></g>')
-    g.append(f'<g {WOB}><path d="M80 712 L920 712" {LNS}/></g>')
-    return "".join(g)
-
-def sticker():
-    """The no-911 sticker, stuck to the table top and seen in perspective."""
+def sticker(cx, cy, sx=.9, sy=.72, rot=-5):
+    """The no-911 sticker. On a table top it's squashed for perspective; on a drawer front it isn't."""
     w, h = 196, 118
     d = rrect(-w/2, -h/2, w, h, 16)
     curl = f"M{w/2-30} {h/2} Q{w/2-6} {h/2-6} {w/2} {h/2-30} L{w/2} {h/2-16} Q{w/2} {h/2} {w/2-16} {h/2} Z"
-    return (f'<g transform="translate(190 662) rotate(-5) scale(.9 .72)">'
+    return (f'<g transform="translate({cx} {cy}) rotate({rot}) scale({sx} {sy})">'
             f'<path d="{d}" fill="{INK}" opacity=".12" transform="translate(2 4)" filter="url(#tls-edge)"/>'
             + shape(d, "#fffdf6")
             + f'<path d="{rrect(-w/2+7, -h/2+7, w-14, h-14, 11)}" fill="none" stroke="{BERRY}" stroke-width="5"/>'
@@ -234,13 +183,13 @@ def card_file():
 
 # ---------------------------------------------------------------- the shelf
 def book():
-    """The guide: an original 90s how-to book, leaning face-out."""
+    """The guide: an original 90s how-to book, leaning face-out. Origin: its bottom-left corner."""
     w, h = 150, 178
     x, y = 0, -h
     cover = rrect(x, y, w, h, 3)
     spine = f"M{w} {y+2} L{w+14} {y+10} L{w+14} {-2} L{w} {0} Z"
     burst = " ".join(f"{'M' if i == 0 else 'L'}{(26 if i % 2 == 0 else 19) * math.cos(math.radians(i * 18 - 90)):.1f} {(26 if i % 2 == 0 else 19) * math.sin(math.radians(i * 18 - 90)):.1f}" for i in range(20)) + " Z"
-    g = [f'<g transform="translate(206 1000) rotate(-6)">',
+    g = [f'<g transform="rotate(-6)">',
          f'<path d="{cover}" fill="{INK}" opacity=".16" transform="translate(8 2)" filter="url(#tls-edge)"/>',
          shape(spine, "#d9cfb8"), f'<g {WOB}><path d="M{w+3} {y+8} L{w+3} -4 M{w+7} {y+9} L{w+7} -3 M{w+11} {y+10} L{w+11} -2" {LNS}/></g>',
          shape(cover, "#fbf3df"),
@@ -263,18 +212,21 @@ def book():
          '</g>']
     return "".join(g)
 
-def shelf_things():
-    g = [book()]
+def spines():
+    g = []
     for x, w, h, col in ((392, 30, 160, "#55704f"), (423, 26, 150, "#8f5f33"), (450, 34, 166, "#97483d"), (485, 24, 140, "#2a6488")):   # spines
         d = rrect(x, 1000 - h, w, h, 2)
         g.append(shape(d, col, edge="#000"))
         g.append(f'<path d="M{x+4} {1000-h+18} L{x+w-4} {1000-h+18} M{x+4} {1000-h+24} L{x+w-4} {1000-h+24} M{x+4} {1000-26} L{x+w-4} {1000-26}" stroke="{SUN}" stroke-width="1.6" opacity=".8"/>')
         g.append(f'<path d="M{x+w/2} {1000-h+40} L{x+w/2} {1000-50}" stroke="#fff" stroke-width="3" opacity=".25" stroke-linecap="round"/>')
-    # the warranty card (open-source licenses), leaning against the spines
+    return "".join(g)
+
+def warranty():
+    g = []
     wx, wy, ww, wh = 0, -150, 118, 150
     card = rrect(wx, wy, ww, wh, 2)
     lines = "".join(f'<path d="M10 {wy+y_} L{ww-10 - (14 if i % 3 == 2 else 0)} {wy+y_}" stroke="{INK}" stroke-width="1.6" opacity=".22"/>' for i, y_ in enumerate(range(80, 132, 7)))
-    g.append(f'<g transform="translate(522 1001) rotate(7)">'
+    g.append(f'<g transform="rotate(7)">'
              f'<path d="{card}" fill="{INK}" opacity=".14" transform="translate(5 2)" filter="url(#tls-edge)"/>' + shape(card, "#fdfaf2")
              + f'<path d="M{wx} {wy+22} L{ww} {wy+22}" stroke="{INK}" stroke-width="1" stroke-dasharray="2 3" opacity=".5"/>'
              f'<text x="{ww/2}" y="{wy+15}" text-anchor="middle" {MONO} font-size="8" fill="{INK}" opacity=".7">DETACH HERE</text>'
@@ -283,7 +235,10 @@ def shelf_things():
              f'<text x="10" y="{wy+74}" {SANS} font-size="8.6" font-weight="700" fill="{CANOPY}">&amp; OPEN-SOURCE LICENSES</text>'
              + lines + f'<rect x="10" y="{wy+wh-14}" width="9" height="9" fill="none" stroke="{INK}" stroke-width="1"/><text x="24" y="{wy+wh-6}" {SANS} font-size="7.5" fill="{INK}">I have read the fine print</text>'
              '</g>')
-    # two books lying flat with a little potted tree on top
+    return "".join(g)
+
+def plant():
+    g = []
     g.append(shape(rrect(672, 966, 178, 18, 2), "#c4ad82", edge="#000"))
     g.append(shape(rrect(684, 948, 160, 18, 2), "#7f9e74", edge="#000"))
     g.append(f'<path d="M690 957 L838 957" stroke="{SUN}" stroke-width="1.4" opacity=".7"/>')
@@ -295,42 +250,132 @@ def shelf_things():
         g.append(f'<g {WASH}><circle cx="{cx_}" cy="{cy_}" r="{r_}" fill="{c}"/></g><g {WOB}><circle cx="{cx_}" cy="{cy_}" r="{r_}" {LNS}/></g>')
     return "".join(g)
 
-# ---------------------------------------------------------------- assemble
-PHONE = {"x": 265, "y": 101, "w": 470}       # where the RotaryPhone sits, in scene units (its base on the table)
-HOTSPOTS = {                                  # x, y, w, h in scene units
-    "guide":    (192, 852, 186, 196),
-    "licenses": (512, 884, 150, 160),
-    "coffee":   (688, 80, 268, 166),
-    "card":     (688, 246, 236, 142),
-    "cardfile": (684, 470, 232, 204),
+
+# ---------------------------------------------------------------- the table, any size
+def leg(x0, x1, y0, y1, taper=4):
+    return f"M{x0} {y0} L{x1} {y0} L{x1-taper} {y1} L{x0+taper} {y1} Z"
+
+def table(t):
+    """Returns (behind the shelf things, the shelf's front edge, the front of the table)."""
+    x0, x1, ty, inset, ch, sy, H = t["x0"], t["x1"], t["ty"], t["inset"], t["ch"], t["sy"], t["H"]
+    cx = (x0 + x1) / 2; F = ty + 114; cb = F + 54 + ch
+    TOP = (f"M{x0+inset} {ty+6} C{x0+inset} {ty+2} {x0+inset+4} {ty} {x0+inset+10} {ty} L{x1-inset-10} {ty} C{x1-inset-4} {ty} {x1-inset} {ty+2} {x1-inset} {ty+6} "
+           f"L{x1} {F} C{x1+2} {F+4} {x1} {F+6} {x1-6} {F+6} L{x0+6} {F+6} C{x0} {F+6} {x0-2} {F+4} {x0} {F} Z")
+    APRON = f"M{x0} {F+6} L{x1} {F+6} L{x1} {F+46} C{x1} {F+52} {x1-4} {F+54} {x1-10} {F+54} L{x0+10} {F+54} C{x0+4} {F+54} {x0} {F+52} {x0} {F+46} Z"
+    CARC = f"M{x0+32} {F+54} L{x1-32} {F+54} L{x1-32} {cb} L{x0+32} {cb} Z"
+    dx, dy, dw, dh = t["drawer"]
+    DRAWER = rrect(dx, dy, dw, dh, 6)
+    STOP = f"M{x0+60} {sy} L{x1-60} {sy} L{x1-26} {sy+26} L{x0+26} {sy+26} Z"
+    SFRONT = f"M{x0+26} {sy+26} L{x1-26} {sy+26} L{x1-26} {sy+50} C{x1-26} {sy+54} {x1-29} {sy+56} {x1-33} {sy+56} L{x0+33} {sy+56} C{x0+29} {sy+56} {x0+26} {sy+54} {x0+26} {sy+50} Z"
+    back = [shape(leg(x0+84, x0+110, cb, H + 10, 2), WOOD_D), shape(leg(x1-110, x1-84, cb, H + 10, 2), WOOD_D), shape(STOP, "url(#tls-top)"),
+            f'<g {WOB}><path d="M{x0+68} {sy+6} C{x0+230} {sy+4} {x1-230} {sy+4} {x1-68} {sy+6}" {LNS}/></g>']
+    sfront = [shape(SFRONT, "url(#tls-front)", edge=WOOD_S), f'<g opacity=".18" filter="url(#tls-grain)"><path d="{STOP} {SFRONT}" fill="#000"/></g>']
+    tx, ty_, tw = t["tape"]
+    front = [shape(leg(x0+32, x0+70, cb, H + 10), "url(#tls-leg)", edge=WOOD_S), shape(leg(x1-70, x1-32, cb, H + 10), "url(#tls-leg)", edge=WOOD_S),
+             shape(CARC, "url(#tls-front)", edge=WOOD_S),
+             shape(DRAWER, WOOD_M, edge=WOOD_S, extra=f'<path d="M{dx+14} {dy+10} L{dx+dw-14} {dy+10}" stroke="#fff" stroke-opacity=".3" stroke-width="3" stroke-linecap="round"/>'),
+             f'<path d="M{tx} {ty_+2} L{tx+tw} {ty_} L{tx+tw+1} {ty_+32} L{tx-1} {ty_+34} Z" fill="{CANOPY}"/><path d="M{tx} {ty_+2} L{tx+tw} {ty_} L{tx+tw} {ty_+8} L{tx} {ty_+10} Z" fill="#fff" opacity=".14"/>',
+             f'<g {WOB}><path d="M{tx} {ty_+2} L{tx+tw} {ty_} L{tx+tw+1} {ty_+32} L{tx-1} {ty_+34} Z" {LNS}/></g>']
+    kx, ky = t["knob"]
+    front += [f'<ellipse cx="{kx}" cy="{ky+2}" rx="11" ry="7" fill="{WOOD_S}" opacity=".5" transform="translate(1 3)"/>',
+              f'<circle cx="{kx}" cy="{ky}" r="9" fill="url(#tls-metal)"/><g {WOB}><circle cx="{kx}" cy="{ky}" r="9" {LN}/></g>',
+              shape(APRON, "url(#tls-front)", edge=WOOD_S),
+              shape(TOP, "url(#tls-top)", extra=f'<path d="M{x0+inset+10} {ty+8} L{x1-inset-10} {ty+8}" stroke="#fff" stroke-opacity=".25" stroke-width="3"/>')]
+    for f in (.2, .41, .65, .9):     # wood grain
+        y = ty + 114 * f; a = x0 + inset * (1 - f); b = x1 - inset * (1 - f)
+        front.append(f'<g {WOB}><path d="M{a:.0f} {y:.0f} C{a+150:.0f} {y-3:.0f} {a+260:.0f} {y+3:.0f} {(a+b)/2:.0f} {y:.0f} S{b-120:.0f} {y-3:.0f} {b:.0f} {y+1:.0f}" fill="none" stroke="{WOOD_D}" stroke-width="1" opacity=".35"/></g>')
+    front.append(f'<g opacity=".16" filter="url(#tls-grain)"><path d="{TOP} {APRON} {CARC}" fill="#000"/></g>')
+    front.append(f'<g {WOB}><path d="M{x0+8} {F+16} L{x1-8} {F+16}" {LNS}/></g>')
+    return "".join(back), "".join(sfront), "".join(front)
+
+# ---------------------------------------------------------------- the two layouts
+# Every prop is drawn once, in the wide room's coordinates, and placed in a layout by
+# translate + scale: place = (old x, old y, new x, new y, scale).
+BOX = {   # each prop's box in the wide room's coordinates (what its link covers)
+    "sticky": (72, 150, 176, 176), "sketch": (92, 360, 170, 128), "cork": (676, 64, 290, 340),
+    "coffee": (688, 80, 268, 166), "card": (688, 246, 236, 142), "cardfile": (684, 470, 232, 204),
+    "book": (-14, -186, 186, 196), "warranty": (-10, -155, 150, 160),
 }
-def scene():
-    body = (wall() + floor() + sticky_note() + framed_sketch() + corkboard()
-            + table_back() + table_front() + sticker() + card_file())
-    return f'<svg xmlns="http://www.w3.org/2000/svg" class="tl-desk__scene" viewBox="0 0 {W} {H}" preserveAspectRatio="xMidYMax meet" aria-hidden="true" focusable="false">{defs()}{body}</svg>'
+def placed(content, pl):
+    ox, oy, nx, ny, s = pl
+    return f'<g transform="translate({nx} {ny}) scale({s}) translate({-ox} {-oy})">{content}</g>'
+def moved(box, pl):
+    ox, oy, nx, ny, s = pl; bx, by, bw, bh = box
+    return (round(nx + (bx - ox) * s, 1), round(ny + (by - oy) * s, 1), round(bw * s, 1), round(bh * s, 1))
 
-def overlay(name="SAM’S TREEHOUSE", quiet="8 pm – 7 am", contact=("The Parks", "3317"), count="1 of 3"):
-    """The words that change: label tape, quiet-time note and the card file's front card."""
+LAYOUTS = {
+    # Landscape tablets and desktops: zoomed in on the phone and the table top. No shelf: the guide book and
+    # the warranty card stand on the table, and the legs run off the bottom just under the drawer.
+    "wide": {"W": 1100, "H": 840,
+        "table": {"x0": 40, "x1": 1060, "ty": 590, "inset": 80, "ch": 86, "sy": 2000, "H": 840,
+                  "drawer": (336, 768, 428, 66), "tape": (406, 776, 288), "knob": (550, 821)},
+        "phone": {"x": 270, "y": 2, "w": 560},
+        "sticker": (196, 684, .82, .66, -5),
+        "place": {"sticky": (72, 150, 34, 40, 1), "sketch": (92, 360, 52, 252, .9), "cork": (676, 64, 800, 40, 1),
+                  "cardfile": (684, 674, 776, 672, .85), "book": (0, 0, 118, 632, .82), "warranty": (0, 0, 968, 704, .64)},
+        "shelf": [], "table_items": ["book", "cardfile", "warranty"], "sketch": True},
+    # Tablets held upright: the same side table, the phone much bigger, the corkboard down beside it.
+    "portrait": {"W": 1000, "H": 1270,
+        "table": {"x0": 60, "x1": 940, "ty": 800, "inset": 78, "ch": 86, "sy": 1190, "H": 1270,
+                  "drawer": (286, 978, 428, 66), "tape": (356, 986, 288), "knob": (500, 1031)},
+        "phone": {"x": 170, "y": 49, "w": 660},
+        "sticker": (160, 882, .8, .64, -5),
+        "place": {"sticky": (72, 150, 20, 60, 1), "sketch": (92, 360, 34, 290, .9), "cork": (676, 64, 788, 180, .72),
+                  "cardfile": (684, 674, 768, 888, .78), "book": (0, 0, 196, 1206, .76), "warranty": (0, 0, 455, 1207, .76),
+                  "spines": (0, 0, 30, 406, .8), "plant": (0, 0, 142, 419, .8)},
+        "shelf": ["spines", "book", "warranty", "plant"], "table_items": ["cardfile"], "sketch": True},
+    # Phones: a narrow nightstand, the phone across nearly the whole width, the wall things above it,
+    # the sticker on the drawer and the card file on the shelf.
+    "tall": {"W": 600, "H": 1340,
+        "table": {"x0": 8, "x1": 592, "ty": 812, "inset": 50, "ch": 138, "sy": 1270, "H": 1340,
+                  "drawer": (70, 990, 460, 118), "tape": (156, 998, 288), "knob": (452, 1076)},
+        "phone": {"x": 28, "y": 245, "w": 544},
+        "sticker": (196, 1074, .74, .74, -4),
+        "place": {"sticky": (72, 150, 12, 28, .96), "sketch": (0, 0, 0, 0, 1), "cork": (676, 64, 334, 12, .86),
+                  "cardfile": (684, 674, 236, 1286, .68), "book": (0, 0, 96, 1286, .74), "warranty": (0, 0, 414, 1287, .72)},
+        "shelf": ["book", "cardfile", "warranty"], "table_items": [], "sketch": False},
+}
+
+def scene(name):
+    L = LAYOUTS[name]; W_, H_ = L["W"], L["H"]; pl = L["place"]
+    back, sfront, front = table(L["table"])
+    draw = {"book": book, "warranty": warranty, "spines": spines, "plant": plant, "cardfile": card_file}
+    item = lambda k: placed(draw[k](), pl[k])
+    body = (wall(W_, H_) + placed(sticky_note(), pl["sticky"]) + (placed(framed_sketch(), pl["sketch"]) if L["sketch"] else "")
+            + placed(corkboard(), pl["cork"]) + back + "".join(item(k) for k in L["shelf"]) + sfront + front
+            + sticker(*L["sticker"]) + "".join(item(k) for k in L["table_items"]))
+    return (f'<svg xmlns="http://www.w3.org/2000/svg" class="tl-desk__scene tl-desk__l tl-desk__l--{name}" viewBox="0 0 {W_} {H_}" '
+            f'preserveAspectRatio="xMidYMax meet" aria-hidden="true" focusable="false">{defs()}{body}</svg>')
+
+def words(name, nm="SAM’S TREEHOUSE", quiet="8 pm – 7 am", contact=("The Parks", "3317"), count="1 of 3", size="21"):
+    """The words that change, in their own layer: label tape, the sticky note, the card file's front card."""
+    L = LAYOUTS[name]; pl = L["place"]; tx, ty_, tw = L["table"]["tape"]
     x, y, w, h = CARD
-    return (f'<svg xmlns="http://www.w3.org/2000/svg" class="tl-desk__words" viewBox="0 0 {W} {H}" preserveAspectRatio="xMidYMax meet" aria-hidden="true" focusable="false">'
-            f'<text class="tl-desk__name" x="500" y="792" text-anchor="middle" {MONO} font-size="21" font-weight="700" letter-spacing="3" fill="#f5f1e6">{name}</text>'
-            f'<g transform="rotate(-4 160 243)" class="tl-desk__quiet"><text x="160" y="214" text-anchor="middle" {HAND} font-size="30" font-weight="700" fill="{INK}">Quiet time</text>'
-            f'<text class="tl-desk__quiettext" x="160" y="256" text-anchor="middle" {HAND} font-size="30" fill="{INK}">{quiet}</text>'
-            f'<path d="M108 270 Q160 278 212 268" fill="none" stroke="{BERRY}" stroke-width="2" stroke-linecap="round"/></g>'
-            f'<g class="tl-desk__card"><text class="tl-desk__cardname" x="{x+12}" y="{y+46}" {HAND} font-size="25" font-weight="700" fill="{INK}">{contact[0]}</text>'
-            f'<text class="tl-desk__cardnum" x="{x+12}" y="{y+74}" {HAND} font-size="29" fill="{SKY}">{contact[1]}</text>'
-            f'<text class="tl-desk__cardcount" x="{x+w-10}" y="{y+19}" text-anchor="end" {SANS} font-size="9.5" fill="#857b6b">{count}</text></g>'
-            '</svg>')
+    q = (f'<g transform="rotate(-4 160 243)"><text x="160" y="214" text-anchor="middle" {HAND} font-size="30" font-weight="700" fill="{INK}">Quiet time</text>'
+         f'<text class="tl-desk__quiettext" x="160" y="256" text-anchor="middle" {HAND} font-size="30" fill="{INK}">{quiet}</text>'
+         f'<path d="M108 270 Q160 278 212 268" fill="none" stroke="{BERRY}" stroke-width="2" stroke-linecap="round"/></g>')
+    c = (f'<g class="tl-desk__card"><text class="tl-desk__cardname" x="{x+12}" y="{y+46}" {HAND} font-size="25" font-weight="700" fill="{INK}">{contact[0]}</text>'
+         f'<text class="tl-desk__cardnum" x="{x+12}" y="{y+74}" {HAND} font-size="29" fill="{SKY}">{contact[1]}</text>'
+         f'<text class="tl-desk__cardcount" x="{x+w-10}" y="{y+19}" text-anchor="end" {SANS} font-size="9.5" fill="#857b6b">{count}</text></g>')
+    return (f'<svg xmlns="http://www.w3.org/2000/svg" class="tl-desk__words tl-desk__l tl-desk__l--{name}" viewBox="0 0 {L["W"]} {L["H"]}" preserveAspectRatio="xMidYMax meet" aria-hidden="true" focusable="false">'
+            f'<text class="tl-desk__name" x="{tx + tw/2}" y="{ty_ + 24}" text-anchor="middle" {MONO} font-size="{size}" font-weight="700" letter-spacing="3" fill="#f5f1e6">{nm}</text>'
+            + placed(q, pl["sticky"]) + placed(c, pl["cardfile"]) + '</svg>')
 
-GEOM = {"w": W, "h": H, "phone": PHONE, "hotspots": HOTSPOTS}
+def words_template(name):
+    return words(name, nm="{{NAME}}", quiet="{{QUIET}}", contact=("{{CNAME}}", "{{CNUM}}"), count="{{CCOUNT}}", size="{{NAMESIZE}}")
 
-def words_template():
-    t = overlay(name="{{NAME}}", quiet="{{QUIET}}", contact=("{{CNAME}}", "{{CNUM}}"), count="{{CCOUNT}}")
-    return t.replace('font-size="21" font-weight="700" letter-spacing="3"', 'font-size="{{NAMESIZE}}" font-weight="700" letter-spacing="3"')
+def geometry(name):
+    L = LAYOUTS[name]; pl = L["place"]
+    hot = {"guide": moved(BOX["book"], pl["book"]), "licenses": moved(BOX["warranty"], pl["warranty"]),
+           "coffee": moved(BOX["coffee"], pl["cork"]), "card": moved(BOX["card"], pl["cork"]), "cardfile": moved(BOX["cardfile"], pl["cardfile"])}
+    return {"w": L["W"], "h": L["H"], "phone": L["phone"], "hotspots": hot}
+
+GEOM = {n: geometry(n) for n in LAYOUTS}
 
 if __name__ == "__main__":
     out = "/home/claude/treeline/build/phone/out"
-    open(f"{out}/desk-scene.svg", "w").write(scene())
-    open(f"{out}/desk-words.svg", "w").write(overlay())
-    json.dump(GEOM, open(f"{out}/desk-geometry.json", "w"))
-    print("desk written")
+    for n in LAYOUTS:
+        open(f"{out}/desk-{n}.svg", "w").write(scene(n))
+        open(f"{out}/desk-{n}-words.svg", "w").write(words(n))
+    json.dump(GEOM, open(f"{out}/desk-geometry.json", "w"), indent=1)
+    print(json.dumps(GEOM))

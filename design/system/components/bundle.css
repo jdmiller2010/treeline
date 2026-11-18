@@ -806,27 +806,53 @@ body {
 .tl-rotary__notice .tl-icon { color: var(--berry); }
 
 /* >>> SoftphoneDesk — the tablet softphone screen: the phone on a side table in a 90s room.
-   The room is a still picture (1000 × 1300); the phone and the props on it are live. */
+   The room is a still picture drawn three ways, chosen by the screen's shape: wide (1100 × 800) for
+   landscape tablets and desktops, portrait (1000 × 1270) for upright tablets, tall (600 × 1340) for phones.
+   Each is zoomed in on the phone and the table top so the dial and handset stay big. The phone and the props on it are live. */
 .tl-desk { container-type: size; position: relative; width: 100%; height: 100dvh; overflow: hidden; display: flex; align-items: flex-end; justify-content: center;
-  background:
-    linear-gradient(to bottom, transparent 0 86.3%, #efe6d2 86.3% 89.3%, #a77a4c 89.3%, #c99e6e 100%),
-    repeating-linear-gradient(90deg, transparent 0 1.06cqh, #dfe6cf 1.06cqh 2.14cqh, transparent 2.14cqh 3.38cqh),
-    linear-gradient(to bottom, #ead9b4, #f1e5c8 35%, #e9dbbb 86%); }
+  background: repeating-linear-gradient(90deg, transparent 0 1.27cqh, #dfe6cf 1.27cqh 2.55cqh, transparent 2.55cqh 4cqh), linear-gradient(to bottom, #ead9b4, #f1e5c8 35%, #e9dbbb); }
 .tl-desk--fill { height: 100%; }
-.tl-desk__stage { position: relative; flex: none; width: min(100cqw, 76.923cqh); aspect-ratio: 1000 / 1300; }
+.tl-desk__stage { position: relative; flex: none; }
 .tl-desk__art, .tl-desk__art > svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
-.tl-desk__phone { position: absolute; left: 26.500%; top: 7.769%; width: 47.000%; }
+.tl-desk__art > .tl-desk__l--tall, .tl-desk__art > .tl-desk__l--portrait { display: none; }
+.tl-desk__phone { position: absolute; }
 .tl-desk__phone .tl-rotary { max-width: none; gap: 0; }
-/* The slot: the wall above the phone, between the sticky note and the corkboard. For the app's few words
-   (what the phone is doing, the connection light, a lesson or a sleeping card). Keep it short: two lines. */
-.tl-desk__slot { position: absolute; left: 26%; right: 31.5%; top: 1.6%; display: flex; flex-direction: column; align-items: center; gap: var(--space-2); text-align: center; color: #2a251c; }
 .tl-desk__hot { position: absolute; display: block; padding: 0; border: 0; border-radius: 14px; background: none; cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .tl-desk__hot:focus-visible { outline: var(--border-focus, 3px) solid var(--focus); outline-offset: 2px; }
-.tl-desk__hot--guide { left: 19.200%; top: 65.538%; width: 18.600%; height: 15.077%; }
-.tl-desk__hot--licenses { left: 51.200%; top: 68.000%; width: 15.000%; height: 12.308%; }
-.tl-desk__hot--coffee { left: 68.800%; top: 6.154%; width: 26.800%; height: 12.769%; }
-.tl-desk__hot--card { left: 68.800%; top: 18.923%; width: 23.600%; height: 10.923%; }
-.tl-desk__hot--cardfile { left: 68.400%; top: 36.154%; width: 23.200%; height: 15.692%; }
+.tl-desk__stage { width: min(100cqw, 130.952cqh); aspect-ratio: 1100 / 840; }
+.tl-desk__phone { left: 24.545%; top: 0.238%; width: 50.909%; }
+.tl-desk__hot--guide { left: 9.682%; top: 57.083%; width: 13.864%; height: 19.131%; }
+.tl-desk__hot--licenses { left: 87.418%; top: 72.000%; width: 8.727%; height: 12.190%; }
+.tl-desk__hot--coffee { left: 73.818%; top: 6.667%; width: 24.364%; height: 19.762%; }
+.tl-desk__hot--card { left: 73.818%; top: 26.429%; width: 21.455%; height: 16.905%; }
+.tl-desk__hot--cardfile { left: 70.545%; top: 59.357%; width: 17.927%; height: 20.643%; }
+/* The slot: the wall above the phone. For the app's few words (what the phone is doing, the connection
+   light, a sleeping card). Keep it short: two lines. */
+.tl-desk__slot { position: absolute; left: 2.5%; right: 77%; top: 50%; display: flex; flex-direction: column; align-items: center; gap: var(--space-2); text-align: center; color: #2a251c; }
+@container (aspect-ratio < 0.95) {
+.tl-desk__art > .tl-desk__l--wide { display: none; }
+.tl-desk__art > .tl-desk__l--portrait { display: block; }
+.tl-desk__stage { width: min(100cqw, 78.740cqh); aspect-ratio: 1000 / 1270; }
+.tl-desk__phone { left: 17.000%; top: 3.858%; width: 66.000%; }
+.tl-desk__hot--guide { left: 18.540%; top: 83.827%; width: 14.140%; height: 11.732%; }
+.tl-desk__hot--licenses { left: 44.740%; top: 85.764%; width: 11.400%; height: 9.575%; }
+.tl-desk__hot--coffee { left: 79.660%; top: 15.079%; width: 19.300%; height: 9.409%; }
+.tl-desk__hot--card { left: 79.660%; top: 24.488%; width: 16.990%; height: 8.047%; }
+.tl-desk__hot--cardfile { left: 76.800%; top: 57.394%; width: 18.100%; height: 12.528%; }
+.tl-desk__slot { left: 2%; right: 76%; top: 46%; }
+}
+@container (aspect-ratio < 0.65) {
+.tl-desk__art > .tl-desk__l--wide, .tl-desk__art > .tl-desk__l--portrait { display: none; }
+.tl-desk__art > .tl-desk__l--tall { display: block; }
+.tl-desk__stage { width: min(100cqw, 44.776cqh); aspect-ratio: 600 / 1340; }
+.tl-desk__phone { left: 4.667%; top: 18.284%; width: 90.667%; }
+.tl-desk__hot--guide { left: 14.267%; top: 85.701%; width: 22.933%; height: 10.821%; }
+.tl-desk__hot--licenses { left: 67.800%; top: 87.716%; width: 18.000%; height: 8.597%; }
+.tl-desk__hot--coffee { left: 57.383%; top: 1.925%; width: 38.417%; height: 10.657%; }
+.tl-desk__hot--card { left: 57.383%; top: 12.575%; width: 33.833%; height: 9.112%; }
+.tl-desk__hot--cardfile { left: 39.333%; top: 85.619%; width: 26.300%; height: 10.351%; }
+.tl-desk__slot { left: 2%; right: 63%; top: 16%; }
+}
 .tl-desk__card { transform-box: fill-box; transform-origin: 50% 100%; }
 .tl-desk__card.is-flipping { animation: tl-desk-flip .3s ease; }
 @keyframes tl-desk-flip { 50% { opacity: 0; transform: translateY(-10px); } }

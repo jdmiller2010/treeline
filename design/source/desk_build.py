@@ -5,11 +5,13 @@ import desk
 
 P = "/home/claude/treeline/project/components/"
 G = desk.GEOM
-W, H = G["w"], G["h"]
 def pct(v, d): return f"{v / d * 100:.3f}%"
 
-scene = desk.scene()
-words = desk.words_template()
+# Two drawings of the room (wide for tablets, tall for phones). Their filter and gradient ids differ
+# (tls- and tlt-) so the hidden one never steals the other's references.
+def ids(svg, k): return svg.replace('id="tls-', f'id="tl{k}-').replace("url(#tls-", f"url(#tl{k}-")
+scene = desk.scene("wide") + ids(desk.scene("portrait"), "v") + ids(desk.scene("tall"), "t")
+words = desk.words_template("wide") + desk.words_template("portrait") + desk.words_template("tall")
 logic = open("/home/claude/treeline/build/phone/desk_logic.js").read()
 
 component = r'''
@@ -18,11 +20,11 @@ component = r'''
   function deskEsc(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
   function deskMarkup(prefix, p) {
     var list = p.contacts || [], c = list[0], name = String(p.treehouseName || "Our treehouse").toUpperCase();
-    var art = DESK_SVG.replace(/id="tls-/g, 'id="' + prefix + '-').replace(/url\(#tls-/g, "url(#" + prefix + "-");
-    var w = DESK_WORDS.replace("{{NAME}}", deskEsc(name)).replace("{{NAMESIZE}}", deskNameSize(name))
-      .replace("{{QUIET}}", deskEsc(p.quietTime || "not set"))
-      .replace("{{CNAME}}", deskEsc(c ? c.name : "No strings yet")).replace("{{CNUM}}", deskEsc(c ? c.number : "ask a grown-up"))
-      .replace("{{CCOUNT}}", list.length > 1 ? "1 of " + list.length : "");
+    var art = DESK_SVG.replace(/id="tl([stv])-/g, 'id="' + prefix + '-$1-').replace(/url\(#tl([stv])-/g, "url(#" + prefix + "-$1-");
+    var w = DESK_WORDS.split("{{NAME}}").join(deskEsc(name)).split("{{NAMESIZE}}").join(deskNameSize(name))
+      .split("{{QUIET}}").join(deskEsc(p.quietTime || "not set"))
+      .split("{{CNAME}}").join(deskEsc(c ? c.name : "No strings yet")).split("{{CNUM}}").join(deskEsc(c ? c.number : "ask a grown-up"))
+      .split("{{CCOUNT}}").join(list.length > 1 ? "1 of " + list.length : "");
     return art + w;
   }
   function SoftphoneDesk(p) {
@@ -84,27 +86,43 @@ if "desk: attachDesk" not in kt:
 assert "desk: attachDesk" in kt and "attachDesk(el)" in kt
 open("/home/claude/treeline/build/treeline_js.txt", "w").write(kt)
 
-ph = G["phone"]
-hot = "\n".join(f".tl-desk__hot--{k} {{ left: {pct(x, W)}; top: {pct(y, H)}; width: {pct(w, W)}; height: {pct(h, H)}; }}" for k, (x, y, w, h) in G["hotspots"].items())
+def layout_css(n, sel=""):
+    g = G[n]; W, H = g["w"], g["h"]; ph = g["phone"]
+    out = [f"{sel}.tl-desk__stage {{ width: min(100cqw, {W / H * 100:.3f}cqh); aspect-ratio: {W} / {H}; }}",
+           f"{sel}.tl-desk__phone {{ left: {pct(ph['x'], W)}; top: {pct(ph['y'], H)}; width: {pct(ph['w'], W)}; }}"]
+    out += [f"{sel}.tl-desk__hot--{k} {{ left: {pct(x, W)}; top: {pct(y, H)}; width: {pct(w, W)}; height: {pct(h, H)}; }}" for k, (x, y, w, h) in g["hotspots"].items()]
+    return "\n".join(out)
 css = f"""
 /* >>> SoftphoneDesk — the tablet softphone screen: the phone on a side table in a 90s room.
-   The room is a still picture (1000 × 1300); the phone and the props on it are live. */
+   The room is a still picture drawn three ways, chosen by the screen's shape: wide (1100 × 800) for
+   landscape tablets and desktops, portrait (1000 × 1270) for upright tablets, tall (600 × 1340) for phones.
+   Each is zoomed in on the phone and the table top so the dial and handset stay big. The phone and the props on it are live. */
 .tl-desk {{ container-type: size; position: relative; width: 100%; height: 100dvh; overflow: hidden; display: flex; align-items: flex-end; justify-content: center;
-  background:
-    linear-gradient(to bottom, transparent 0 86.3%, #efe6d2 86.3% 89.3%, #a77a4c 89.3%, #c99e6e 100%),
-    repeating-linear-gradient(90deg, transparent 0 1.06cqh, #dfe6cf 1.06cqh 2.14cqh, transparent 2.14cqh 3.38cqh),
-    linear-gradient(to bottom, #ead9b4, #f1e5c8 35%, #e9dbbb 86%); }}
+  background: repeating-linear-gradient(90deg, transparent 0 1.27cqh, #dfe6cf 1.27cqh 2.55cqh, transparent 2.55cqh 4cqh), linear-gradient(to bottom, #ead9b4, #f1e5c8 35%, #e9dbbb); }}
 .tl-desk--fill {{ height: 100%; }}
-.tl-desk__stage {{ position: relative; flex: none; width: min(100cqw, {W / H * 100:.3f}cqh); aspect-ratio: {W} / {H}; }}
+.tl-desk__stage {{ position: relative; flex: none; }}
 .tl-desk__art, .tl-desk__art > svg {{ position: absolute; inset: 0; width: 100%; height: 100%; display: block; }}
-.tl-desk__phone {{ position: absolute; left: {pct(ph["x"], W)}; top: {pct(ph["y"], H)}; width: {pct(ph["w"], W)}; }}
+.tl-desk__art > .tl-desk__l--tall, .tl-desk__art > .tl-desk__l--portrait {{ display: none; }}
+.tl-desk__phone {{ position: absolute; }}
 .tl-desk__phone .tl-rotary {{ max-width: none; gap: 0; }}
-/* The slot: the wall above the phone, between the sticky note and the corkboard. For the app's few words
-   (what the phone is doing, the connection light, a lesson or a sleeping card). Keep it short: two lines. */
-.tl-desk__slot {{ position: absolute; left: 26%; right: 31.5%; top: 1.6%; display: flex; flex-direction: column; align-items: center; gap: var(--space-2); text-align: center; color: #2a251c; }}
 .tl-desk__hot {{ position: absolute; display: block; padding: 0; border: 0; border-radius: 14px; background: none; cursor: pointer; -webkit-tap-highlight-color: transparent; }}
 .tl-desk__hot:focus-visible {{ outline: var(--border-focus, 3px) solid var(--focus); outline-offset: 2px; }}
-{hot}
+{layout_css("wide")}
+/* The slot: the wall above the phone. For the app's few words (what the phone is doing, the connection
+   light, a sleeping card). Keep it short: two lines. */
+.tl-desk__slot {{ position: absolute; left: 2.5%; right: 77%; top: 50%; display: flex; flex-direction: column; align-items: center; gap: var(--space-2); text-align: center; color: #2a251c; }}
+@container (aspect-ratio < 0.95) {{
+.tl-desk__art > .tl-desk__l--wide {{ display: none; }}
+.tl-desk__art > .tl-desk__l--portrait {{ display: block; }}
+{layout_css("portrait")}
+.tl-desk__slot {{ left: 2%; right: 76%; top: 46%; }}
+}}
+@container (aspect-ratio < 0.65) {{
+.tl-desk__art > .tl-desk__l--wide, .tl-desk__art > .tl-desk__l--portrait {{ display: none; }}
+.tl-desk__art > .tl-desk__l--tall {{ display: block; }}
+{layout_css("tall")}
+.tl-desk__slot {{ left: 2%; right: 63%; top: 16%; }}
+}}
 .tl-desk__card {{ transform-box: fill-box; transform-origin: 50% 100%; }}
 .tl-desk__card.is-flipping {{ animation: tl-desk-flip .3s ease; }}
 @keyframes tl-desk-flip {{ 50% {{ opacity: 0; transform: translateY(-10px); }} }}
