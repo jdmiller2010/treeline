@@ -1,0 +1,43 @@
+# Treeline - local dev stack
+#
+#   docker compose up -d --build        start Asterisk + the control app
+#   docker compose run --rm testphones  run the scripted test calls
+#   docker compose logs -f controller   watch calls being allowed/blocked
+#
+# Host networking keeps SIP and call audio simple (no Docker NAT in the way).
+
+services:
+  asterisk:
+    build: ./asterisk
+    network_mode: host
+    volumes:
+      - ./asterisk/config:/kidphone-config:ro
+    restart: unless-stopped
+
+  controller:
+    build: ./controller
+    network_mode: host
+    depends_on: [asterisk]
+    environment:
+      ARI_URL: http://127.0.0.1:8088/ari
+      ARI_USER: kidphone
+      ARI_PASS: kidphone-dev
+      KIDPHONE_RULES: /config/family.json
+      KIDPHONE_LOG: /data/calls.jsonl
+    volumes:
+      - ./config:/config
+      - ./data:/data
+    restart: unless-stopped
+
+  testphones:
+    build: ./testphones
+    network_mode: host
+    profiles: [test]
+    depends_on: [controller]
+    environment:
+      SIP_SERVER: 127.0.0.1
+      KIDPHONE_RULES: /config/family.json
+      KIDPHONE_LOG: /data/calls.jsonl
+    volumes:
+      - ./config:/config
+      - ./data:/data
