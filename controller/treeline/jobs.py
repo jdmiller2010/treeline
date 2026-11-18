@@ -50,13 +50,18 @@ def send_alert_emails(conn):
 
 
 def purge(conn, now=None):
-    """Delete old records: call records after each treehouse's retention days
-    (90 by default), parent actions after a year, and expired logins."""
+    """Forget old records. A call involves two families, and each sets its own
+    retention, so when one family's time is up we remove *its side* of the record
+    (the other family still sees the call, without a name) and delete the row once
+    neither side is left. Parent actions go after a year, expired logins sooner."""
     now = now or db.utcnow()
     for th in conn.execute("SELECT id, retention_days FROM treehouse").fetchall():
         cutoff = db.iso(now - dt.timedelta(days=th["retention_days"]))
-        conn.execute("DELETE FROM call WHERE started_at < ? AND state='ended' "
-                     "AND (caller_treehouse=? OR callee_treehouse=?)", (cutoff, th["id"], th["id"]))
+        conn.execute("UPDATE call SET caller_treehouse=NULL, caller_handset=NULL WHERE caller_treehouse=? "
+                     "AND started_at < ? AND state='ended'", (th["id"], cutoff))
+        conn.execute("UPDATE call SET callee_treehouse=NULL, answered_handset=NULL WHERE callee_treehouse=? "
+                     "AND started_at < ? AND state='ended'", (th["id"], cutoff))
+    conn.execute("DELETE FROM call WHERE state='ended' AND caller_treehouse IS NULL AND callee_treehouse IS NULL")
     conn.execute("DELETE FROM parent_action WHERE at < ?", (db.iso(now - dt.timedelta(days=365)),))
     conn.execute("DELETE FROM notice WHERE created_at < ?", (db.iso(now - dt.timedelta(days=90)),))
     for table in ("session", "login_code", "pairing"):

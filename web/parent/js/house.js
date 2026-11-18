@@ -106,7 +106,7 @@ export async function house(ctx) {
       ${avatar(g.name || g.email, "md")}
       <div class="tl-row__main"><div class="tl-row__title">${g.name || g.email}${g.you ? " (you)" : ""}</div><div class="tl-row__meta"><span>${g.name ? g.email : ""}</span></div></div>
       ${tag(g.role === "parent" ? "bark" : "neutral", g.role === "parent" ? "Parent" : "Sitter")}
-      ${parent && !g.you ? iconButton({ label: `Remove ${g.name || g.email}`, name: "close", attrs: `data-remove-grownup="${g.id}" data-name="${g.name || g.email}"` }) : ""}
+      ${parent && !g.you ? iconButton({ label: `Remove ${g.name || g.email}`, name: "close", attrs: { "data-remove-grownup": g.id, "data-name": g.name || g.email } }) : ""}
     </div>`)}</div>
     <p class="tl-card__body tl-measure" style="color:var(--ink-muted)">Sitters can see calls and pause the line. Only parents can change anything else.</p>
   </section>

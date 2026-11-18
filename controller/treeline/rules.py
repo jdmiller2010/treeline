@@ -117,6 +117,11 @@ def active_call_of(conn, treehouse_id):
         "ORDER BY id DESC", (treehouse_id, treehouse_id)).fetchone()
 
 
+# Calls that actually rang or ran. Blocked attempts don't count toward the repeat
+# limit, or a child who keeps redialing would never be let through again.
+RANG = "AND (state!='ended' OR result IN ('connected','no_answer','time_limit','caller_hung_up'))"
+
+
 def _recent(conn, treehouse_id, minutes, now, extra="", args=()):
     since = db.iso(now - dt.timedelta(minutes=minutes))
     return conn.execute(
@@ -158,6 +163,9 @@ def decide(conn, caller_handset, dialed, now=None, online=None):
         return Decision(QUIET_OR_PAUSED, "caller_quiet", SOUND_FAST_BUSY)
     if over_daily_limit(conn, caller, now):
         return Decision(DAILY_LIMIT, "caller_daily_limit", SOUND_FAST_BUSY)
+    if line_in_use(conn, caller["id"]):
+        # One call per line: a second handset can't start another call (it can join this one).
+        return Decision(BUSY, "caller_in_use", SOUND_BUSY)
     ucount = int(db.get_setting(conn, "unstrung_limit_count"))
     umin = int(db.get_setting(conn, "unstrung_limit_minutes"))
     if _recent(conn, caller["id"], umin, now,
@@ -186,7 +194,7 @@ def decide(conn, caller_handset, dialed, now=None, online=None):
     # Repeat limit: too many calls to the same treehouse in a short time.
     rcount = int(db.get_setting(conn, "repeat_limit_count"))
     rmin = int(db.get_setting(conn, "repeat_limit_minutes"))
-    if _recent(conn, caller["id"], rmin, now, "AND callee_treehouse=?", (callee["id"],)) >= rcount:
+    if _recent(conn, caller["id"], rmin, now, RANG + " AND callee_treehouse=?", (callee["id"],)) >= rcount:
         return Decision(REPEAT_LIMIT, "repeat_limit", SOUND_FAST_BUSY, callee=callee)
 
     # 4. The other line's own rules. Same message for each, so one family's

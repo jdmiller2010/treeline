@@ -61,8 +61,8 @@ export function approvalCard(s, parent) {
   <p class="tl-approval__note">${s.mine_approved ? `Calls connect once ${theirs} approves too.` : `${theirs} would like to string with you. Calls connect once you approve.`}</p>
   ${parent ? html`<div class="tl-approval__actions">
     ${s.mine_approved
-      ? button({ label: "Withdraw", variant: "quiet", size: "sm", icon: "close", attrs: `data-string="cut" data-id="${s.id}" data-name="${theirs}" data-withdraw` })
-      : html`${button({ label: "Not now", variant: "quiet", size: "sm", attrs: `data-string="decline" data-id="${s.id}" data-name="${theirs}"` })}${button({ label: "Approve", variant: "primary", size: "sm", icon: "check", attrs: `data-string="approve" data-id="${s.id}" data-name="${theirs}"` })}`}
+      ? button({ label: "Withdraw", variant: "quiet", size: "sm", icon: "close", attrs: { "data-string": "cut", "data-id": s.id, "data-name": theirs, "data-withdraw": true } })
+      : html`${button({ label: "Not now", variant: "quiet", size: "sm", attrs: { "data-string": "decline", "data-id": s.id, "data-name": theirs } })}${button({ label: "Approve", variant: "primary", size: "sm", icon: "check", attrs: { "data-string": "approve", "data-id": s.id, "data-name": theirs } })}`}
   </div>` : ""}
 </section>`;
 }
@@ -106,9 +106,9 @@ export async function strings(ctx, params) {
         <div class="tl-dl__row"><dt>Calls</dt><dd>${selected.state === "live" ? "Connect when both lines are free and awake." : selected.paused_by_me ? "No calls connect until you turn it back on." : "Paused by their family."}</dd></div>
       </dl>
       ${parent ? html`<div class="tl-actions tl-actions--stack">
-        ${button({ label: "End string", variant: "danger", icon: "close", attrs: `data-string="end" data-id="${selected.id}" data-name="${selected.other.name}"` })}
-        ${selected.state === "live" ? button({ label: "Pause string", attrs: `data-string="pause" data-id="${selected.id}" data-name="${selected.other.name}"` })
-          : selected.paused_by_me ? button({ label: "Turn back on", variant: "primary", attrs: `data-string="resume" data-id="${selected.id}" data-name="${selected.other.name}"` }) : ""}
+        ${button({ label: "End string", variant: "danger", icon: "close", attrs: { "data-string": "end", "data-id": selected.id, "data-name": selected.other.name } })}
+        ${selected.state === "live" ? button({ label: "Pause string", attrs: { "data-string": "pause", "data-id": selected.id, "data-name": selected.other.name } })
+          : selected.paused_by_me ? button({ label: "Turn back on", variant: "primary", attrs: { "data-string": "resume", "data-id": selected.id, "data-name": selected.other.name } }) : ""}
       </div>` : ""}
     </div>`}` : emptyState({ art: "connection", title: "Pick a string", body: "Choose a treehouse to see its number and pause or end the string." });
 

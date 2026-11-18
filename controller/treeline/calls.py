@@ -231,15 +231,24 @@ class Engine:
         self.connect(call, leg)
 
     def connect(self, call, answering):
+        caller_leg = next((l for l in call.legs.values() if l.side == "caller"), None)
+        if caller_leg is None:
+            # The caller hung up just as someone answered.
+            self.hangup(answering.chan_id)
+            self.finish(call, rules.CALLER_HUNG_UP, None)
+            return
+        self.ari.request("POST", f"/channels/{caller_leg.chan_id}/answer")
+        bridge = self.ari.request("POST", "/bridges", type="mixing")
+        if not bridge or "id" not in bridge:
+            log.error("call %s: could not create a bridge", call.id)
+            self.finish(call, rules.NO_ANSWER, "bridge_failed")
+            return
         with self.lock:
-            call.answered_at = time.time()
             for t in call.timers:
                 t.cancel()
             call.timers = []
-        caller_leg = next(l for l in call.legs.values() if l.side == "caller")
-        self.ari.request("POST", f"/channels/{caller_leg.chan_id}/answer")
-        bridge = self.ari.request("POST", "/bridges", type="mixing")
-        call.bridge = bridge["id"]
+            call.bridge = bridge["id"]
+            call.answered_at = time.time()
         self.ari.request("POST", f"/bridges/{call.bridge}/addChannel",
                          channel=f"{caller_leg.chan_id},{answering.chan_id}")
         caller_leg.in_bridge = answering.in_bridge = True
@@ -275,7 +284,7 @@ class Engine:
         call = None
         with self.lock:
             for c in self.calls.values():
-                if c.answered_at and not c.finished and handset["treehouse_id"] in (
+                if c.answered_at and c.bridge and not c.finished and handset["treehouse_id"] in (
                         c.caller_th["id"], c.callee_th["id"]):
                     call = c
                     break

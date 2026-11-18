@@ -78,7 +78,7 @@ function shell(v) {
   return html`<div class="tl-app">
   <div class="tl-app__layout">
     <header class="tl-appbar">
-      ${v.back ? html`<div class="tl-appbar__lead">${iconButton({ label: "Back", name: "chevron-right", extra: "tl-iconbtn--back", attrs: `data-back="${v.back}"` })}</div>` : ""}
+      ${v.back ? html`<div class="tl-appbar__lead">${iconButton({ label: "Back", name: "chevron-right", extra: "tl-iconbtn--back", attrs: { "data-back": v.back } })}</div>` : ""}
       <h1 class="tl-appbar__title" id="app-title">${v.title}</h1>
       <div class="tl-appbar__actions">${v.actions || ""}${accountMenu()}</div>
     </header>

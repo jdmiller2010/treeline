@@ -202,6 +202,23 @@ class Decide(unittest.TestCase):
                                              self.alex, "ended", "connected"))
         self.assertTrue(self.decide("2002").allowed)
 
+    def test_blocked_retries_do_not_keep_the_repeat_limit_locked(self):
+        db.set_setting(self.c, "repeat_limit_count", 2)
+        for result in ("repeat_limit", "quiet_or_paused", "busy", "offline"):
+            self.c.execute("INSERT INTO call(started_at,caller_treehouse,callee_treehouse,state,result) "
+                           "VALUES(?,?,?,?,?)", (db.iso(self.NOON), self.sam, self.alex, "ended", result))
+        self.assertTrue(self.decide("2002").allowed)
+
+    def test_a_second_handset_cannot_start_another_call_on_a_busy_line(self):
+        sam2 = self.handset(self.sam, "sam2")
+        carol = house(self.c, "Carol's", "2004")
+        self.string(self.sam, carol, "live")
+        self.handset(carol, "carol")
+        self.c.execute("INSERT INTO call(started_at,caller_treehouse,callee_treehouse,state) VALUES(?,?,?,?)",
+                       (db.iso(), self.sam, self.alex, "active"))
+        d = self.decide("2004", caller=sam2)
+        self.assertEqual((d.result, d.reason), (rules.BUSY, "caller_in_use"))
+
     def test_unstrung_hunting_is_stopped_and_flagged(self):
         db.set_setting(self.c, "unstrung_limit_count", 3)
         for n in ("2900", "2901", "2902"):

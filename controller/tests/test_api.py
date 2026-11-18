@@ -540,3 +540,60 @@ class ClientAddress(unittest.TestCase):
                 self.assertEqual(api.client_ip(), "6.6.6.6")
             finally:
                 api.TRUST_PROXY = False
+
+
+class Hardening(unittest.TestCase):
+    def test_csv_cells_that_look_like_formulas_are_made_plain_text(self):
+        for evil in ("=HYPERLINK(\"http://evil\",\"x\")", "+1+1", "-2", "@SUM(A1)", "\tfoo"):
+            self.assertTrue(api.csv_safe(evil).startswith("'"), evil)
+        self.assertEqual(api.csv_safe("Alex's house"), "Alex's house")
+        self.assertEqual(api.csv_safe(None), "")
+
+    def test_exported_csv_neutralises_a_hostile_treehouse_name(self):
+        a, b = make_house("Alex's"), make_house("=cmd|' /C calc'!A0")
+        string_up(a, b)
+        c = helpers.db.connect()
+        c.execute("INSERT INTO call(started_at,caller_treehouse,callee_treehouse,dialed,state,result,talk_sec) "
+                  "VALUES(?,?,?,?,?,?,?)", (db.iso(), a.house["id"], b.house["id"], "x", "ended", "connected", 60))
+        text = a.get("/api/calls.csv").get_data(as_text=True)
+        self.assertIn("'=cmd", text)
+        self.assertNotIn(",=cmd", text)
+
+    def test_pages_carry_a_content_security_policy(self):
+        r = client.get("/nope")
+        csp = r.headers["Content-Security-Policy"]
+        self.assertIn("script-src 'self';", csp)     # no 'unsafe-inline' for scripts
+        self.assertIn("frame-ancestors 'none'", csp)
+        self.assertNotIn("Content-Security-Policy", client.get("/api/health").headers)
+
+    def test_only_the_phone_page_may_open_websockets(self):
+        self.assertNotIn("ws:", client.get("/parent/x").headers["Content-Security-Policy"])
+        self.assertIn("ws:", client.get("/phone/x").headers["Content-Security-Policy"])
+
+    def test_dev_codes_only_go_to_private_addresses(self):
+        api._hits.clear()
+        email = new_email()
+        near = client.post("/api/auth/request", json={"email": email}, environ_base={"REMOTE_ADDR": "192.168.1.5"})
+        self.assertIn("dev_code", near.get_json())
+        far = client.post("/api/auth/request", json={"email": new_email()}, environ_base={"REMOTE_ADDR": "8.8.8.8"})
+        self.assertEqual(far.status_code, 200)
+        self.assertNotIn("dev_code", far.get_json())
+
+    def test_rate_limit_table_is_pruned(self):
+        api._hits.clear()
+        old = api._MAX_KEYS
+        api._MAX_KEYS = 50
+        try:
+            stale = time_ago = __import__("time").time() - 2 * api._LONGEST_WINDOW
+            for i in range(60):
+                api._hits[f"old:{i}"] = [stale]
+            api.rate_limit("fresh", 5, 60)
+            self.assertLess(len(api._hits), 10)
+            self.assertIn("fresh", api._hits)
+        finally:
+            api._MAX_KEYS = old
+
+    def test_daily_limit_on_the_called_side_is_not_called_quiet_hours(self):
+        d = api.describe_call({"caller_treehouse": 1, "result": rules.QUIET_OR_PAUSED, "reason": "callee_daily_limit",
+                               "talk_sec": 0, "dialed": "1"}, 2)
+        self.assertEqual(d["detail"], "Out of minutes today")

@@ -144,6 +144,33 @@ def main():
         a.wait_for_selector("text=Sam's house")
         check("Strung" in a.inner_text("main"), "the string is live")
 
+        # ---- a hostile treehouse name must stay text (stored XSS regression)
+        evil = 'a" autofocus onfocus="pwned=1'
+        e_ctx, e = make_family(browser, "evil@example.com", evil)
+        e.click("[data-skip]")
+        e.click("[data-later]")
+        e.wait_for_selector("#app-title")
+        a.goto(f"{BASE}/parent/#/home")
+        code2 = None
+        a.evaluate("() => 0")
+        # Alex makes a code and the hostile family redeems it, then Alex looks at the request.
+        r = a.evaluate("""async () => { const t = localStorage.getItem('treeline.token');
+          const res = await fetch('/api/ladder-codes', {method:'POST', headers:{Authorization:'Bearer '+t,'Content-Type':'application/json'}, body:'{}'});
+          return (await res.json()).code; }""")
+        e.goto(f"{BASE}/parent/#/strings")
+        e.wait_for_selector("main [data-redeem]")
+        e.click("main [data-redeem]")
+        e.fill("#ladder", r)
+        e.click(".tl-sheet-scrim:not([hidden]) button[type=submit]")
+        e.wait_for_selector("text=Waiting on them")
+        a.reload()
+        a.wait_for_selector("text=Waiting on families")
+        a.click("[data-string=decline]")
+        a.wait_for_selector(".tl-toast")
+        check(a.evaluate("window.pwned") is None, "a hostile treehouse name runs no script")
+        check(a.locator("[onfocus]").count() == 0, "a hostile treehouse name adds no attributes")
+        e_ctx.close()
+
         # ---- every screen, every width, both themes
         screens = {"home": "#/home", "strings": "#/strings", "calls": "#/calls", "quiet": "#/quiet", "house": "#/house",
                    "phonebook": "#/phonebook", "settings": "#/settings", "privacy": "#/privacy", "about": "#/about", "actions": "#/actions"}

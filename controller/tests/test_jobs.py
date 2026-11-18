@@ -56,6 +56,20 @@ class Jobs(unittest.TestCase):
         left = [r["caller_treehouse"] for r in self.c.execute("SELECT caller_treehouse FROM call")]
         self.assertEqual(left, [other])
 
+    def test_one_familys_short_retention_does_not_erase_the_others_history(self):
+        old = db.iso(db.utcnow() - dt.timedelta(days=30))
+        a = db.create_treehouse(self.c, "A", number="2003", retention_days=7)
+        b = db.create_treehouse(self.c, "B", number="2004", retention_days=365)
+        cur = self.c.execute("INSERT INTO call(started_at,caller_treehouse,callee_treehouse,state,result) "
+                             "VALUES(?,?,?,?,?)", (old, a, b, "ended", "connected"))
+        jobs.purge(self.c)
+        row = self.c.execute("SELECT * FROM call WHERE id=?", (cur.lastrowid,)).fetchone()
+        self.assertIsNone(row["caller_treehouse"])         # A's side is gone
+        self.assertEqual(row["callee_treehouse"], b)       # B still has its record
+        self.c.execute("UPDATE treehouse SET retention_days=7 WHERE id=?", (b,))
+        jobs.purge(self.c)                                  # now both are past retention
+        self.assertIsNone(self.c.execute("SELECT 1 FROM call WHERE id=?", (cur.lastrowid,)).fetchone())
+
     def test_emails_go_to_parents_once(self):
         self.c.execute("INSERT INTO grown_up(email,treehouse_id,role,created_at) VALUES(?,?,?,?)",
                        ("mom@example.com", self.tid, "parent", db.iso()))

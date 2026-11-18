@@ -9,10 +9,13 @@ import base64
 import csv
 import datetime as dt
 import io
+import ipaddress
+import json
 import logging
 import os
 import re
 import secrets
+import threading
 import time
 from functools import wraps
 from zoneinfo import ZoneInfo, available_timezones
@@ -64,6 +67,14 @@ def _cors(resp):
         resp.headers["Access-Control-Allow-Methods"] = "GET, POST, PATCH, DELETE, OPTIONS"
         resp.headers["Vary"] = "Origin"
     resp.headers.setdefault("X-Content-Type-Options", "nosniff")
+    if not request.path.startswith("/api/"):
+        # Second line of defense against injected markup: nothing but our own files may run.
+        talk = " ws: wss:" if request.path.startswith("/phone/") else ""
+        resp.headers.setdefault("Content-Security-Policy", (
+            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+            f"img-src 'self' data:; font-src 'self'; connect-src 'self'{talk}; media-src 'self' blob:; "
+            "object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"))
+        resp.headers.setdefault("Referrer-Policy", "no-referrer")
     if request.path.startswith("/api/"):
         resp.headers["Cache-Control"] = "no-store"
     return resp
@@ -79,15 +90,23 @@ def conn():
 
 
 _hits = {}
+_hits_lock = threading.Lock()
+_MAX_KEYS = 5000
+_LONGEST_WINDOW = 3600
 
 
 def rate_limit(key, count, seconds):
     now = time.time()
-    hits = [t for t in _hits.get(key, []) if now - t < seconds]
-    if len(hits) >= count:
-        raise ApiError("That's a lot of tries. Please wait a few minutes.", 429)
-    hits.append(now)
-    _hits[key] = hits
+    with _hits_lock:
+        hits = [t for t in _hits.get(key, []) if now - t < seconds]
+        if len(hits) >= count:
+            _hits[key] = hits
+            raise ApiError("That's a lot of tries. Please wait a few minutes.", 429)
+        hits.append(now)
+        _hits[key] = hits
+        if len(_hits) > _MAX_KEYS:  # forget anyone who hasn't been seen in the longest window
+            for k in [k for k, v in _hits.items() if not v or now - v[-1] > _LONGEST_WINDOW]:
+                del _hits[k]
 
 
 TRUST_PROXY = os.environ.get("TREELINE_TRUST_PROXY") == "1"
@@ -102,6 +121,14 @@ def client_ip():
         if fwd:
             return fwd.split(",")[-1].strip()  # the address our proxy saw
     return request.remote_addr or ""
+
+
+def is_private(addr):
+    try:
+        ip = ipaddress.ip_address(addr)
+    except ValueError:
+        return False
+    return ip.is_loopback or ip.is_private
 
 
 def body():
@@ -250,6 +277,8 @@ def describe_call(c, tid):
                     "detail": "That treehouse isn't taking calls right now"}
         if why == "callee_paused":
             return {"label": "Blocked", "tone": "bark", "icon": "pause", "detail": "Your line was paused"}
+        if why == "callee_daily_limit":
+            return {"label": "Blocked", "tone": "sky", "icon": "clock", "detail": "Out of minutes today"}
         return {"label": "Blocked", "tone": "sky", "icon": "moon", "detail": "During your quiet hours"}
     if r in (rules.REPEAT_LIMIT, rules.DAILY_LIMIT):
         return {"label": "Limit reached", "tone": "sky", "icon": "clock",
@@ -334,8 +363,8 @@ def auth_request():
               f"Your Treeline code is {code}.\n\nIt works for {CODE_MINUTES} minutes. "
               "If you didn't ask for it, you can ignore this email.")
     out = {"sent": True}
-    if DEV_CODES:
-        out["dev_code"] = code
+    if DEV_CODES and is_private(client_ip()):
+        out["dev_code"] = code   # a test server on your own network only; never over the internet
     return jsonify(out)
 
 
@@ -901,7 +930,11 @@ def pair_token_row(token):
 
 @app.get("/api/phone/config")
 def phone_config():
-    return jsonify(ws_url=ws_url(), domain=public_host(), realm=db.SIP_REALM)
+    try:
+        ice = json.loads(os.environ.get("TREELINE_ICE_SERVERS", "[]"))
+    except ValueError:
+        ice = []
+    return jsonify(ws_url=ws_url(), domain=public_host(), realm=db.SIP_REALM, ice_servers=ice)
 
 
 @app.post("/api/pair/start")
@@ -1008,6 +1041,13 @@ def call_detail(cid):
     return jsonify(call_json(c, g.th, detail=True))
 
 
+def csv_safe(value):
+    """A spreadsheet runs a cell that starts with = + - @ as a formula. Names come
+    from other families, so make such a cell plain text."""
+    text = "" if value is None else str(value)
+    return "'" + text if text[:1] in ("=", "+", "-", "@", "\t", "\r") else text
+
+
 @app.get("/api/calls.csv")
 @auth(parent=True)
 def calls_csv():
@@ -1018,9 +1058,9 @@ def calls_csv():
     for c in calls_for(th, None, 5000):
         j = call_json(c, th)
         other = j["other"] or {}
-        w.writerow([j["started_local"], "Out" if j["direction"] == "out" else "In",
-                    other.get("name") or "", other.get("number") or "", j["label"], j["detail"],
-                    j["talk_sec"]])
+        w.writerow([csv_safe(v) for v in (
+            j["started_local"], "Out" if j["direction"] == "out" else "In", other.get("name") or "",
+            other.get("number") or "", j["label"], j["detail"], j["talk_sec"])])
     audit("calls_exported")
     return Response(out.getvalue(), mimetype="text/csv",
                     headers={"Content-Disposition": "attachment; filename=treeline-calls.csv"})

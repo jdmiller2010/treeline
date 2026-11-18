@@ -24,6 +24,18 @@ export const str = (v) => one(v);
 
 // ---------------------------------------------------------------- atoms
 
+/**
+ * Extra attributes for a control. Pass an object ({ "data-name": theirName }) for
+ * anything that comes from data: every value is escaped. A plain string is for
+ * fixed markup the developer wrote ('data-add-phone') and is NOT escaped, so never
+ * build one from names, emails or anything a user can type.
+ */
+export function attrList(attrs) {
+  if (!attrs) return raw("");
+  if (typeof attrs === "string") return raw(attrs);
+  return raw(Object.entries(attrs).map(([k, v]) => (v === true ? ` ${k}` : ` ${k}="${esc(v)}"`)).join(""));
+}
+
 export function icon(name, size = 20) {
   if (!ICONS[name]) throw new Error("no icon " + name);
   return raw(`<svg class="tl-icon" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name]}</svg>`);
@@ -33,11 +45,11 @@ export const brand = (href = "#/home") => raw(BRAND.replace('href="#home"', `hre
 
 export function button({ label, variant = "secondary", size = "md", icon: ic, iconAfter, type = "button", full, collapse, attrs = "", disabled }) {
   const cls = `tl-btn tl-btn--${variant} tl-btn--${size}${full ? " tl-btn--full" : ""}${collapse ? " tl-btn--collapse" : ""}`;
-  return html`<button type="${type}" class="${cls}" ${raw(attrs)}${disabled ? raw(" disabled") : ""}>${ic ? icon(ic, size === "sm" ? 16 : 20) : ""}<span class="tl-btn__label">${label}</span>${iconAfter ? icon(iconAfter, size === "sm" ? 16 : 20) : ""}</button>`;
+  return html`<button type="${type}" class="${cls}" ${attrList(attrs)}${disabled ? raw(" disabled") : ""}>${ic ? icon(ic, size === "sm" ? 16 : 20) : ""}<span class="tl-btn__label">${label}</span>${iconAfter ? icon(iconAfter, size === "sm" ? 16 : 20) : ""}</button>`;
 }
 
 export function iconButton({ label, name, variant = "quiet", size = "md", attrs = "", extra = "" }) {
-  return html`<button type="button" aria-label="${label}" title="${label}" class="tl-iconbtn tl-btn--${variant} tl-iconbtn--${size} ${extra}" ${raw(attrs)}>${icon(name, size === "sm" ? 16 : 20)}</button>`;
+  return html`<button type="button" aria-label="${label}" title="${label}" class="tl-iconbtn tl-btn--${variant} tl-iconbtn--${size} ${extra}" ${attrList(attrs)}>${icon(name, size === "sm" ? 16 : 20)}</button>`;
 }
 
 export function tag(tone, text, ic) {
@@ -66,7 +78,7 @@ export function alert({ tone = "info", title, body, actions, id, dismiss }) {
     ${body ? html`<p class="tl-alert__body">${body}</p>` : ""}
     ${actions ? html`<div class="tl-alert__actions">${actions}</div>` : ""}
   </div>
-  <span>${dismiss ? iconButton({ label: "Dismiss", name: "close", size: "sm", attrs: `data-dismiss="${esc(dismiss)}"` }) : ""}</span>
+  <span>${dismiss ? iconButton({ label: "Dismiss", name: "close", size: "sm", attrs: { "data-dismiss": dismiss } }) : ""}</span>
 </div>`;
 }
 
@@ -81,7 +93,7 @@ export function textField({ id = nextId(), label, hint, type = "text", value = "
   <label for="${id}" class="tl-textfield__label">${label}</label>
   <div class="tl-textfield__control">
     ${iconName ? html`<svg class="tl-icon tl-textfield__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${raw(ICONS[iconName])}</svg>` : ""}
-    <input id="${id}" name="${name || id}" class="tl-textfield__input" type="${type}" value="${value}" placeholder="${placeholder}" ${autocomplete ? raw(`autocomplete="${esc(autocomplete)}"`) : ""} ${error ? raw('aria-invalid="true"') : ""} ${hid ? raw(`aria-describedby="${hid}"`) : ""} ${raw(attrs)}/>
+    <input id="${id}" name="${name || id}" class="tl-textfield__input" type="${type}" value="${value}" placeholder="${placeholder}" ${autocomplete ? raw(`autocomplete="${esc(autocomplete)}"`) : ""} ${error ? raw('aria-invalid="true"') : ""} ${hid ? raw(`aria-describedby="${hid}"`) : ""} ${attrList(attrs)}/>
   </div>
   ${hid ? html`<p id="${hid}" class="tl-textfield__hint">${error ? icon("close", 16) : ""}${error || hint}</p>` : ""}
 </div>`;
@@ -202,8 +214,8 @@ export function toast(message, tone = "neutral", opts = {}) {
 }
 
 /** The line every page ends with. */
-export function footer() {
-  return html`<p class="caption tl-footer" style="color:var(--ink-muted)">© 2026 Jordan Miller · <a href="mailto:jdmiller2010@gmail.com" style="color:inherit">jdmiller2010@gmail.com</a> · <a href="https://buymeacoffee.com/REPLACE-ME" style="color:inherit" target="_blank" rel="noopener">Support Treeline</a> · <a href="/parent/licenses.html" style="color:inherit">Open-source licenses</a></p>`;
+export function footer(licenses = "/parent/licenses.html") {
+  return html`<p class="caption tl-footer" style="color:var(--ink-muted)">© 2026 Jordan Miller · <a href="mailto:jdmiller2010@gmail.com" style="color:inherit">jdmiller2010@gmail.com</a> · <a href="https://buymeacoffee.com/REPLACE-ME" style="color:inherit" target="_blank" rel="noopener">Support Treeline</a> · <a href="${licenses}" style="color:inherit">Open-source licenses</a></p>`;
 }
 
 /** The plain statement the design system requires wherever a phone or the app is used. */
