@@ -109,6 +109,44 @@ def main():
             tablet.screenshot(path=f"{SHOTS}/phone-{theme}.png", full_page=True)
         tablet.evaluate("document.documentElement.setAttribute('data-theme','light')")
 
+        # ---- "How do I dial?": a lesson that plays on the phone and dials nothing
+        tablet.evaluate("() => __phone.setTutorialSpeed(8)")
+        help_button = tablet.locator("[data-help]")
+        check(help_button.is_visible(), "an idle phone offers 'How do I dial?'")
+        tablet.screenshot(path=f"{SHOTS}/phone-with-help.png", full_page=True)
+        help_button.click()
+        tablet.wait_for_selector("#tutorial .tl-steps")
+        check(not help_button.is_visible(), "the button steps aside while the lesson plays")
+        lifted = finger = turned = False
+        for _ in range(400):
+            st = tablet.evaluate("""() => ({ hook: document.querySelector('.tl-rotary').dataset.hook,
+                finger: !!document.querySelector('.ph__finger.is-on'),
+                turn: document.querySelector('.tlp-wheel').getAttribute('transform') })""")
+            lifted |= st["hook"] == "off"
+            finger |= st["finger"]
+            turned |= not st["turn"].startswith("rotate(0.00")
+            if tablet.locator("#tutorial").inner_text().strip() == "" and (lifted and turned):
+                break
+            tablet.wait_for_timeout(100)
+        check(lifted, "the lesson lifts the handset")
+        check(finger, "a fingertip drops into a hole")
+        check(turned, "and the wheel winds round and spins back")
+        check(tablet.evaluate("document.body.dataset.digits") == "" and tablet.evaluate("document.body.dataset.state") == "idle",
+              "nothing was dialed and the phone is still idle")
+        tablet.wait_for_function("() => document.querySelector('#tutorial').innerText.trim() === ''", timeout=30000)
+        check(tablet.get_attribute(".tl-rotary", "data-hook") == "on", "the handset is back on the hook when it ends")
+        check(tablet.evaluate("document.querySelector('.tlp-wheel').getAttribute('transform')").startswith("rotate(0.00"), "and the wheel is at rest")
+        check(tablet.locator(".ph__finger").count() == 0, "and the fingertip is gone")
+        check(help_button.is_visible(), "the button comes back")
+        # Stop ends it at once, wherever it is.
+        tablet.evaluate("() => __phone.setTutorialSpeed(1)")
+        help_button.click()
+        tablet.wait_for_selector("#tutorial .tl-steps")
+        tablet.click("[data-tutorial-stop]")
+        tablet.wait_for_function("() => document.querySelector('#tutorial').innerText.trim() === ''", timeout=5000)
+        check(tablet.get_attribute(".tl-rotary", "data-hook") == "on", "Stop puts the handset back")
+        tablet.evaluate("() => __phone.setTutorialSpeed(1)")
+
         # ---- the dial really turns (pretend we're off the hook, with a dial tone)
         # (no Asterisk here, so lift the handset quietly and set the phase by hand)
         tablet.evaluate("() => { __phone.S.hook = 'off'; __phone.S.phase = 'dialtone'; __phone.rotary().setHook(true, true); }")

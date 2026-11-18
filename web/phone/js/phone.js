@@ -1,9 +1,10 @@
 // The Treeline softphone, the rotary phone as an app or in a browser: a real dial, real tones, calls over WebRTC.
 import { api } from "/shared/api.js";
 import { ROTARY } from "/shared/assets.js";
-import { brand, footer, html, presence, raw, str } from "/shared/ui.js";
+import { brand, button, footer, html, presence, raw, str } from "/shared/ui.js";
 import { forgetPhone, pairScreen, savedPhone } from "./pair.js";
 import * as tones from "./tones.js";
+import { isRunning, startTutorial, stopTutorial } from "./tutorial.js";
 
 const root = document.getElementById("root");
 const remoteAudio = document.getElementById("remote-audio");
@@ -42,6 +43,8 @@ function draw() {
     <div class="ph__stage"><div class="ph__glow" id="glow">${raw(ROTARY)}</div></div>
     <p class="ph__status" id="status" role="status" aria-live="polite"></p>
     <p class="ph__sub body" id="sub"></p>
+    <div class="ph__tutorial" id="tutorial"></div>
+    <div class="ph__help" id="help">${button({ label: "How do I dial?", variant: "quiet", size: "sm", icon: "info", attrs: "data-help" })}</div>
     <div class="ph__night" id="night"></div>
     <div class="ph__bottom">${footer("/phone/licenses.html")}</div>
   </main>
@@ -55,8 +58,16 @@ function draw() {
     night: root.querySelector("#night"), reg: root.querySelector("#reg"), wake: root.querySelector("#wake"), el,
     hookButton: el.querySelector(".tl-rotary__hook"), number: el.querySelector(".tl-rotary__number"),
     api: window.TreelineUI.rotary(el) };
-  S.dial = (d) => ui.api.dial(d);
+  S.dial = (d) => { if (!S.tutorial) ui.api.dial(d); };
+  ui.help = root.querySelector("#help");
+  root.querySelector("[data-help]").addEventListener("click", () => {
+    if (S.hook !== "on" || S.phase !== "idle") return;
+    startTutorial({ ui, S, tones, say, panel: root.querySelector("#tutorial"),
+      onEnd: () => { say("Lift the handset to make a call", ""); render(); } });
+    render();
+  });
   el.addEventListener("tl-rotary-hook", async (e) => {
+    if (S.tutorial) return;                                    // the lesson works the handset itself
     if (e.detail.offHook) { await tones.unlock(); ui.wake.hidden = true; lift(); } else hangUp();
   });
   el.addEventListener("tl-rotary-pulse", () => tones.pulseClick());        // the dial's contacts, once per number
@@ -65,7 +76,7 @@ function draw() {
     const m = /rotate\(([-\d.]+)/.exec(ui.el.querySelector(".tlp-wheel").getAttribute("transform") || "");
     if (m) tones.dialAngle(Number(m[1]), ui.el.classList.contains("is-dialing"));
   }).observe(el.querySelector(".tlp-wheel"), { attributes: true, attributeFilter: ["transform"] });
-  el.addEventListener("tl-rotary-digit", (e) => { if (e.detail.offHook) onDigit(e.detail.digit); });
+  el.addEventListener("tl-rotary-digit", (e) => { if (e.detail.offHook && !S.tutorial) onDigit(e.detail.digit); });
   document.addEventListener("keydown", (e) => {
     // The phone dials number keys itself when it has focus; this is for when it doesn't.
     if (e.target.closest?.(".tl-rotary__svg")) return;
@@ -76,31 +87,13 @@ function draw() {
   render();
 }
 
-/** While it rings, the phone trembles with the bell: 2 seconds on, 4 off, the bell's own rhythm. */
-function startRattle() {
-  if (S.rattling) return;
-  S.rattling = true;
-  const cycle = () => {
-    if (!S.rattling || !ui) return;
-    ui.glow.classList.add("is-bell");
-    S.timers.rattleOff = setTimeout(() => ui?.glow.classList.remove("is-bell"), 2000);
-    S.timers.rattle = setTimeout(cycle, 6000);
-  };
-  cycle();
-}
-function stopRattle() {
-  S.rattling = false;
-  clearTimeout(S.timers.rattle); clearTimeout(S.timers.rattleOff);
-  ui?.glow.classList.remove("is-bell");
-}
-
 function render() {
   if (!ui) return;
   ui.glow.classList.toggle("is-ringing", S.phase === "ringing");
-  if (S.phase === "ringing") startRattle(); else stopRattle();
   if (ui.number) ui.number.textContent = S.number || "";
   // The kit labels the handset button "Lift the handset"; a ringing phone should say what lifting does.
   if (S.hook === "on" && ui.hookButton) ui.hookButton.setAttribute("aria-label", S.phase === "ringing" ? "Answer the phone" : "Lift the handset");
+  if (ui.help) ui.help.hidden = !(S.hook === "on" && S.phase === "idle" && !S.tutorial);   // the lesson is for an idle, hung-up phone
   ui.night.innerHTML = S.line === "disconnected" && S.hook === "on"
     ? str(html`<section class="tl-card tl-card--plank"><header class="tl-card__head"><div><p class="tl-card__eyebrow">Switched off</p><h3 class="tl-card__title">This phone is off for now</h3></div></header><p class="tl-card__body">A parent turned it off. It won't ring or call out until they turn it back on.</p></section>`)
     : S.line === "quiet" && S.hook === "on"
@@ -264,6 +257,7 @@ function ended() {
 // ------------------------------------------------------------------ answering and ringing
 
 function onIncoming(session) {
+  if (isRunning()) stopTutorial();                              // a real call beats the lesson
   // Off the hook and busy with something else, or already ringing for another caller: not now.
   const busy = S.hook === "off" && !["dialtone", "dialing", "howl"].includes(S.phase);
   if (busy || S.incoming) { session.terminate({ status_code: 486 }); return; }
@@ -286,8 +280,6 @@ function answer() {
   const session = S.incoming; if (!session) return;
   S.incoming = null; S.session = session;
   tones.stop(); cancel("howl", "inter");
-  ui.glow.classList.add("is-answering");                       // the phone settles as the handset comes up
-  setTimeout(() => ui?.glow.classList.remove("is-answering"), 700);
   S.phase = "talking"; say("Talking", ""); render();
   try { session.answer(callOptions()); } catch { ended(); }
 }
@@ -340,7 +332,7 @@ async function boot() {
 // A hook for the browser tests, on this machine only, and without the SIP secret.
 if (location.search.includes("test=1") && ["localhost", "127.0.0.1"].includes(location.hostname)) {
   const view = new Proxy(S, { get: (t, k) => (k === "creds" ? undefined : t[k]), set: (t, k, v) => { t[k] = v; return true; } });
-  window.__phone = { S: view, tonesLevel: () => tones.effectiveLevel(), lift: () => (ui.api.isOffHook() ? ui.api.hangUp() : ui.api.lift()), dial: (d) => S.dial?.(d), rotary: () => ui.api, tones,
+  window.__phone = { setTutorialSpeed: (n) => { window.__tutorialSpeed = n; }, S: view, tonesLevel: () => tones.effectiveLevel(), lift: () => (ui.api.isOffHook() ? ui.api.hangUp() : ui.api.lift()), dial: (d) => S.dial?.(d), rotary: () => ui.api, tones,
     async stats() { const pc = S.session?.connection; if (!pc) return null; const r = await pc.getStats(); let rx = 0, tx = 0; r.forEach((x) => { if (x.type === "inbound-rtp" && x.kind === "audio") rx += x.bytesReceived; if (x.type === "outbound-rtp" && x.kind === "audio") tx += x.bytesSent; }); return { rx, tx }; } };
 }
 

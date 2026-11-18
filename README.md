@@ -155,7 +155,7 @@ real families in it.
 (a browser only lets a page use the microphone on `localhost` or over HTTPS, so
 another device needs the deployed, HTTPS setup in [docs/DEPLOY.md](docs/DEPLOY.md)).
 Or, from the parent app on that same device, press **Use this device as a phone** under Our treehouse: no code needed. Otherwise sign in to the parent app, then Our treehouse, Add a phone, Softphone (app), and type the
-six digits the phone shows. Make two treehouses, string them with a ladder code,
+six digits the phone shows. Press **How do I dial?** under the phone for a short animated lesson. Make two treehouses, string them with a ladder code,
 and call one from the other. Each phone has a switch under Our treehouse (and on Home) to disconnect it for now: it stops ringing and can't call out, and your other phones carry on.
 
 **A softphone on your cell phone** (SIP over UDP, on your Wi-Fi). In the parent

@@ -153,20 +153,15 @@ def run(families):
         check(a.wait_phase("ringing"), "the called tablet rings")
         check(a.tone() == "bell", "it plays the bell")
         check(s.tone() == "ringback", "the caller hears ringback")
-        glow = "document.querySelector('#glow').classList"
-        check(a.page.evaluate(f"() => {glow}.contains('is-ringing')"), "a ringing phone glows")
-        rattled = False
-        for _ in range(30):                                       # the rattle follows the bell: 2 s on, 4 s off
-            if a.page.evaluate(f"() => {glow}.contains('is-bell')"):
-                rattled = True
-                break
-            time.sleep(0.1)
-        check(rattled, "and trembles with the bell")
+        pool = "parseFloat(getComputedStyle(document.querySelector('#glow'), '::before').opacity)"
+        time.sleep(0.9)                                           # the light fades in
+        check(a.page.evaluate("() => document.querySelector('#glow').classList.contains('is-ringing')") and a.page.evaluate(f"() => {pool}") > 0.3,
+              "a ringing phone sits in a pool of light")
         a.lift()
-        check(a.page.evaluate(f"() => {glow}.contains('is-answering')"), "picking it up makes the phone settle")
         check(a.wait_phase("talking") and s.wait_phase("talking"), "answering connects both tablets")
-        time.sleep(0.8)
-        check(a.page.evaluate(f"() => !{glow}.contains('is-ringing') && !{glow}.contains('is-bell')"), "and the ringing stops")
+        time.sleep(1.0)
+        check(not a.page.evaluate("() => document.querySelector('#glow').classList.contains('is-ringing')") and a.page.evaluate(f"() => {pool}") < 0.05,
+              "and the light fades out when it's answered")
         time.sleep(3)
         sa, ss = a.stats(), s.stats()
         check(sa and sa["rx"] > 1000 and sa["tx"] > 1000, "audio flows both ways (called side)", str(sa))
