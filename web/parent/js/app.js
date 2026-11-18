@@ -10,6 +10,7 @@ import { calls } from "./calls.js";
 import { quiet } from "./quiet.js";
 import { house, phonebook } from "./house.js";
 import { account, privacy, about, actionLog, pairClaim, ladderLink } from "./account.js";
+import { forgetPushQuietly } from "./push.js";
 
 const root = document.getElementById("root");
 
@@ -153,6 +154,7 @@ function show(v, mine) {
 }
 
 async function signOut() {
+  await forgetPushQuietly();                 // this device shouldn't keep buzzing for someone who signed out
   try { await post("/api/auth/signout"); } catch { /* signing out anyway */ }
   token.clear(); ctx.me = null; ctx.go("#/signin");
 }

@@ -578,7 +578,7 @@ class Health(unittest.TestCase):
     def test_ok_when_asterisk_answers_and_503_when_it_does_not(self):
         self.assertEqual(client.get("/api/health").status_code, 200)
         real = api.ari_mod.Ari.online_users
-        api.ari_mod.Ari.online_users = lambda self: None          # Asterisk unreachable
+        api.ari_mod.Ari.online_users = lambda self, timeout=10: None          # Asterisk unreachable
         try:
             r = client.get("/api/health")
             self.assertEqual(r.status_code, 503)
@@ -620,6 +620,42 @@ class Push(unittest.TestCase):
             self.assertEqual(client.get("/api/push/key").get_json(), {"key": "BKEY"})
         finally:
             api.VAPID_PUBLIC = old
+
+
+class Limits(unittest.TestCase):
+    def test_health_is_rate_limited_and_never_waits_long_for_asterisk(self):
+        api._hits.clear()
+        seen = {}
+        real = api.ari_mod.Ari.online_users
+        api.ari_mod.Ari.online_users = lambda self, timeout=10: seen.setdefault("timeout", timeout) and []
+        try:
+            self.assertEqual(client.get("/api/health").status_code, 200)
+            self.assertLessEqual(seen["timeout"], 2)
+            codes = [client.get("/api/health").status_code for _ in range(125)]
+        finally:
+            api.ari_mod.Ari.online_users = real
+        self.assertEqual(codes[-1], 429)
+
+    def test_factory_key_guessing_is_throttled(self):
+        api._hits.clear()
+        api.FACTORY_KEY = "real-key"
+        try:
+            codes = [client.post("/api/factory/devices", json={}, headers={"X-Factory-Key": f"guess{i}"}).status_code
+                     for i in range(25)]
+        finally:
+            api.FACTORY_KEY = ""
+        self.assertEqual(set(codes[:20]), {404})
+        self.assertEqual(codes[-1], 429)
+
+    def test_one_parent_flooding_claims_cannot_lock_everyone_else_out(self):
+        api._hits.clear()
+        flood = make_house()
+        for _ in range(12):                                      # their own limit (10 per 10 minutes) stops them
+            flood.post("/api/pair/claim", {"code": "000000"})
+        self.assertEqual(flood.post("/api/pair/claim", {"code": "000000"}).status_code, 429)
+        other = make_house()                                      # a different parent is unaffected
+        start = client.post("/api/pair/start").get_json()
+        self.assertEqual(other.post("/api/pair/claim", {"code": start["code"]}).status_code, 201)
 
 
 class Pages(unittest.TestCase):

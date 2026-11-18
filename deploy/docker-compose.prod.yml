@@ -58,6 +58,8 @@ services:
       TREELINE_TRUST_PROXY: "1"           # we are behind Caddy
       TREELINE_VAPID_PUBLIC: ${TREELINE_VAPID_PUBLIC:-}
       TREELINE_ICE_SERVERS: ${TREELINE_ICE_SERVERS:-[]}
+      TREELINE_CORS_ORIGINS: ${TREELINE_CORS_ORIGINS:-}     # only if the web pages are on a static host
+      TREELINE_FACTORY_KEY: ${TREELINE_FACTORY_KEY:-}       # only for registering Treeline rotary phones
       # TREELINE_DEV_CODES is deliberately not set: sign-in codes only go by email.
     volumes:
       - ../data:/data

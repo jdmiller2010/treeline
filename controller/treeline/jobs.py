@@ -54,7 +54,7 @@ def push_to(conn, email, title, body, send=None):
         def send(sub, payload):
             try:
                 webpush(subscription_info=sub, data=payload, vapid_private_key=VAPID_PRIVATE,
-                        vapid_claims={"sub": VAPID_SUBJECT}, ttl=3600)
+                        vapid_claims={"sub": VAPID_SUBJECT}, ttl=3600, timeout=5)
             except WebPushException as err:
                 code = getattr(err.response, "status_code", None)
                 if code in (404, 410):
@@ -74,19 +74,21 @@ def push_to(conn, email, title, body, send=None):
 
 
 def send_alert_emails(conn, push=push_to):
-    """Tell a treehouse's parents about new notes, by email and, where they've turned it on, push."""
+    """Tell a treehouse's parents about each new note, by email and, where they've turned it on,
+    push. Each note is sent once: it's marked before anything goes out, so a slow or failing mail
+    or push service can't make a parent get the same alert every 20 seconds. (The note stays on
+    Home either way.)"""
     rows = conn.execute("SELECT * FROM notice WHERE emailed_at IS NULL AND dismissed_at IS NULL "
                         "AND created_at >= ?", (db.iso(db.utcnow() - dt.timedelta(days=1)),)).fetchall()
     for n in rows:
+        conn.execute("UPDATE notice SET emailed_at=? WHERE id=?", (db.iso(), n["id"]))
         parents = conn.execute("SELECT email FROM grown_up WHERE treehouse_id=? AND role='parent'",
                                (n["treehouse_id"],)).fetchall()
-        ok = True
         for p in parents:
-            ok = mail.send(p["email"], f"Treeline: {n['title']}",
-                           f"{n['title']}\n\n{n['body'] or ''}\n\nOpen the Treeline app to see more.") and ok
+            if not mail.send(p["email"], f"Treeline: {n['title']}",
+                             f"{n['title']}\n\n{n['body'] or ''}\n\nOpen the Treeline app to see more."):
+                log.warning("couldn't email %s about %r", p["email"], n["title"])
             push(conn, p["email"], n["title"], n["body"])
-        if ok:
-            conn.execute("UPDATE notice SET emailed_at=? WHERE id=?", (db.iso(), n["id"]))
 
 
 def purge(conn, now=None):

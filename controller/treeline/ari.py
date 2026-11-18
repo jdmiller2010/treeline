@@ -20,13 +20,13 @@ class Ari:
         token = base64.b64encode(f"{self.user}:{self.password}".encode()).decode()
         self._auth = f"Basic {token}"
 
-    def request(self, method, path, **params):
+    def request(self, method, path, _timeout=10, **params):
         query = urllib.parse.urlencode(
             {k: v for k, v in params.items() if v is not None}, doseq=True)
         req = urllib.request.Request(f"{self.url}{path}?{query}", method=method)
         req.add_header("Authorization", self._auth)
         try:
-            with urllib.request.urlopen(req, timeout=10) as resp:
+            with urllib.request.urlopen(req, timeout=_timeout) as resp:
                 body = resp.read()
         except urllib.error.HTTPError as err:
             body = err.read()
@@ -43,10 +43,10 @@ class Ari:
     def reload_module(self, module):
         return self.request("PUT", f"/asterisk/modules/{module}")
 
-    def online_users(self):
+    def online_users(self, timeout=10):
         """Names of PJSIP endpoints that are registered right now.
         Returns None if Asterisk can't be reached."""
-        data = self.request("GET", "/endpoints/PJSIP")
+        data = self.request("GET", "/endpoints/PJSIP", _timeout=timeout)
         if data is None:
             return None
         if not isinstance(data, list):

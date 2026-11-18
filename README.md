@@ -129,6 +129,8 @@ docker compose logs -f controller  # watch calls being allowed or blocked
 
 ## Tests
 
+`./dev all` runs everything below in order; `./dev help` lists the individual commands (and takes a lock so two runs can't overlap).
+
 | What | Command | Proves |
 | --- | --- | --- |
 | Unit tests | `docker compose run --rm --no-deps --entrypoint python controller -m unittest discover -s tests -t .` | The rules, the API, the database, backups |

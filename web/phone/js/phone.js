@@ -103,7 +103,9 @@ function removed() {
   forgetPhone(); stopUa(); tones.stop();
   life.abort(); clearInterval(S.timers.refresh);
   S.creds = null; S.registered = false; S.session = null; S.incoming = null; S.hook = "on"; S.phase = "idle";
-  pairScreen(root, "This tablet was removed from its treehouse. Add it again to keep using it.").then((c) => { S.pairing = false; start(c); });
+  pairScreen(root, "This tablet was removed from its treehouse. Add it again to keep using it.")
+    .then((c) => { S.pairing = false; return start(c); })
+    .catch(() => { S.pairing = false; });
 }
 
 // ------------------------------------------------------------------ hook

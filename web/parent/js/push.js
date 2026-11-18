@@ -10,7 +10,11 @@ export async function pushState() {
   if (Notification.permission === "denied") return "denied";
   const reg = await navigator.serviceWorker.getRegistration("/parent/");
   const sub = reg && (await reg.pushManager.getSubscription());
-  return sub ? "on" : "off";
+  if (!sub) return "off";
+  // The browser keeps its subscription when someone signs out. Tie it to whoever is signed in
+  // now, so a shared tablet's alerts go to the right person.
+  await post("/api/push/subscribe", sub.toJSON()).catch(() => {});
+  return "on";
 }
 
 export async function enablePush() {
@@ -19,6 +23,11 @@ export async function enablePush() {
   const reg = await navigator.serviceWorker.ready;
   const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64(key) });
   await post("/api/push/subscribe", sub.toJSON());
+}
+
+/** Quietly forget this device's subscription (when signing out). */
+export async function forgetPushQuietly() {
+  try { await disablePush(); } catch { /* signing out regardless */ }
 }
 
 export async function disablePush() {

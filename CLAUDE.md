@@ -6,27 +6,35 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Treeline: a house-to-house phone network for kids, with parents holding the keys. Each household is a **treehouse** with one line, one 4-digit number, and any number of handsets. Calls connect only over a **string** both families approved. No 911, no outside numbers, no recording. [docs/PLAN.md](docs/PLAN.md) is the phased plan and the source of the decisions; [README.md](README.md) has the status of each phase and the setup. The README says plainly which parts were never run on real hardware or a public server (Phase 4 deploy, Phase 5 adapter, Phase 6 firmware): don't describe them as tested.
 
-## Commands
+## Commands: use `./dev`
 
-The stack runs in Docker Compose with host networking. On Docker Desktop, host-networked ports aren't reachable from the host, so run anything that needs Asterisk or the API inside a container.
+`./dev help` lists everything. The usual loop:
 
 ```bash
-docker compose up -d --build                       # asterisk, controller, api (http://localhost:8080 inside the VM)
-docker compose logs -f controller                  # watch calls
-
-# unit tests (always build first; the image bakes the code in)
-docker compose build controller
-docker compose run --rm --no-deps --entrypoint python controller -m unittest discover -s tests -t .
-docker compose run --rm --no-deps --entrypoint python controller -m unittest tests.test_rules   # one module
-
-docker compose run --rm testphones [scenario ...]  # real SIP calls via baresip (17 scenarios; --list)
-docker compose run --rm webtests [script.py]       # browser tests in the stack: phone_calls.py (default), phone_ui.py, smoke.py
+./dev up                 # build + start (only after requirements.txt or a Dockerfile changes)
+./dev restart            # after Python changes: the source is mounted into the containers (docker-compose.override.yml)
+./dev unit [module]      # unit tests; never touch the dev database
+./dev sip [scenario]     # scripted SIP phones (real calls; 17 scenarios)
+./dev web [script.py]    # browser tablets on real WebRTC calls (phone_calls.py default, phone_ui.py)
+./dev ui smoke           # parent-app browser test on a local API with a throwaway DB (./dev ui start|stop|reset)
+./dev check              # regenerate generated files, syntax-check Python/JS/compose; fails if something was stale
+./dev all                # everything
 ```
 
-- Tests must never touch the dev database: `controller/tests/helpers.py` forces a temp DB and a fake Asterisk. Scripted tests build and remove treehouses numbered `01xx`.
-- Rebuild the `api` and `controller` images after Python changes (`docker compose up -d --build api controller`). `web/` and `design/ui` are mounted, so edits show on reload. Asterisk config changes need `docker compose restart asterisk`.
-- The parent app's browser test (`web/tests/smoke.py`) runs best against a local API on a throwaway DB; its header explains how. It needs Playwright.
-- Regenerate after the design kit or notices change: `python3 scripts/build_web_assets.py` (icons/art/brand into `web/shared/assets.js`) and `python3 scripts/build_licenses.py` (licenses pages from `THIRD_PARTY_NOTICES.md`).
+On Docker Desktop, host-networked ports aren't reachable from the host, which is why anything needing Asterisk runs in a container and the parent-app test uses its own local API.
+
+## Working rules (each one exists because it went wrong)
+
+- **Use `./dev`, not ad hoc commands.** It holds a lock around anything that uses Asterisk or the dev database (`sip`, `web`, `clean`). If it says another run holds the stack, wait: scenarios, browser tablets and cleanups share one Asterisk, one pjsip file, one `setting` table.
+- **Never delete, truncate or `rm` a database a process has open**, and never empty the dev database while a run is in progress. `./dev ui reset` stops the server first; `./dev clean` takes the lock.
+- **Never `pkill -f <pattern>` where the pattern appears in your own command** (it kills your shell). `./dev ui stop` uses a pid file.
+- **Tests force their own resources.** Assign env vars (`os.environ[...] = ...`), never `setdefault`: compose already sets `TREELINE_DB` and the test would hit the real database. Tests that create families in the dev stack must delete them (through the API) when done.
+- **Stale code is the most common failure.** Python change: `./dev restart`. Dependency/Dockerfile change: `./dev up`. A "fixed" bug that still reproduces means check which image/process is running before changing more code.
+- **Generated files**: after touching `design/ui` icons/illustrations or `THIRD_PARTY_NOTICES.md`, run `./dev check` and commit what it regenerates. A markdown table with a blank line inside it silently breaks the licenses page.
+- **Long runs** (scenarios take ~7 minutes): run in the background to a log file and wait with a Monitor; don't poll, and don't start other stack work meanwhile.
+- **Test what's real, not what you assume.** Three serious bugs (tones never played, browser phones unable to sign in, a missing DB column) only showed up with real calls, real browsers and an upgraded database. Config for a third-party component (Caddy's certificate path, ARI's comma-split `media`, POST vs PUT to reload a module) must be checked against that component, not recalled. Prefer a test that exercises the audio/registration/upgrade path over one that checks a row.
+- **Third-party code**: don't run `npm install` or execute downloaded files. Vendor a pinned download, read it as text, record it in `THIRD_PARTY_NOTICES.md`.
+- **Playwright**: strings passed to `wait_for_function` are `eval`ed and blocked by our CSP; pass arrow functions (`"(d) => ..."` with `arg=`). Screenshots of full pages show the bottom tab bar mid-page; that's the capture, not a bug.
 
 ## Architecture
 

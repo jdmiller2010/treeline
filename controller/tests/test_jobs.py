@@ -95,6 +95,21 @@ class Jobs(unittest.TestCase):
     def test_no_push_without_keys(self):
         self.assertEqual(jobs.push_to(self.c, "mom@example.com", "x", "y", send=lambda *a: 1 / 0), 0)
 
+    def test_a_failing_mail_service_does_not_repeat_the_alert_every_pass(self):
+        self.c.execute("INSERT INTO grown_up(email,treehouse_id,role,created_at) VALUES(?,?,?,?)",
+                       ("mom@example.com", self.tid, "parent", db.iso()))
+        db.add_notice(self.c, self.tid, "x", "Something happened", "Details")
+        tries, pushes = [], []
+        real = jobs.mail.send
+        jobs.mail.send = lambda to, subj, body: tries.append(to) or False        # SMTP is down
+        try:
+            for _ in range(3):                                                    # three 20-second passes
+                jobs.send_alert_emails(self.c, push=lambda *a: pushes.append(a))
+        finally:
+            jobs.mail.send = real
+        self.assertEqual(len(tries), 1)
+        self.assertEqual(len(pushes), 1)
+
     def test_emails_go_to_parents_once(self):
         self.c.execute("INSERT INTO grown_up(email,treehouse_id,role,created_at) VALUES(?,?,?,?)",
                        ("mom@example.com", self.tid, "parent", db.iso()))

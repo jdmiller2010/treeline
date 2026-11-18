@@ -1,0 +1,26 @@
+# Development only (Compose loads this file automatically; the production stack in
+# deploy/ doesn't). It mounts the source into the containers, so a code change needs
+# `./dev restart`, not an image rebuild. Rebuild (`./dev up`) only when
+# requirements.txt or a Dockerfile changes.
+services:
+  controller:
+    volumes:
+      - ./controller/treeline:/app/treeline:ro
+      - ./controller/tests:/app/tests:ro
+      - ./controller/run_controller.py:/app/run_controller.py:ro
+      - ./controller/backup.py:/app/backup.py:ro
+      - ./controller/make_vapid.py:/app/make_vapid.py:ro
+      - ./data:/data
+  api:
+    volumes:
+      - ./controller/treeline:/app/treeline:ro
+      - ./data:/data
+      - ./data/generated:/generated
+      - ./web:/web/site:ro
+      - ./design/ui:/web/ui:ro
+  testphones:
+    volumes:
+      - ./testphones/run_scenarios.py:/tests/run_scenarios.py:ro
+  webtests:
+    volumes:
+      - ./web/tests:/t:ro

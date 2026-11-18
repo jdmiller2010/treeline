@@ -1,0 +1,137 @@
+#!/usr/bin/env bash
+# One entry point for developing Treeline, so the same mistakes don't happen twice.
+#
+#   ./dev up                 build and start the stack (needed after requirements/Dockerfile changes)
+#   ./dev restart            pick up Python changes (the source is mounted; no rebuild)
+#   ./dev unit [module]      unit tests (never touch the dev database)
+#   ./dev sip [scenario...]  scripted SIP phones (real calls)
+#   ./dev web [script.py]    browser tablets on real calls: phone_calls.py (default), phone_ui.py
+#   ./dev ui start|stop|status|reset|smoke   a local API on a throwaway database, and the parent-app browser test
+#   ./dev check              regenerate generated files, check syntax, fail if anything was stale
+#   ./dev clean              empty the dev database (refuses while a test run is going)
+#   ./dev all                check, unit, sip, web, ui smoke
+#
+# Anything that uses Asterisk or the dev database holds one lock, so two runs can't
+# trample each other (scenarios, browser tablets and cleanups all share them).
+set -euo pipefail
+cd "$(dirname "$0")"
+ROOT="$PWD"
+STATE="${TMPDIR:-/tmp}/treeline-dev-$(id -u)"
+mkdir -p "$STATE"
+VENV="$ROOT/.venv-dev"
+UI_PORT="${UI_PORT:-18080}"
+dc() { docker compose "$@"; }
+
+locked() {   # run a command while holding the stack lock; say who has it if busy
+  exec 9>"$STATE/stack.lock"
+  if ! flock -n 9; then
+    echo "Another test run holds the stack ($(cat "$STATE/stack.who" 2>/dev/null || echo unknown)). Wait for it; don't start a second." >&2
+    exit 75
+  fi
+  echo "$* (pid $$, $(date +%T))" > "$STATE/stack.who"
+  "$@"
+}
+
+stack_up() { dc up -d --build "$@"; }
+
+in_container() { dc run --rm --no-deps -T "$@"; }
+
+cmd_up()      { stack_up; }
+cmd_restart() { dc restart api controller >/dev/null; echo "restarted api and controller"; }
+
+cmd_unit() {
+  in_container --entrypoint python controller -m unittest "${@:-discover}" $([ $# -eq 0 ] && echo "-s tests -t .")
+}
+
+need_running() {
+  for s in asterisk api controller; do
+    dc ps --status running --services | grep -qx "$s" || { echo "$s isn't running: ./dev up" >&2; exit 1; }
+  done
+}
+
+sip_run() { need_running; dc run --rm testphones "$@"; }
+web_run() { need_running; dc run --rm webtests "${@:-phone_calls.py}"; }
+cmd_sip() { locked sip_run "$@"; }
+cmd_web() { locked web_run "$@"; }
+
+# ---------------------------------------------------------------- local UI server
+ui_py() {
+  [ -x "$VENV/bin/python" ] || {
+    python3 -m venv "$VENV"
+    "$VENV/bin/pip" install -q flask gunicorn pywebpush playwright
+  }
+}
+ui_pid() { cat "$STATE/ui.pid" 2>/dev/null || true; }
+ui_alive() { local p; p="$(ui_pid)"; [ -n "$p" ] && kill -0 "$p" 2>/dev/null; }
+
+ui_start() {
+  ui_py
+  if ui_alive; then echo "already running (pid $(ui_pid)) on :$UI_PORT"; return; fi
+  mkdir -p "$STATE/ui" "$STATE/webroot"
+  ln -sfn "$ROOT/design/ui" "$STATE/webroot/ui"; ln -sfn "$ROOT/web" "$STATE/webroot/site"
+  (cd "$ROOT/controller" && PYTHONPATH="$ROOT/controller" \
+    TREELINE_DB="$STATE/ui/test.db" TREELINE_PJSIP_FILE="$STATE/ui/pjsip.conf" TREELINE_OUTBOX="$STATE/ui/outbox" \
+    TREELINE_WEB="$STATE/webroot" TREELINE_DEV_CODES=1 ARI_URL=http://127.0.0.1:1/ari \
+    nohup "$VENV/bin/gunicorn" --bind "127.0.0.1:$UI_PORT" --workers 1 --threads 8 treeline.api:app \
+    > "$STATE/ui.log" 2>&1 & echo $! > "$STATE/ui.pid")
+  for _ in $(seq 40); do curl -fs -m 1 "http://127.0.0.1:$UI_PORT/api/health" -o /dev/null -w '' 2>/dev/null && break
+    curl -s -m 1 "http://127.0.0.1:$UI_PORT/api/push/key" -o /dev/null && break; sleep 0.25; done
+  echo "local API on http://127.0.0.1:$UI_PORT (pid $(ui_pid)); log: $STATE/ui.log"
+}
+ui_stop() {
+  if ui_alive; then kill "$(ui_pid)"; for _ in $(seq 20); do ui_alive || break; sleep 0.2; done; fi
+  rm -f "$STATE/ui.pid"; echo "stopped"
+}
+ui_reset() { ui_stop; rm -f "$STATE/ui/test.db"*; ui_start; }       # a fresh database, only ever while stopped
+ui_smoke() {
+  ui_reset
+  ui_py
+  BASE="http://127.0.0.1:$UI_PORT" SHOTS="${SHOTS:-$STATE/shots}" "$VENV/bin/python" web/tests/smoke.py
+}
+cmd_ui() {
+  case "${1:-status}" in
+    start) ui_start ;; stop) ui_stop ;; reset) ui_reset ;; smoke) ui_smoke ;;
+    status) ui_alive && echo "running (pid $(ui_pid)) on :$UI_PORT" || echo "not running" ;;
+    *) echo "ui start|stop|status|reset|smoke" >&2; exit 2 ;;
+  esac
+}
+
+# ---------------------------------------------------------------- check
+cmd_check() {
+  local bad=0
+  python3 scripts/build_web_assets.py >/dev/null; python3 scripts/build_licenses.py >/dev/null
+  if ! git diff --quiet -- web/shared/assets.js web/parent/licenses.html web/phone/licenses.html; then
+    echo "generated files were stale and have been regenerated: review and commit them"; bad=1
+  fi
+  for f in $(git ls-files 'web/**/*.js' | grep -v vendor/) ; do
+    node --check --input-type=module < "$f" 2>/dev/null || { echo "JS syntax error: $f"; bad=1; }
+  done
+  for f in $(git ls-files '*.py'); do python3 -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "$f" || { echo "Python syntax error: $f"; bad=1; }; done
+  dc config -q >/dev/null || { echo "docker-compose.yml is invalid"; bad=1; }
+  docker compose -f deploy/docker-compose.prod.yml --env-file deploy/env.example config -q >/dev/null 2>&1 || { echo "deploy/docker-compose.prod.yml is invalid"; bad=1; }
+  [ $bad -eq 0 ] && echo "check ok"; return $bad
+}
+
+# ---------------------------------------------------------------- clean
+clean_run() {
+  dc run --rm --no-deps -T -e TREELINE_PJSIP_FILE=/generated/pjsip_handsets.conf -v "$ROOT/data/generated:/generated" \
+    --entrypoint python controller -c "
+from treeline import db, pjsip
+c = db.connect()
+for t in ['call_event','call','string','ladder_code','grown_up','login_code','session','handset','notice','parent_action','pairing','push_subscription','number_rest','treehouse','setting']:
+    c.execute(f'DELETE FROM {t}')
+pjsip.write(c); print('dev database emptied')"
+}
+cmd_clean() {
+  read -r -p "Empty the dev database (all families, calls, accounts)? [y/N] " a; [ "$a" = y ] || exit 1
+  locked clean_run
+}
+
+cmd_all() { cmd_check; cmd_unit; cmd_sip; cmd_web phone_ui.py; cmd_web phone_calls.py; cmd_ui smoke; }
+
+case "${1:-help}" in
+  up) shift; cmd_up "$@" ;; restart) cmd_restart ;; unit) shift; cmd_unit "$@" ;;
+  sip) shift; cmd_sip "$@" ;; web) shift; cmd_web "$@" ;; ui) shift; cmd_ui "$@" ;;
+  check) cmd_check ;; clean) cmd_clean ;; all) cmd_all ;;
+  *) sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//' ;;
+esac

@@ -342,8 +342,9 @@ def calls_for(th, since=None, limit=300):
 @app.get("/api/health")
 def health():
     """For an uptime monitor: 200 only if the database answers and Asterisk is reachable."""
+    rate_limit(f"health:{client_ip()}", 120, 60)          # a monitor polls; a flood doesn't
     conn().execute("SELECT 1")
-    asterisk = ari_mod.Ari().online_users() is not None
+    asterisk = ari_mod.Ari().online_users(timeout=2) is not None     # never hold a thread long
     return jsonify(ok=asterisk, database=True, asterisk=asterisk), (200 if asterisk else 503)
 
 
@@ -970,6 +971,7 @@ def factory_register():
 
     The code printed under the phone is at least 10 digits: unlike a tablet's code, it lives for
     years, so it must not be guessable by another family trying codes."""
+    rate_limit(f"factory:{client_ip()}", 20, 600)
     given = request.headers.get("X-Factory-Key", "")
     if not FACTORY_KEY or not secrets.compare_digest(given.encode(), FACTORY_KEY.encode()):
         raise ApiError("That page isn't here.", 404)
@@ -1002,7 +1004,7 @@ def pair_status():
 @auth(parent=True)
 def pair_claim():
     rate_limit(f"claim:{g.email}", 10, 600)
-    rate_limit("claim:everyone", 300, 3600)
+    rate_limit(f"claim-ip:{client_ip()}", 60, 3600)
     data = body()
     code = "".join(c for c in str(data.get("code", "")) if c.isdigit())
     kind = data.get("kind") or "softphone"
