@@ -307,7 +307,8 @@
   // ---------- Softphone desk: the phone on its table, with the paper props as links ----------
   // Markup: [data-tl-desk] with data-contacts='[{"name":"The Parks","number":"3317"}]'.
   // The card file (.tl-desk__cardfile) flips to the next string; events: "tl-desk-card" { index, contact }.
-  function deskNameSize(name) { var n = Math.max(1, String(name || "").length); return Math.max(11, Math.min(21, (270 / n - 3) / 0.6)).toFixed(1); }
+  // The treehouse's name, written across the top of the kid's drawing: long names are written smaller.
+  function deskNameSize(name) { var n = Math.max(1, String(name || "").length); return Math.max(13, Math.min(26, 150 / (n * 0.42))).toFixed(1); }
   function attachDesk(root) {
     if (root.__tlDesk) return root.__tlDesk;
     var list = [];

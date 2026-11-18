@@ -19,7 +19,7 @@ component = r'''
   var DESK_WORDS = __WORDS__;
   function deskEsc(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
   function deskMarkup(prefix, p) {
-    var list = p.contacts || [], c = list[0], name = String(p.treehouseName || "Our treehouse").toUpperCase();
+    var list = p.contacts || [], c = list[0], name = String(p.treehouseName || "Our treehouse");
     var art = DESK_SVG.replace(/id="tl([stv])-/g, 'id="' + prefix + '-$1-').replace(/url\(#tl([stv])-/g, "url(#" + prefix + "-$1-");
     var w = DESK_WORDS.split("{{NAME}}").join(deskEsc(name)).split("{{NAMESIZE}}").join(deskNameSize(name))
       .split("{{QUIET}}").join(deskEsc(p.quietTime || "not set"))
@@ -94,11 +94,12 @@ def layout_css(n, sel=""):
     return "\n".join(out)
 css = f"""
 /* >>> SoftphoneDesk — the tablet softphone screen: the phone on a side table in a 90s room.
-   The room is a still picture drawn three ways, chosen by the screen's shape: wide (1100 × 800) for
-   landscape tablets and desktops, portrait (1000 × 1270) for upright tablets, tall (600 × 1340) for phones.
+   The room is a still picture drawn three ways, chosen by the screen's shape: wide (1100 × 890) for
+   landscape tablets and desktops, portrait (1000 × 1304) for upright tablets, tall (600 × 1340) for phones.
+   No wallpaper: the room sits on the page's canvas, so it works in Daylight and Lantern.
    Each is zoomed in on the phone and the table top so the dial and handset stay big. The phone and the props on it are live. */
 .tl-desk {{ container-type: size; position: relative; width: 100%; height: 100dvh; overflow: hidden; display: flex; align-items: flex-end; justify-content: center;
-  background: repeating-linear-gradient(90deg, transparent 0 1.27cqh, #dfe6cf 1.27cqh 2.55cqh, transparent 2.55cqh 4cqh), linear-gradient(to bottom, #ead9b4, #f1e5c8 35%, #e9dbbb); }}
+  background: var(--canvas); }}
 .tl-desk--fill {{ height: 100%; }}
 .tl-desk__stage {{ position: relative; flex: none; }}
 .tl-desk__art, .tl-desk__art > svg {{ position: absolute; inset: 0; width: 100%; height: 100%; display: block; }}
@@ -110,7 +111,7 @@ css = f"""
 {layout_css("wide")}
 /* The slot: the wall above the phone. For the app's few words (what the phone is doing, the connection
    light, a sleeping card). Keep it short: two lines. */
-.tl-desk__slot {{ position: absolute; left: 2.5%; right: 77%; top: 50%; display: flex; flex-direction: column; align-items: center; gap: var(--space-2); text-align: center; color: #2a251c; }}
+.tl-desk__slot {{ position: absolute; left: 2.5%; right: 77%; top: 50%; display: flex; flex-direction: column; align-items: center; gap: var(--space-2); text-align: center; color: var(--ink); }}
 @container (aspect-ratio < 0.95) {{
 .tl-desk__art > .tl-desk__l--wide {{ display: none; }}
 .tl-desk__art > .tl-desk__l--portrait {{ display: block; }}
@@ -121,7 +122,7 @@ css = f"""
 .tl-desk__art > .tl-desk__l--wide, .tl-desk__art > .tl-desk__l--portrait {{ display: none; }}
 .tl-desk__art > .tl-desk__l--tall {{ display: block; }}
 {layout_css("tall")}
-.tl-desk__slot {{ left: 2%; right: 63%; top: 16%; }}
+.tl-desk__slot {{ left: 32%; right: 42%; top: 2%; }}
 }}
 .tl-desk__card {{ transform-box: fill-box; transform-origin: 50% 100%; }}
 .tl-desk__card.is-flipping {{ animation: tl-desk-flip .3s ease; }}
@@ -143,7 +144,7 @@ export interface SoftphoneDeskProps {
   /** The treehouse's own 4 digits, shown in the middle of the dial. */
   number?: string;
   colorway?: "moss" | "ivory" | "berry";
-  /** Printed on the label tape on the drawer, in capitals. */
+  /** Written across the top of the kid's drawing on the wall. */
   treehouseName?: string;
   /** The approved strings, one card each in the card file (the phone book). */
   contacts?: DeskContact[];
