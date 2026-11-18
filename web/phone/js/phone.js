@@ -76,9 +76,28 @@ function draw() {
   render();
 }
 
+/** While it rings, the phone trembles with the bell: 2 seconds on, 4 off, the bell's own rhythm. */
+function startRattle() {
+  if (S.rattling) return;
+  S.rattling = true;
+  const cycle = () => {
+    if (!S.rattling || !ui) return;
+    ui.glow.classList.add("is-bell");
+    S.timers.rattleOff = setTimeout(() => ui?.glow.classList.remove("is-bell"), 2000);
+    S.timers.rattle = setTimeout(cycle, 6000);
+  };
+  cycle();
+}
+function stopRattle() {
+  S.rattling = false;
+  clearTimeout(S.timers.rattle); clearTimeout(S.timers.rattleOff);
+  ui?.glow.classList.remove("is-bell");
+}
+
 function render() {
   if (!ui) return;
   ui.glow.classList.toggle("is-ringing", S.phase === "ringing");
+  if (S.phase === "ringing") startRattle(); else stopRattle();
   if (ui.number) ui.number.textContent = S.number || "";
   // The kit labels the handset button "Lift the handset"; a ringing phone should say what lifting does.
   if (S.hook === "on" && ui.hookButton) ui.hookButton.setAttribute("aria-label", S.phase === "ringing" ? "Answer the phone" : "Lift the handset");
@@ -267,6 +286,8 @@ function answer() {
   const session = S.incoming; if (!session) return;
   S.incoming = null; S.session = session;
   tones.stop(); cancel("howl", "inter");
+  ui.glow.classList.add("is-answering");                       // the phone settles as the handset comes up
+  setTimeout(() => ui?.glow.classList.remove("is-answering"), 700);
   S.phase = "talking"; say("Talking", ""); render();
   try { session.answer(callOptions()); } catch { ended(); }
 }

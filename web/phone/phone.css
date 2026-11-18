@@ -6,8 +6,19 @@
 .ph__stage { width: min(100%, 460px); position: relative; }
 .ph__glow { border-radius: var(--radius-xl); }
 .ph__glow.is-ringing { animation: ph-breathe 1.6s ease-in-out infinite; }
+/* The bell's rattle: a small, quick tremble on the phone while the bell sounds (2 s on, 4 s off, like the bell).
+   The design system's motion rules say a ringing phone only glows, so this is kept to under a degree and is
+   dropped entirely for reduced-motion. */
+.ph__glow.is-bell .tl-rotary__art { animation: ph-rattle 0.09s ease-in-out infinite alternate; transform-origin: 50% 88%; }
+@keyframes ph-rattle { from { transform: translateX(-1.2px) rotate(-0.55deg); } to { transform: translateX(1.2px) rotate(0.55deg); } }
+/* Picking up while it rings: the glow lets go and the phone settles with one small bounce as the handset lifts. */
+.ph__glow.is-answering .tl-rotary__art { animation: ph-settle 0.6s ease-out 1; transform-origin: 50% 88%; }
+@keyframes ph-settle { 0% { transform: scale(1.018); } 45% { transform: scale(0.994); } 100% { transform: scale(1); } }
 @keyframes ph-breathe { 0%, 100% { box-shadow: none; } 50% { box-shadow: var(--shadow-glow); } }
-@media (prefers-reduced-motion: reduce) { .ph__glow.is-ringing { animation: none; box-shadow: var(--shadow-glow); } }
+@media (prefers-reduced-motion: reduce) {
+  .ph__glow.is-ringing { animation: none; box-shadow: var(--shadow-glow); }
+  .ph__glow.is-bell .tl-rotary__art, .ph__glow.is-answering .tl-rotary__art { animation: none; }
+}
 .ph__status { margin: 0; min-height: 28px; text-align: center; font: 500 21px/28px var(--font-display); font-variation-settings: "SOFT" 100; color: var(--ink); }
 .ph__sub { margin: 0; text-align: center; color: var(--ink-muted); }
 .ph__night { width: 100%; max-width: var(--sheet-max); }
