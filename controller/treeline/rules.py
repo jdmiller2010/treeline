@@ -1,7 +1,7 @@
 """Who may call whom. Pure logic over the database, no Asterisk in here.
 
 `decide()` follows the call flow in docs/PLAN.md, in this order:
-  0. 911 or a wrong-length number
+  0. 911, or a number that isn't four digits
   1. the caller's own line is paused, in quiet hours or over a limit
   2. the number exists
   3. there is a live string between the two treehouses
@@ -26,6 +26,7 @@ NOT_STRUNG = "not_strung"
 QUIET_OR_PAUSED = "quiet_or_paused"
 OFFLINE = "offline"
 NO_911 = "no_911"
+INCOMPLETE = "incomplete"            # not four digits (and not 911): dialed too few or too many
 TIME_LIMIT = "time_limit"
 REPEAT_LIMIT = "repeat_limit"
 DAILY_LIMIT = "daily_limit"
@@ -36,10 +37,11 @@ DISCONNECTED = "disconnected"       # the handset was switched off by a parent
 # indications (US tones); "msg:" is a short recording after the SIT tones.
 SOUND_FAST_BUSY = "fast_busy"
 SOUND_BUSY = "busy"
-SOUND_NOT_IN_SERVICE = "not_in_service"
+SOUND_CANNOT_COMPLETE = "cannot_complete"   # wrong length, or a number nobody has
 SOUND_ASK_GROWN_UP = "ask_grown_up"
 SOUND_NOT_TAKING_CALLS = "not_taking_calls"
 SOUND_NO_911 = "no_911"
+INCOMPLETE = "incomplete"            # not four digits (and not 911): dialed too few or too many
 
 SYSTEM_JOIN_NUMBER = "0001"  # a handset dials this to join its line's call in progress
 
@@ -155,9 +157,11 @@ def decide(conn, caller_handset, dialed, now=None, online=None):
     if caller is None:
         return Decision(NOT_IN_SERVICE, "unknown_caller", SOUND_FAST_BUSY)
 
-    # 0. 911 or a wrong-length dial.
-    if dialed == "911" or not (len(dialed) == 4 and dialed.isdigit()):
-        return Decision(NO_911, "911_or_wrong_length", SOUND_NO_911)
+    # 0. 911 gets its own message. Any other number that isn't four digits "cannot be completed as dialed".
+    if dialed == "911":
+        return Decision(NO_911, "911", SOUND_NO_911)
+    if not (len(dialed) == 4 and dialed.isdigit()):
+        return Decision(INCOMPLETE, "wrong_length", SOUND_CANNOT_COMPLETE)
 
     # A phone a parent has disconnected can't place calls (a call to 911 still gets the message above).
     if caller_handset["disabled"]:
@@ -187,7 +191,7 @@ def decide(conn, caller_handset, dialed, now=None, online=None):
     # 2. Does the number exist?
     callee = db.treehouse_by_number(conn, dialed)
     if callee is None or callee["id"] == caller["id"] or callee["system"]:
-        return Decision(NOT_IN_SERVICE, "no_such_number", SOUND_NOT_IN_SERVICE)
+        return Decision(NOT_IN_SERVICE, "no_such_number", SOUND_CANNOT_COMPLETE)
 
     # 3. Is there a live string?
     if db.live_string(conn, caller["id"], callee["id"]) is None:

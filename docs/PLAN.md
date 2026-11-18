@@ -49,10 +49,10 @@ This plan turns the decisions on the Treeline planning whiteboard into phases. E
    - `call`: see [Call audit](#call-audit).
    - `parent_action`: who, what, target, before and after, when.
 2. **Numbers:** one per treehouse, assigned at random from 1000–9999 (0xxx is kept for the system, for example tests and recordings). A number rests for a year after a treehouse leaves before it's reused. Parents can change it.
-3. **Dialing:** replace speed dials with 4-digit dialing in the dialplan. A dial of the wrong length, or 911, goes to the 911 message (below).
+3. **Dialing:** replace speed dials with 4-digit dialing in the dialplan. 911 goes to the 911 message; any other dial that isn't four digits "cannot be completed as dialed" (below).
 4. **Call flow in the control app**, checked in this order:
    1. Is the caller's own line in quiet hours or paused? Then fast busy (from Phase 3 on, the handset plays it on pickup).
-   2. Does the number exist? If not: three rising tones, "The number you have dialed is not in service."
+   2. Does the number exist? If not: three rising tones, "Your call cannot be completed as dialed. Please check the number and try again." (A dial that isn't four digits, and isn't 911, gets the same message.)
    3. Is there a live string between the two treehouses? If not: three tones, "You can't call that number from this phone. Ask a grown-up." The caller's parents get a note.
    4. Is the other line in quiet hours or paused? Then three tones and "The treehouse you're calling isn't taking calls right now. Please try again later." The same message for both, so a family's schedule isn't revealed.
    5. Is the other line already in use? Then busy signal.
@@ -176,10 +176,10 @@ Classic North American tones, so it feels like an old phone. Recordings are shor
 | Busy signal | The other line is in use | 480 + 620 Hz, 0.5 s on, 0.5 s off |
 | Fast busy | Pickup during your own quiet hours or pause; the other line is offline; the server is down | 480 + 620 Hz, 0.25 s on, 0.25 s off |
 | Three rising tones (SIT) | Before every recording | 913.8, 1370.6, 1776.7 Hz |
-| "Not in service" | Unknown number | SIT, then recording |
+| "Cannot be completed as dialed" | Unknown number, or not four digits | SIT, then recording |
 | "Ask a grown-up" | Number isn't strung | SIT, then recording |
 | "Isn't taking calls right now" | Other line in quiet hours or paused | SIT, then recording |
-| "Use a grown-up's phone" | 911 or a wrong-length number | SIT, then "This phone can't call 911. Use a grown-up's phone." |
+| "Use a grown-up's phone" | 911 | SIT, then "This phone can't call 911. Use a grown-up's phone." |
 | Pips | A minute before the call-length limit | Three short beeps |
 | Join tone | Another handset picks up mid-call | A click and a soft tone, heard by everyone |
 | Hang-up | The other side hangs up | A click, a moment of quiet, then dial tone |

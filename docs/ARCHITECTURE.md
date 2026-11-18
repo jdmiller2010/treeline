@@ -136,14 +136,16 @@ A handset's identity comes from the **channel name** (`PJSIP/<account>-<n>`), no
 
 ```mermaid
 flowchart TD
-    start([A handset dials]) --> a{"911 or not<br/>4 digits?"}
+    start([A handset dials]) --> a{"Dialed 911?"}
     a -- yes --> r911["No 911 message"]
-    a -- no --> b{"Caller's line paused,<br/>quiet, out of minutes,<br/>or already on a call?"}
+    a -- no --> a2{"Four digits?"}
+    a2 -- no --> cc["Cannot be completed<br/>as dialed"]
+    a2 -- yes --> b{"Caller's line paused,<br/>quiet, out of minutes,<br/>or already on a call?"}
     b -- yes --> fb1["Fast busy / busy"]
     b -- no --> c{"Hunting: too many<br/>unstrung dials?"}
     c -- yes --> fb2["Fast busy + note to parents"]
     c -- no --> d{"Number exists<br/>(and not our own)?"}
-    d -- no --> nis["Not in service"]
+    d -- no --> nis["Cannot be completed<br/>as dialed"]
     d -- yes --> e{"Live string between<br/>the two treehouses?"}
     e -- no --> ns["Ask a grown-up<br/>+ note to caller's parents"]
     e -- yes --> f{"Too many repeat calls<br/>to this treehouse?"}

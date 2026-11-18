@@ -11,6 +11,10 @@ const JOIN = "0001";                      // dial this to join the call your lin
 const HOWL_AFTER = 30000;                 // seconds off the hook, doing nothing, before the howler
 const INTERDIGIT = 6000;                  // wait this long for another digit, then send what was dialed
 
+// Four digits make a number. Say so, and show how far along the dialing is.
+const HOW_TO_DIAL = "Turn a number round to the metal stop, then let go. Four numbers dial a friend.";
+const progress = (digits) => "● ".repeat(digits.length) + "○ ".repeat(Math.max(0, 4 - digits.length));
+
 const dark = window.matchMedia("(prefers-color-scheme: dark)");
 const applyTheme = () => document.documentElement.setAttribute("data-theme", dark.matches ? "dark" : "light");
 applyTheme(); dark.addEventListener?.("change", applyTheme);
@@ -140,7 +144,7 @@ function decideLift(state) {
   if (state === "disconnected") { S.phase = "off"; tones.play("fastbusy"); say("This phone is switched off", "A parent turned it off for now."); render(); return; }
   if (state === "quiet") { S.phase = "sleep"; tones.play("fastbusy"); say("The phone is sleeping", "Try again later."); render(); return; }
   if (state === "in_call" && Date.now() >= S.noJoinUntil) { joinCall(); return; }
-  S.phase = "dialtone"; tones.play("dial"); say("Dial a number", ""); render();
+  S.phase = "dialtone"; tones.play("dial"); say("Dial a number", HOW_TO_DIAL); render();
   later("howl", HOWL_AFTER, howl);
 }
 
@@ -168,7 +172,7 @@ function onDigit(d) {
   if (S.phase === "dialtone" || S.phase === "howl") { tones.stop(); cancel("howl"); S.phase = "dialing"; }
   if (S.phase !== "dialing") return;
   S.digits += String(d);
-  say("Dial a number", "•".repeat(S.digits.length));
+  say("Dial a number", progress(S.digits));
   render();
   cancel("inter");
   if (S.digits.length >= 4 || S.digits === "911") return place(S.digits);

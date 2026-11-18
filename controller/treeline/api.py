@@ -268,6 +268,9 @@ def describe_call(c, tid):
     if r == rules.NOT_STRUNG:
         return {"label": "Not strung", "tone": "berry", "icon": "lock",
                 "detail": "Not strung to your treehouse"}
+    if r == rules.INCOMPLETE:
+        return {"label": "Couldn't complete", "tone": "berry", "icon": "lock",
+                "detail": "The number dialed wasn't four digits"}
     if r == rules.NO_911:
         return {"label": "Can't call 911", "tone": "berry", "icon": "lock",
                 "detail": "Outside numbers aren't available"}
@@ -293,7 +296,7 @@ def describe_call(c, tid):
 def visible_to_callee(c):
     """What the called treehouse's parents see. Attempts that never had a
     live string, and the caller's own rules, stay on the caller's side."""
-    if c["result"] in (rules.NOT_IN_SERVICE, rules.NOT_STRUNG, rules.NO_911):
+    if c["result"] in (rules.NOT_IN_SERVICE, rules.NOT_STRUNG, rules.NO_911, rules.INCOMPLETE):
         return False
     why = c["reason"] or ""
     return not (why.startswith("caller_") or why in ("unstrung_limit", "repeat_limit"))

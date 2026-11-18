@@ -105,10 +105,25 @@ class Decide(unittest.TestCase):
         self.assertTrue(d.allowed)
         self.assertEqual([h["id"] for h in d.handsets], [self.alex_h["id"]])
 
-    def test_911_and_wrong_length(self):
-        for dialed in ("911", "12", "20021", "abcd", ""):
+    def test_911_gets_its_own_message(self):
+        d = self.decide("911")
+        self.assertEqual((d.result, d.sound), (rules.NO_911, rules.SOUND_NO_911))
+
+    def test_any_other_wrong_length_cannot_be_completed_as_dialed(self):
+        for dialed in ("0", "12", "20", "20021", "abcd", "", "91"):
             d = self.decide(dialed)
-            self.assertEqual((d.result, d.sound), (rules.NO_911, rules.SOUND_NO_911), dialed)
+            self.assertEqual((d.result, d.reason, d.sound), (rules.INCOMPLETE, "wrong_length", rules.SOUND_CANNOT_COMPLETE), dialed)
+
+    def test_four_digits_that_nobody_has_say_the_same_thing(self):
+        d = self.decide("9111")
+        self.assertEqual((d.result, d.sound), (rules.NOT_IN_SERVICE, rules.SOUND_CANNOT_COMPLETE))
+
+    def test_fumbled_dials_do_not_count_toward_the_hunting_limit(self):
+        db.set_setting(self.c, "unstrung_limit_count", 2)
+        for _ in range(5):
+            self.c.execute("INSERT INTO call(started_at,caller_treehouse,dialed,state,result) VALUES(?,?,?,?,?)",
+                           (db.iso(self.NOON), self.sam, "0", "ended", "incomplete"))
+        self.assertTrue(self.decide("2002").allowed)
 
     def test_911_beats_everything_even_when_paused(self):
         self.set(self.sam, paused=1)
@@ -116,7 +131,7 @@ class Decide(unittest.TestCase):
 
     def test_no_such_number(self):
         d = self.decide("2999")
-        self.assertEqual((d.result, d.sound), (rules.NOT_IN_SERVICE, rules.SOUND_NOT_IN_SERVICE))
+        self.assertEqual((d.result, d.sound), (rules.NOT_IN_SERVICE, rules.SOUND_CANNOT_COMPLETE))
 
     def test_own_number_and_system_numbers_are_not_in_service(self):
         self.assertEqual(self.decide("2001").result, rules.NOT_IN_SERVICE)

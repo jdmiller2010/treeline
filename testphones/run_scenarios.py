@@ -278,10 +278,16 @@ def not_strung(w):
 
 
 def no_911(w):
-    """911 and a wrong-length number both get the 911 message."""
-    c1 = call_and_check(w, "sam", "911")
-    c2 = call_and_check(w, "sam", "12")
-    return c1["result"] == "no_911" and c2["result"] == "no_911", [dict(c1), dict(c2)]
+    """Dialing 911 gets the message that this phone can't call 911."""
+    c = call_and_check(w, "sam", "911")
+    return c["result"] == "no_911", dict(c)
+
+
+def incomplete_number(w):
+    """A number that isn't four digits 'cannot be completed as dialed', not the 911 message."""
+    c1 = call_and_check(w, "sam", "12")
+    c2 = call_and_check(w, "sam", "01020")
+    return (c1["result"] == "incomplete" and c2["result"] == "incomplete"), [dict(c1), dict(c2)]
 
 
 def callee_paused(w):
@@ -447,7 +453,7 @@ def join_with_no_call(w):
         s.close()
 
 
-SCENARIOS = [dial_by_number, not_in_service, not_strung, no_911, callee_paused,
+SCENARIOS = [dial_by_number, not_in_service, not_strung, no_911, incomplete_number, callee_paused,
              caller_quiet_hours, callee_quiet_hours, busy_line, callee_offline,
              ring_timeout, time_limit, repeat_limit, unstrung_hunting, daily_minutes,
              shared_line, join_mid_call, join_with_no_call, disconnected_phone_is_skipped,

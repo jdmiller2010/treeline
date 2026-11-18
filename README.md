@@ -36,10 +36,11 @@ Every call is checked in this order (see `controller/treeline/rules.py`):
 
 | Rule | What happens |
 | --- | --- |
-| **911** or a wrong-length number | The phone says it can't call 911 |
+| **911** | The phone says it can't call 911 |
+| A number that **isn't four digits** | "Your call cannot be completed as dialed" |
 | The caller's line is **paused**, in **quiet hours**, out of **daily minutes** or **busy** | Fast busy (or busy) |
 | Too many **calls to a number that isn't strung** (hunting) | Fast busy, and the parents get a note |
-| The number doesn't exist | Three rising tones, "The number you have dialed is not in service" |
+| The number doesn't exist | Three rising tones, "Your call cannot be completed as dialed" |
 | **No live string** between the two treehouses | "You can't call that number from this phone. Ask a grown-up." The parents get a note |
 | Too many **repeat calls** to one treehouse | Fast busy |
 | The other line is **paused**, in **quiet hours** or out of minutes | "The treehouse you're calling isn't taking calls right now." (The same words for each, so one family's schedule isn't revealed) |

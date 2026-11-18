@@ -31,7 +31,7 @@ TONES = {
 }
 # Recordings after the three rising tones.
 MESSAGES = {
-    rules.SOUND_NOT_IN_SERVICE: "sound:treeline/not_in_service",
+    rules.SOUND_CANNOT_COMPLETE: "sound:treeline/cannot_complete",
     rules.SOUND_ASK_GROWN_UP: "sound:treeline/ask_grown_up",
     rules.SOUND_NOT_TAKING_CALLS: "sound:treeline/not_taking_calls",
     rules.SOUND_NO_911: "sound:treeline/no_911",

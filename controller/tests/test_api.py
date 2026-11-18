@@ -597,7 +597,7 @@ class CallLogs(unittest.TestCase):
 
     def test_describe_every_result(self):
         for r in (rules.CONNECTED, rules.NO_ANSWER, rules.BUSY, rules.NOT_IN_SERVICE, rules.NOT_STRUNG,
-                  rules.QUIET_OR_PAUSED, rules.OFFLINE, rules.NO_911, rules.TIME_LIMIT, rules.REPEAT_LIMIT,
+                  rules.QUIET_OR_PAUSED, rules.OFFLINE, rules.NO_911, rules.INCOMPLETE, rules.TIME_LIMIT, rules.REPEAT_LIMIT,
                   rules.DAILY_LIMIT, rules.CALLER_HUNG_UP, rules.DISCONNECTED, "dropped"):
             for tid in (1, 2):
                 d = api.describe_call({"caller_treehouse": 1, "result": r, "reason": "", "talk_sec": 90,
