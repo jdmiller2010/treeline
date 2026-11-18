@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Open-source licenses · Treeline</title>
+<meta name="theme-color" content="#f0e7d3">
+<link rel="stylesheet" href="/ui/css/tokens.css">
+<link rel="stylesheet" href="/ui/css/treeline.css">
+<link rel="icon" href="/ui/logo/exports/favicon.svg" type="image/svg+xml">
+</head>
+<body class="tl-root" style="margin:0">
+<main class="tl-page tl-page--narrow">
+<div class="tl-stack tl-stack--sections">
+<div class="tl-stack tl-stack--related">
+  <a class="tl-btn tl-btn--quiet tl-btn--sm" href="/parent/#/about"><span class="tl-btn__label">‹ Back</span></a>
+  <h1 class="display-md">Open-source licenses</h1>
+</div>
+<p class="tl-measure">Treeline&#x27;s own code is under the PolyForm Noncommercial License 1.0.0 (see <code>LICENSE</code>), and its design assets under CC BY-NC 4.0 (see <code>design/LICENSE-ASSETS.txt</code>). Treeline also uses the open-source software below. Each keeps its own license; nothing here changes those terms.</p>
+<p class="tl-measure">This file is the source for the **Open-source licenses** page in the parent app and the softphone. Keep it up to date when a dependency is added or removed.</p>
+<section class="tl-stack"><h2 class="title-lg">Shipped with Treeline</h2>
+<div class="tl-card"><div class="tl-stack tl-stack--group">
+<dl class="tl-dl">
+<div class="tl-dl__row"><dt>Component</dt><dd><a href="https://github.com/undercasetype/Fraunces" rel="noopener">Fraunces</a></dd></div>
+<div class="tl-dl__row"><dt>Used for</dt><dd>Display typeface (<code>design/ui/fonts/</code>)</dd></div>
+<div class="tl-dl__row"><dt>License</dt><dd>SIL Open Font License 1.1 (<code>design/ui/fonts/OFL-Fraunces.txt</code>)</dd></div>
+<div class="tl-dl__row"><dt>Copyright</dt><dd>2020 The Fraunces Project Authors</dd></div>
+</dl>
+<dl class="tl-dl">
+<div class="tl-dl__row"><dt>Component</dt><dd><a href="https://github.com/erikdkennedy/figtree" rel="noopener">Figtree</a></dd></div>
+<div class="tl-dl__row"><dt>Used for</dt><dd>Interface typeface (<code>design/ui/fonts/</code>)</dd></div>
+<div class="tl-dl__row"><dt>License</dt><dd>SIL Open Font License 1.1 (<code>design/ui/fonts/OFL-Figtree.txt</code>)</dd></div>
+<div class="tl-dl__row"><dt>Copyright</dt><dd>2022 The Figtree Project Authors</dd></div>
+</dl>
+</div></div>
+</section>
+<section class="tl-stack"><h2 class="title-lg">Installed by the containers (not copied into this repo)</h2>
+<div class="tl-card"><div class="tl-stack tl-stack--group">
+<dl class="tl-dl">
+<div class="tl-dl__row"><dt>Component</dt><dd><a href="https://www.asterisk.org/" rel="noopener">Asterisk</a> (Ubuntu package <code>asterisk</code>)</dd></div>
+<div class="tl-dl__row"><dt>Used for</dt><dd>Call server. Runs as its own program; Treeline talks to it over its REST interface (ARI).</dd></div>
+<div class="tl-dl__row"><dt>License</dt><dd>GPL-2.0</dd></div>
+</dl>
+<dl class="tl-dl">
+<div class="tl-dl__row"><dt>Component</dt><dd>Asterisk core sounds, English (Ubuntu package <code>asterisk-core-sounds-en</code>)</dd></div>
+<div class="tl-dl__row"><dt>Used for</dt><dd>Built-in prompts during development</dd></div>
+<div class="tl-dl__row"><dt>License</dt><dd>CC BY-SA 3.0</dd></div>
+</dl>
+<dl class="tl-dl">
+<div class="tl-dl__row"><dt>Component</dt><dd><a href="https://github.com/pallets/flask" rel="noopener">Flask</a></dd></div>
+<div class="tl-dl__row"><dt>Used for</dt><dd>The API</dd></div>
+<div class="tl-dl__row"><dt>License</dt><dd>BSD-3-Clause</dd></div>
+</dl>
+<dl class="tl-dl">
+<div class="tl-dl__row"><dt>Component</dt><dd><a href="https://github.com/benoitc/gunicorn" rel="noopener">gunicorn</a></dd></div>
+<div class="tl-dl__row"><dt>Used for</dt><dd>Runs the API</dd></div>
+<div class="tl-dl__row"><dt>License</dt><dd>MIT</dd></div>
+</dl>
+<dl class="tl-dl">
+<div class="tl-dl__row"><dt>Component</dt><dd><a href="https://github.com/websocket-client/websocket-client" rel="noopener">websocket-client</a></dd></div>
+<div class="tl-dl__row"><dt>Used for</dt><dd>Control app connection to Asterisk events</dd></div>
+<div class="tl-dl__row"><dt>License</dt><dd>Apache-2.0</dd></div>
+</dl>
+<dl class="tl-dl">
+<div class="tl-dl__row"><dt>Component</dt><dd><a href="https://github.com/espeak-ng/espeak-ng" rel="noopener">eSpeak NG</a> (Ubuntu package <code>espeak-ng</code>)</dd></div>
+<div class="tl-dl__row"><dt>Used for</dt><dd>Builds the placeholder operator voice at image build time; not shipped in the running app</dd></div>
+<div class="tl-dl__row"><dt>License</dt><dd>GPL-3.0-or-later</dd></div>
+</dl>
+<dl class="tl-dl">
+<div class="tl-dl__row"><dt>Component</dt><dd><a href="https://sox.sourceforge.net/" rel="noopener">SoX</a> (Ubuntu package <code>sox</code>)</dd></div>
+<div class="tl-dl__row"><dt>Used for</dt><dd>Converts the operator messages to 8 kHz WAV at image build time</dd></div>
+<div class="tl-dl__row"><dt>License</dt><dd>GPL-2.0-or-later</dd></div>
+</dl>
+<dl class="tl-dl">
+<div class="tl-dl__row"><dt>Component</dt><dd><a href="https://www.sqlite.org/" rel="noopener">SQLite</a> (built into Python)</dd></div>
+<div class="tl-dl__row"><dt>Used for</dt><dd>The database</dd></div>
+<div class="tl-dl__row"><dt>License</dt><dd>Public domain</dd></div>
+</dl>
+<dl class="tl-dl">
+<div class="tl-dl__row"><dt>Component</dt><dd><a href="https://github.com/baresip/baresip" rel="noopener">baresip</a> (Ubuntu package <code>baresip-core</code>)</dd></div>
+<div class="tl-dl__row"><dt>Used for</dt><dd>Scripted test phones only</dd></div>
+<div class="tl-dl__row"><dt>License</dt><dd>BSD-3-Clause</dd></div>
+</dl>
+<dl class="tl-dl">
+<div class="tl-dl__row"><dt>Component</dt><dd>Ubuntu 24.04 and the official Python 3.12 image</dd></div>
+<div class="tl-dl__row"><dt>Used for</dt><dd>Container base images</dd></div>
+<div class="tl-dl__row"><dt>License</dt><dd>Various open-source licenses, listed in each image</dd></div>
+</dl>
+</div></div>
+<p class="tl-measure">If you publish built container images, the GPL-2.0 and CC BY-SA 3.0 terms above apply to those images: include the license texts and point to the source of the packages (the Ubuntu archive).</p>
+</section>
+<section class="tl-stack"><h2 class="title-lg">Planned (add here when used)</h2>
+<ul class="tl-measure">
+<li>ESP-IDF and ESP-ADF (Espressif) for the custom rotary phone firmware.</li>
+<li>The WebRTC/SIP library chosen for the tablet softphone.</li>
+</ul>
+</section>
+<p class="caption" style="color:var(--ink-muted)">© 2026 Jordan Miller · <a href="mailto:jdmiller2010@gmail.com" style="color:inherit">jdmiller2010@gmail.com</a> · <a href="https://buymeacoffee.com/REPLACE-ME" style="color:inherit">Support Treeline</a> · Open-source licenses</p>
+</div>
+</main>
+</body>
+</html>

@@ -17,8 +17,12 @@ This file is the source for the **Open-source licenses** page in the parent app 
 | --- | --- | --- |
 | [Asterisk](https://www.asterisk.org/) (Ubuntu package `asterisk`) | Call server. Runs as its own program; Treeline talks to it over its REST interface (ARI). | GPL-2.0 |
 | Asterisk core sounds, English (Ubuntu package `asterisk-core-sounds-en`) | Built-in prompts during development | CC BY-SA 3.0 |
-| [requests](https://github.com/psf/requests) | Control app HTTP client | Apache-2.0 |
+| [Flask](https://github.com/pallets/flask) | The API | BSD-3-Clause |
+| [gunicorn](https://github.com/benoitc/gunicorn) | Runs the API | MIT |
 | [websocket-client](https://github.com/websocket-client/websocket-client) | Control app connection to Asterisk events | Apache-2.0 |
+| [eSpeak NG](https://github.com/espeak-ng/espeak-ng) (Ubuntu package `espeak-ng`) | Builds the placeholder operator voice at image build time; not shipped in the running app | GPL-3.0-or-later |
+| [SoX](https://sox.sourceforge.net/) (Ubuntu package `sox`) | Converts the operator messages to 8 kHz WAV at image build time | GPL-2.0-or-later |
+| [SQLite](https://www.sqlite.org/) (built into Python) | The database | Public domain |
 | [baresip](https://github.com/baresip/baresip) (Ubuntu package `baresip-core`) | Scripted test phones only | BSD-3-Clause |
 | Ubuntu 24.04 and the official Python 3.12 image | Container base images | Various open-source licenses, listed in each image |
 

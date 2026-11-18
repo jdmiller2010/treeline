@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Treeline</title>
+<meta name="description" content="Treeline: a house-to-house phone for kids, with parents holding the keys.">
+<meta name="theme-color" content="#f0e7d3">
+<link rel="stylesheet" href="/ui/css/tokens.css">
+<link rel="stylesheet" href="/ui/css/treeline.css">
+<link rel="icon" href="/ui/logo/exports/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/ui/logo/exports/favicon.ico" sizes="48x48">
+<link rel="apple-touch-icon" href="/ui/logo/exports/apple-touch-icon.png">
+<link rel="manifest" href="/parent/manifest.webmanifest">
+<style>
+  /* Empty message slots take no room, so they don't add a gap in a form. */
+  [data-error]:empty, [id$="-error"]:empty, #dev-note:empty { display: none; }
+  /* Printing the phone book: only the card. */
+  @media print {
+    .tl-appbar, .tl-nav, .tl-toasts, .tl-footer, .tl-noprint { display: none !important; }
+    .tl-app__layout { display: block !important; }
+  }
+</style>
+</head>
+<body class="tl-root" style="margin:0">
+<div id="root"></div>
+<noscript><p class="body" style="padding:var(--space-6)">Treeline needs JavaScript to run. Please turn it on and reload.</p></noscript>
+<script src="/ui/js/treeline.js"></script>
+<script type="module" src="/parent/js/app.js"></script>
+</body>
+</html>

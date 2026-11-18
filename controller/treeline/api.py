@@ -239,7 +239,7 @@ def describe_call(c, tid):
                 "detail": "Not strung to your treehouse"}
     if r == rules.NO_911:
         return {"label": "Can't call 911", "tone": "berry", "icon": "lock",
-                "detail": "This phone can't call 911 or outside numbers"}
+                "detail": "Outside numbers aren't available"}
     if r == rules.QUIET_OR_PAUSED:
         if why == "caller_quiet":
             return {"label": "Quiet hours", "tone": "sky", "icon": "moon", "detail": "During your quiet hours"}
@@ -939,13 +939,16 @@ def pair_claim():
     rate_limit(f"claim:{g.email}", 10, 600)
     data = body()
     code = "".join(c for c in str(data.get("code", "")) if c.isdigit())
+    kind = data.get("kind") or "softphone"
+    if kind not in ("softphone", "rotary"):
+        raise ApiError("Pick a tablet or a Treeline phone.")
     name = clean_name(data.get("name") or "Tablet", "handset name")
     row = conn().execute("SELECT * FROM pairing WHERE code=?", (code,)).fetchone()
     if not row or row["expires_at"] < db.iso() or row["sip_user"]:
         raise ApiError("That code didn't work. Ask the tablet for a new one.", 400, "bad_pair")
     if len(db.handsets_of(conn(), g.th["id"])) >= 8:
         raise ApiError("A treehouse can have up to 8 handsets.", 409)
-    hid, user, secret = db.create_handset(conn(), g.th["id"], "softphone", name)
+    hid, user, secret = db.create_handset(conn(), g.th["id"], kind, name)
     conn().execute("UPDATE pairing SET sip_user=?, sip_secret=?, handset_id=?, claimed_at=? WHERE code=?",
                    (user, secret, hid, db.iso(), code))
     pjsip.write(conn())
