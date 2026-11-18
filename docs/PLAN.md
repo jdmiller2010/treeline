@@ -84,7 +84,7 @@ This plan turns the decisions on the Treeline planning whiteboard into phases. E
 7. **Our treehouse:** the number, who lives here, handsets (rename, ring test, remove instantly), grown-ups and sitters.
 8. **Phone book:** a printable card of every strung treehouse and its number, to keep by the phone.
 9. **Account** (Menu): settings, privacy and safety, the parent action log, sign out, leave the Treeline (strings end, the other families are told, the number rests a year), and delete the treehouse and all its data.
-10. **Alerts:** email first (strings waiting, a handset offline, repeated blocked attempts, an optional evening summary); push notifications in Phase 5.
+10. **Alerts:** email first (strings waiting, a handset offline, repeated blocked attempts, an optional evening summary); push notifications in Phase 4.
 11. **Footer and about:** "© 2026 Jordan Miller · jdmiller2010@gmail.com · Support Treeline · Open-source licenses" at the bottom of every page. The licenses page is built from `THIRD_PARTY_NOTICES.md`.
 
 **Done when:** two test families can set up from nothing, string their treehouses with a ladder code, change rules, and see the same call in both their logs, all without touching the server.
@@ -112,9 +112,27 @@ This plan turns the decisions on the Treeline planning whiteboard into phases. E
 
 ---
 
-## Phase 4: A real rotary phone through a SIP adapter
+## Phase 4: Deploy and pilot
 
-**Goal:** a vintage rotary phone works on the Treeline with an off-the-shelf adapter, so the pilot can start before the custom build.
+**Goal:** Treeline runs on a small cloud server and 2–3 friend families use it every day, on tablet softphones. No phone hardware needed yet.
+
+**Build**
+
+1. **Hosting:** the parent app and softphone on free static hosting (Firebase Hosting or GitHub Pages); Asterisk, the control app and the API on a small VM (Oracle Cloud Always Free, or about $5 a month on Lightsail, Hetzner or DigitalOcean).
+2. **Security:** TLS for SIP and HTTPS everywhere, SRTP for audio, a unique password for every handset, ARI never exposed to the internet, rate limits on sign-in and SIP.
+3. **Reliability:** nightly database backups, an uptime check, and an alert to parents when their handset goes offline. If the server is down, handsets fail with fast busy.
+4. **Push notifications** for the parent app.
+5. **Records:** call records kept 90 days by default, adjustable per treehouse; parent actions kept a year.
+6. **Privacy before inviting anyone:** parent consent at setup, a short plain-language privacy policy (what's stored, for how long, who sees it, nothing recorded), and real deletion. The US kids' privacy law (COPPA) may apply once families beyond friends join; get advice before then.
+7. **Pilot:** 2–3 families from the neighborhood, each with a dedicated tablet running the rotary softphone. Collect what confuses kids and parents and fix it before adding real phones in Phase 5.
+
+**Done when:** the pilot families have used it for two weeks with no lost calls, no surprises in the audit, and every parent able to manage their treehouse alone.
+
+---
+
+## Phase 5: A real rotary phone through a SIP adapter
+
+**Goal:** pilot families can add a real vintage rotary phone with an off-the-shelf adapter, alongside their tablets, before the custom build.
 
 **Build**
 
@@ -125,25 +143,7 @@ This plan turns the decisions on the Treeline planning whiteboard into phases. E
 5. **Known limit:** the adapter makes its own dial tone, so fast busy during your own quiet hours comes after dialing, not on pickup. Phase 6 fixes this on the custom phone.
 6. **Echo and volume:** tune the adapter's gain and echo settings for old carbon-style handsets.
 
-**Done when:** a rotary phone dials a softphone and a tablet by number, hears the right sound in every case in the call flow, and shows up in the audit as its own handset.
-
----
-
-## Phase 5: Deploy and pilot
-
-**Goal:** Treeline runs on a small cloud server and 2–3 friend families use it every day.
-
-**Build**
-
-1. **Hosting:** the parent app and softphone on free static hosting (Firebase Hosting or GitHub Pages); Asterisk, the control app and the API on a small VM (Oracle Cloud Always Free, or about $5 a month on Lightsail, Hetzner or DigitalOcean).
-2. **Security:** TLS for SIP and HTTPS everywhere, SRTP for audio, a unique password for every handset, ARI never exposed to the internet, rate limits on sign-in and SIP.
-3. **Reliability:** nightly database backups, an uptime check, and an alert to parents when their handset goes offline. If the server is down, handsets fail with fast busy.
-4. **Push notifications** for the parent app.
-5. **Records:** call records kept 90 days by default, adjustable per treehouse; parent actions kept a year.
-6. **Privacy before inviting anyone:** parent consent at setup, a short plain-language privacy policy (what's stored, for how long, who sees it, nothing recorded), and real deletion. The US kids' privacy law (COPPA) may apply once families beyond friends join; get advice before then.
-7. **Pilot:** 2–3 families from the neighborhood, with adapter phones and tablets. Collect what confuses kids and parents and fix it before Phase 6.
-
-**Done when:** the pilot families have used it for two weeks with no lost calls, no surprises in the audit, and every parent able to manage their treehouse alone.
+**Done when:** a pilot family's rotary phone and tablet share their line, the rotary dials other treehouses by number, hears the right sound in every case in the call flow, and shows up in the audit as its own handset.
 
 ---
 

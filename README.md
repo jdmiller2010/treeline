@@ -178,8 +178,8 @@ The full phased plan is in **[docs/PLAN.md](docs/PLAN.md)**:
 1. **Platform core:** treehouses, 4-digit numbers, strings, classic phone sounds and a full call audit (replaces speed dials).
 2. **Parent app:** setup, strings, rules, calls and the phone book, built from `design/`.
 3. **Tablet rotary softphone** and several handsets on one line.
-4. **A real rotary phone** through a SIP adapter (Grandstream HT801).
-5. **Deploy and pilot** with 2–3 friend families.
+4. **Deploy and pilot** with 2–3 friend families on tablet softphones.
+5. **A real rotary phone** through a SIP adapter (Grandstream HT801).
 6. **Custom rotary phone:** ESP32-S3, ES8388 codec and AG1171 SLIC.
 
 ## Hosting later
