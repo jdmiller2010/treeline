@@ -244,6 +244,7 @@ Full markup for each part is in the AppShell, AppBar, NavBar, Sheet, ListDetail 
 | StatTile | Tiles wrap to as many 140px columns as fit, often one or two | Three or four across |
 | Tabs | The tab row scrolls sideways if it doesn't fit; never wraps | One row |
 | Badge | On the icon in the bottom tabs | On the icon in the rail; at the end of the row in the sidebar |
+| RotaryPhone | Fills the width up to 460, centered; the notice under it | Same, centered on the softphone screen |
 | ListDetail | One pane at a time; tapping a row shows the detail with a back link | List at 360 beside the detail; no back link |
 | Page templates | Single column; summary cards stack | Overview gets two summary cards; Settings form caps at 440 on the page's left edge |
 | Button | In `.tl-actions--stack` and sheets: full width, primary on top | Natural width, right-aligned in `.tl-actions`, primary last |

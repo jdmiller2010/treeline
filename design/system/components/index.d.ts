@@ -117,6 +117,19 @@ export interface StatTileProps { label: string; value: React.ReactNode; unit?: s
 export declare function StatTile(props: StatTileProps): React.ReactElement;
 export interface TabsProps { label: string; tabs: Array<{ value: string; label: string; content: React.ReactNode; badge?: number }>; value?: string; defaultValue?: string; onChange?: (v: string) => void; id?: string; className?: string }
 export declare function Tabs(props: TabsProps): React.ReactElement;
+export interface RotaryPhoneApi { lift(): void; hangUp(): void; dial(digit: number): void; isOffHook(): boolean }
+export interface RotaryPhoneProps {
+  /** The treehouse's own 4-digit number, shown in the middle of the dial. */ number?: string;
+  colorway?: "moss" | "ivory" | "berry";
+  /** Controlled hook state. Leave out to let taps on the handset lift and hang up. */ offHook?: boolean;
+  defaultOffHook?: boolean;
+  /** Called with each dialed digit while the handset is lifted, once the dial has returned. */ onDigit?: (digit: number) => void;
+  onHook?: (offHook: boolean) => void;
+  /** Once per pulse while the dial returns: play a click here. */ onPulse?: (e: { digit: number; pulse: number }) => void;
+  /** The "Can't call 911" line under the phone. On by default; only turn it off where the screen already says it. */ notice?: boolean;
+  apiRef?: { current: RotaryPhoneApi | null }; id?: string; className?: string;
+}
+export declare function RotaryPhone(props: RotaryPhoneProps): React.ReactElement;
 export interface NavItem { icon: string; label: string; href?: string; current?: boolean; /** A count badge on the icon, e.g. waiting approvals. */ badge?: number; badgeLabel?: string; onClick?: (e: any) => void }
 export interface NavBarProps { items: NavItem[]; brand?: React.ReactNode; footer?: React.ReactNode; label?: string; className?: string }
 export declare function NavBar(props: NavBarProps): React.ReactElement;
@@ -140,7 +153,7 @@ declare global {
       Switch: typeof Switch; Checkbox: typeof Checkbox; TextField: typeof TextField; Card: typeof Card;
       FriendRow: typeof FriendRow; ApprovalCard: typeof ApprovalCard; QuietHours: typeof QuietHours; CallLogItem: typeof CallLogItem;
       Illustration: typeof Illustration; EmptyState: typeof EmptyState; LeafDivider: typeof LeafDivider; LeafLoader: typeof LeafLoader;
-      Alert: typeof Alert; Toast: typeof Toast; Toasts: typeof Toasts; Select: typeof Select; TimeField: typeof TimeField; TimeRange: typeof TimeRange; SegmentedControl: typeof SegmentedControl; Menu: typeof Menu; RadioGroup: typeof RadioGroup; Textarea: typeof Textarea; PasswordField: typeof PasswordField; CodeInput: typeof CodeInput; Slider: typeof Slider; Badge: typeof Badge; Steps: typeof Steps; ProgressBar: typeof ProgressBar; DescriptionList: typeof DescriptionList; Skeleton: typeof Skeleton; Disclosure: typeof Disclosure; Accordion: typeof Accordion; StatTile: typeof StatTile; Tabs: typeof Tabs;
+      Alert: typeof Alert; Toast: typeof Toast; Toasts: typeof Toasts; Select: typeof Select; TimeField: typeof TimeField; TimeRange: typeof TimeRange; SegmentedControl: typeof SegmentedControl; Menu: typeof Menu; RadioGroup: typeof RadioGroup; Textarea: typeof Textarea; PasswordField: typeof PasswordField; CodeInput: typeof CodeInput; Slider: typeof Slider; Badge: typeof Badge; Steps: typeof Steps; ProgressBar: typeof ProgressBar; DescriptionList: typeof DescriptionList; Skeleton: typeof Skeleton; Disclosure: typeof Disclosure; Accordion: typeof Accordion; StatTile: typeof StatTile; Tabs: typeof Tabs; RotaryPhone: typeof RotaryPhone;
       Brand: typeof Brand; NavBar: typeof NavBar; AppBar: typeof AppBar; AppShell: typeof AppShell; Sheet: typeof Sheet;
       iconNames: IconName[]; illustrationNames: IllustrationName[];
     };

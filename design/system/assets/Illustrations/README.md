@@ -22,3 +22,10 @@ Ink line art over watercolor washes, drawn in Daylight colors for use as images.
 
 Full rules: the brand book, **Using illustrations**.
 
+
+## Rotary phone (`rotary/`)
+
+The softphone's 1960s desk phone, drawn in the same ink-and-watercolor hand but fully three-dimensional. In the app, use the `RotaryPhone` component, which turns the dial and lifts the handset; these files are for docs, the website, print and other tools.
+
+- `rotary-phone-{moss,ivory,berry}.svg` and `…-lifted.svg`: the whole phone, on the hook and with the handset lifted.
+- `rotary-part-1-deck.svg` … `rotary-part-7-glare-and-stop.svg`: the seven layers, back to front (deck, cord, handset, body with the number ring, the card behind the wheel, the finger wheel, the glare and finger stop), all on one 400 × 440 canvas so they stack exactly. The finger wheel turns about (200, 292) inside the dial's tilt (scale 1 × 0.93); the handset lifts by `translate(4 -74) rotate(4 94 150)`, and the cord is redrawn to follow it. Moss colors; the component sets any colorway through `--tlp-l/m/d/s`.

@@ -1,0 +1,23 @@
+<!-- @dsCard group="Softphone" height=875 page subtitle="Drag a number to the finger stop and let go. Tap the handset to lift it." -->
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>RotaryPhone — Treeline</title></head>
+<body>
+<div id="root" class="tl-root"></div>
+<script>
+  var T = window.Treeline, h = React.createElement;
+  function Demo() {
+    var st = React.useState(''), dialed = st[0], setDialed = st[1];
+    var hk = React.useState(false), off = hk[0], setOff = hk[1];
+    return h('div', {style:{padding:'24px', display:'grid', gridTemplateColumns:'minmax(0,1.4fr) minmax(0,1fr)', gap:'32px', alignItems:'start'}},
+      h('div', {className:'tl-stack', style:{alignItems:'center'}},
+        h(T.RotaryPhone, {id:'demo', number:'4821', colorway:'moss', onHook:function(o){ setOff(o); if (!o) setDialed(''); }, onDigit:function(d){ setDialed(function(x){ return (x + d).slice(-4); }); }}),
+        h('p', {className:'tl-card__body', style:{margin:0, textAlign:'center'}}, off ? (dialed ? 'Dialed so far: ' + dialed : 'Handset lifted: dial a number') : 'On the hook. Tap the handset to lift it.')),
+      h('div', {className:'tl-stack tl-stack--group'},
+        h(T.RotaryPhone, {id:'ivory', number:'4821', colorway:'ivory', defaultOffHook:true, notice:false}),
+        h(T.RotaryPhone, {id:'berry', number:'4821', colorway:'berry', notice:false})));
+  }
+  ReactDOM.createRoot(document.getElementById('root')).render(h(Demo));
+</script>
+</body>
+</html>
