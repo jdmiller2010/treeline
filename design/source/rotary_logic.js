@@ -116,7 +116,9 @@
       if (/^[0-9]$/.test(ev.key)) { ev.preventDefault(); dialDigit(+ev.key); }
     });
     setLift(state.offHook ? 1 : 0); setTurn(0);
-    var api = { lift: function () { setHook(true); }, hangUp: function () { setHook(false); }, dial: dialDigit,
+    // Ringing: only the handset trembles, a little, in bursts like the bell (see bundle.css).
+    function setRinging(on) { root.classList.toggle("is-ringing", !!on); }
+    var api = { lift: function () { setHook(true); }, hangUp: function () { setHook(false); }, dial: dialDigit, setRinging: setRinging, isRinging: function () { return root.classList.contains("is-ringing"); },
                 isOffHook: function () { return state.offHook; }, setHook: setHook };
     root.__tlRotary = api;
     return api;

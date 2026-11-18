@@ -126,10 +126,10 @@ def corkboard():
     g.append(business_card())
     return "".join(g)
 
-def certificate():
+def certificate(turn=3):
     x, y, w, h = 694, 92, 254, 140
     d = rrect(x, y, w, h, 3)
-    g = [f'<g transform="rotate(3 {x+w/2} {y+h/2})">',
+    g = [f'<g transform="rotate({turn} {x+w/2} {y+h/2})">',
          f'<path d="{d}" fill="{INK}" opacity=".15" transform="translate(3 5)" filter="url(#tls-edge)"/>',
          shape(d, "#fbf4e2"),
          f'<path d="{rrect(x+8, y+8, w-16, h-16, 2)}" fill="none" stroke="{CANOPY}" stroke-width="2.2"/>',
@@ -145,12 +145,12 @@ def certificate():
     return "".join(g)
 
 LOGO_INNER = None
-def business_card():
+def business_card(turn=-3):
     x, y, w, h = 694, 254, 222, 124
     d = rrect(x, y, w, h, 3)
     logo = open("/home/claude/treeline/project/assets/Logos/treeline-logo.svg").read()
     logo = logo.replace('<svg xmlns="http://www.w3.org/2000/svg" viewBox="10 14 222 146" width="444" height="292">', f'<svg x="{x+14}" y="{y+16}" width="66" height="44" viewBox="10 14 222 146">')
-    g = [f'<g transform="rotate(-3 {x+w/2} {y+h/2})">',
+    g = [f'<g transform="rotate({turn} {x+w/2} {y+h/2})">',
          f'<path d="{d}" fill="{INK}" opacity=".15" transform="translate(3 5)" filter="url(#tls-edge)"/>',
          shape(d, PAPER), logo,
          f'<text x="{x+90}" y="{y+44}" {SERIF} font-size="24" font-weight="600" fill="{INK}">Treeline</text>',
@@ -193,10 +193,6 @@ def card_file():
         g.append(f'<g transform="rotate({rot} {cx_} {cy_ + 40})"><g {WASH}><path d="{d}" fill="{["#f7efdc","#fbf6ea","#f3ead6","#faf3e4"][i]}"/></g><g {WOB}><path d="{d}" {LN}/></g></g>')
     front = rrect(x, y, w, h, 4)
     g.append(f'<path d="{front}" fill="{INK}" opacity=".12" transform="translate(2 4)" filter="url(#tls-edge)"/>')
-    g.append(shape(front, "url(#tls-paper)"))
-    g.append(f'<path d="M{x+8} {y+26} L{x+w-8} {y+26}" stroke="{BERRY}" stroke-width="1" opacity=".55"/>')
-    for yy in (y+52, y+78):
-        g.append(f'<path d="M{x+8} {yy} L{x+w-8} {yy}" stroke="{SKY}" stroke-width=".8" opacity=".4"/>')
     g.append(f'<path d="M{x+w/2-20} {y+h} L{x+w/2-14} {y+h-9} L{x+w/2-6} {y+h-9} L{x+w/2} {y+h} M{x+w/2} {y+h} L{x+w/2+6} {y+h-9} L{x+w/2+14} {y+h-9} L{x+w/2+20} {y+h}" fill="#3d3a35"/>')
     for kx in (704, 896):           # knobs
         g.append(f'<circle cx="{kx}" cy="610" r="24" fill="url(#tls-knob)"/><circle cx="{kx-6}" cy="603" r="6" fill="#fff" opacity=".22"/><circle cx="{kx}" cy="610" r="7" fill="url(#tls-metal)"/>')
@@ -254,7 +250,7 @@ def warranty():
              f'<text x="{ww/2}" y="{wy+15}" text-anchor="middle" {MONO} font-size="8" fill="{INK}" opacity=".7">DETACH HERE</text>'
              f'<text x="10" y="{wy+44}" {SERIF} font-size="14" font-weight="600" fill="{INK}">Owner’s</text>'
              f'<text x="10" y="{wy+60}" {SERIF} font-size="14" font-weight="600" fill="{INK}">Warranty</text>'
-             f'<text x="10" y="{wy+74}" {SANS} font-size="8.6" font-weight="700" fill="{CANOPY}">&amp; OPEN-SOURCE LICENSES</text>'
+             f'<text x="10" y="{wy+74}" {SANS} font-size="7.4" font-weight="700" fill="{CANOPY}">&amp; OPEN-SOURCE LICENSES</text>'
              + lines + f'<rect x="10" y="{wy+wh-14}" width="9" height="9" fill="none" stroke="{INK}" stroke-width="1"/><text x="24" y="{wy+wh-6}" {SANS} font-size="7.5" fill="{INK}">I have read the fine print</text>'
              '</g>')
     return "".join(g)
@@ -305,8 +301,53 @@ def table(t):
         y = ty + 114 * f; a = x0 + inset * (1 - f); b = x1 - inset * (1 - f)
         front.append(f'<g {WOB}><path d="M{a:.0f} {y:.0f} C{a+150:.0f} {y-3:.0f} {a+260:.0f} {y+3:.0f} {(a+b)/2:.0f} {y:.0f} S{b-120:.0f} {y-3:.0f} {b:.0f} {y+1:.0f}" fill="none" stroke="{WOOD_D}" stroke-width="1" opacity=".35"/></g>')
     front.append(f'<g opacity=".16" filter="url(#tls-grain)"><path d="{TOP} {APRON} {CARC}" fill="#000"/></g>')
+    front.append(wear(t, TOP, F, cb, cx))
     front.append(f'<g {WOB}><path d="M{x0+8} {F+16} L{x1-8} {F+16}" {LNS}/></g>')
     return "".join(back), "".join(sfront), "".join(front)
+
+def wear(t, TOP, F, cb, cx):
+    """A well-loved table: varnish worn off the edges, scratches, cup rings, a chipped corner, dents,
+    a knot, scuffed legs, a worn patch round the knob, and a kid's crayon doodle on the apron."""
+    import random
+    rnd = random.Random(int(t["x1"] * 7 + t["ty"]))
+    x0, x1, ty, inset = t["x0"], t["x1"], t["ty"], t["inset"]
+    w = x1 - x0
+    g = [f'<clipPath id="tls-topclip{int(ty)}"><path d="{TOP}"/></clipPath>', f'<g clip-path="url(#tls-topclip{int(ty)})">']
+    # varnish worn pale along the front edge, where hands and elbows go
+    for i in range(7):
+        a = x0 + 20 + rnd.random() * (w - 120); l = 30 + rnd.random() * 80
+        g.append(f'<path d="M{a:.0f} {F-4-rnd.random()*6:.0f} q{l/2:.0f} {-2-rnd.random()*3:.1f} {l:.0f} {rnd.random()*2:.1f}" stroke="#f3d9b4" stroke-width="{3+rnd.random()*5:.1f}" stroke-linecap="round" opacity=".55" fill="none"/>')
+    # scratches
+    for i in range(24):
+        a = x0 + inset + rnd.random() * (w - 2 * inset); b = ty + 10 + rnd.random() * 96; l = 12 + rnd.random() * 46; ang = rnd.uniform(-.35, .35)
+        g.append(f'<path d="M{a:.0f} {b:.0f} l{l*math.cos(ang):.1f} {l*math.sin(ang)*.5:.1f}" stroke="#f8e6c9" stroke-width="1.1" opacity=".85" fill="none"/>'
+                 f'<path d="M{a:.0f} {b+1.2:.1f} l{l*math.cos(ang):.1f} {l*math.sin(ang)*.5:.1f}" stroke="{WOOD_S}" stroke-width=".6" opacity=".35" fill="none"/>')
+    # two old cup rings
+    for cxr, cyr, r in ((x0 + w * .16, ty + 70, 22), (x1 - w * .2, ty + 96, 19)):
+        g.append(f'<g {WOB}><ellipse cx="{cxr:.0f}" cy="{cyr:.0f}" rx="{r}" ry="{r*.42:.1f}" fill="none" stroke="#7a4a22" stroke-width="2.2" stroke-dasharray="{r*1.6:.0f} 6 {r*.7:.0f} 4" opacity=".3"/></g>')
+    # a knot in the wood
+    kx, ky = x0 + w * .63, ty + 34
+    g.append(f'<g {WOB}><ellipse cx="{kx:.0f}" cy="{ky}" rx="9" ry="4" fill="{WOOD_D}" opacity=".5"/><ellipse cx="{kx:.0f}" cy="{ky}" rx="17" ry="7" fill="none" stroke="{WOOD_D}" stroke-width="1" opacity=".35"/><ellipse cx="{kx:.0f}" cy="{ky}" rx="26" ry="10" fill="none" stroke="{WOOD_D}" stroke-width=".8" opacity=".25"/></g>')
+    g.append('</g>')
+    # a chip out of the front-left corner of the top: bare, paler wood
+    g.append(f'<g {WOB}><path d="M{x0+2} {F-14} L{x0+18} {F-8} L{x0+14} {F+6} L{x0+2} {F+6} Z" fill="#e8c597"/><path d="M{x0+2} {F-14} L{x0+18} {F-8} L{x0+14} {F+6}" {LNS}/></g>')
+    # dents and dings along the apron's edge
+    for i in range(9):
+        a = x0 + 14 + rnd.random() * (w - 28); yy = F + 10 + rnd.random() * 36
+        g.append(f'<path d="M{a:.0f} {yy:.0f} q3 2 6 0" stroke="{WOOD_S}" stroke-width="1.3" opacity=".5" fill="none"/><path d="M{a:.0f} {yy+1.5:.1f} q3 2 6 0" stroke="#f1d6ae" stroke-width=".8" opacity=".5" fill="none"/>')
+    # scuffs low on the legs, from feet and toys
+    for lx in (x0 + 36, x1 - 66):
+        for i in range(4):
+            yy = cb + 30 + rnd.random() * 200
+            g.append(f'<path d="M{lx+rnd.random()*10:.0f} {yy:.0f} l{14+rnd.random()*10:.0f} {rnd.uniform(-2,2):.1f}" stroke="#f3d9b4" stroke-width="1.6" opacity=".45" stroke-linecap="round"/>')
+    # worn round the knob
+    kx2, ky2 = t["knob"]
+    g.append(f'<ellipse cx="{kx2}" cy="{ky2}" rx="26" ry="18" fill="#e9c99c" opacity=".35" filter="url(#tls-edge)"/>')
+    # a kid's crayon doodle on the apron: a little star and a squiggle
+    dx_, dy_ = x1 - 150, F + 30
+    star = " ".join(f"{'M' if i == 0 else 'L'}{dx_ + (9 if i % 2 == 0 else 4) * math.cos(math.radians(i * 36 - 90)):.1f} {dy_ + (9 if i % 2 == 0 else 4) * math.sin(math.radians(i * 36 - 90)):.1f}" for i in range(11))
+    g.append(crayon(star, "#c94a3c", 1.6, .7) + crayon(f"M{dx_+16} {dy_+4} q6 -8 12 0 t12 0 t12 0", "#2a6488", 1.5, .6))
+    return "".join(g)
 
 # ---------------------------------------------------------------- the two layouts
 # Every prop is drawn once, in the wide room's coordinates, and placed in a layout by
@@ -323,37 +364,83 @@ def moved(box, pl):
     ox, oy, nx, ny, s = pl; bx, by, bw, bh = box
     return (round(nx + (bx - ox) * s, 1), round(ny + (by - oy) * s, 1), round(bw * s, 1), round(bh * s, 1))
 
+# ---------------------------------------------------------------- the guide book, spine out
+BOOK_W, BOOK_T = 200, 46          # length of the spine, thickness of the book
+def book_spine(x0, by, w=BOOK_W, t=BOOK_T, depth=60):
+    """The guide lying flat on its back cover, spine toward you: the title reads across the spine."""
+    x1 = x0 + w; top = by - t - depth
+    face = f"M{x0+7} {top} L{x1-7} {top} L{x1} {top+depth} L{x0} {top+depth} Z"
+    spine = (f"M{x0} {top+depth} L{x1} {top+depth} C{x1+5} {top+depth+t*.3} {x1+5} {by-t*.3} {x1} {by} "
+             f"L{x0} {by} C{x0-5} {by-t*.3} {x0-5} {top+depth+t*.3} {x0} {top+depth} Z")
+    g = [f'<ellipse cx="{x0+w/2}" cy="{by+2}" rx="{w/2+16}" ry="8" fill="{INK}" opacity=".2" filter="url(#tls-edge)"/>',
+         shape(face, "#fbf3df"),
+         # the top of the cover: its blue band and the little dial, seen from above
+         f'<g {WASH}><path d="M{x0+7} {top} L{x0+w*.42:.0f} {top} L{x0+w*.42-3:.0f} {top+depth} L{x0} {top+depth} Z" fill="{SKY}"/></g>',
+         f'<g {WOB}><ellipse cx="{x0+w*.72:.0f}" cy="{top+depth*.52:.0f}" rx="26" ry="12" {LNS}/><ellipse cx="{x0+w*.72:.0f}" cy="{top+depth*.52:.0f}" rx="9" ry="4" {LNS}/></g>',
+         f'<path d="M{x1-52} {top+10} L{x1-20} {top+10}" stroke="{BERRY}" stroke-width="5" stroke-linecap="round" opacity=".85"/>',
+         f'<g {WOB}><path d="{face}" {LN}/></g>',
+         shape(spine, SKY, edge="#0f2c40"),
+         f'<path d="M{x0+4} {top+depth+7} L{x1-4} {top+depth+7}" stroke="#fff" stroke-opacity=".3" stroke-width="3" stroke-linecap="round"/>',
+         f'<path d="M{x0+30} {top+depth+4} L{x0+30} {by-4} M{x0+34} {top+depth+4} L{x0+34} {by-4} M{x1-34} {top+depth+4} L{x1-34} {by-4} M{x1-30} {top+depth+4} L{x1-30} {by-4}" stroke="{SUN}" stroke-width="1.6"/>',
+         f'<text x="{x0+42}" y="{by-t/2+1}" {SERIF} font-size="{15*min(1, (w-84)/116):.1f}" font-weight="700" letter-spacing="1.2" fill="#fff" textLength="{w-84}" lengthAdjust="spacingAndGlyphs">ROTARY PHONES</text>',
+         f'<text x="{x0+42}" y="{by-t/2+15}" {SERIF} font-size="10.5" font-style="italic" fill="#fff" opacity=".92">the easy way</text>',
+         f'<text x="{x0+15}" y="{by-t/2+4}" text-anchor="middle" {SANS} font-size="9" font-weight="800" fill="{SUN}">2</text>',
+         f'<g transform="translate({x1-15} {by-t/2})"><path d="M0 -8 C5 -4 5 4 0 8 C-5 4 -5 -4 0 -8Z" fill="#7fc49a"/></g>',
+         f'<g opacity=".14" filter="url(#tls-grain)"><path d="{spine}" fill="#000"/></g>']
+    return "".join(g)
+
+def book_box(x0, by, w=BOOK_W, t=BOOK_T, depth=60):
+    return (x0 - 8, by - t - depth - 6, w + 16, t + depth + 14)
+
+# ---------------------------------------------------------------- the warranty card, sticking out of the drawer
+def warranty_face(turn=0):
+    src = warranty()
+    inner = src[src.index('<g>') + 3: src.rindex('</g>')]
+    return f'<g transform="translate(0 150)">{inner}</g>'
+
+def drawer_peek(x, y, x0, x1, k):
+    """The drawer is open a crack (a dark gap along its top) and the warranty card sticks up out of it."""
+    gap = f'<path d="M{x0+6} {y} L{x1-6} {y} L{x1-8} {y+9} L{x0+8} {y+9} Z" fill="#2a1d10" opacity=".78"/>'
+    card = f'<g transform="translate({x-20} {y+8}) rotate(-8)"><g transform="translate(0 -74) scale(.72)">{warranty_face()}</g></g>'
+    clip = f'<clipPath id="tls-peek{k}"><rect x="{x-160}" y="{y-220}" width="320" height="226"/></clipPath>'
+    return gap + f'<defs>{clip}</defs><g clip-path="url(#tls-peek{k})">{card}</g>'
+
+def peek_box(x, y):
+    return (x - 34, y - 84, 112, 92)
+
 LAYOUTS = {
-    # Landscape tablets and desktops: zoomed in on the phone and the table top. No shelf: the guide book and
-    # the warranty card stand on the table, and the legs run off the bottom just under the drawer.
+    # Landscape tablets and desktops: zoomed in on the phone and the table top. No shelf: the guide book lies
+    # on the table, and the legs run off the bottom just under the drawer.
     "wide": {"W": 1100, "H": 890,
         "table": {"x0": 40, "x1": 1060, "ty": 590, "inset": 80, "ch": 120, "sy": 2000, "H": 890,
-                  "drawer": (336, 768, 428, 100), "knob": (700, 818)},
+                  "drawer": (336, 768, 428, 100), "knob": (374, 818)},
         "phone": {"x": 270, "y": 2, "w": 560},
-        "sticker": (500, 818, .78, .78, -3),
+        "sticker": (510, 820, .78, .78, -3),
+        "bookspine": (78, 690, 200), "peek": (668, 768),
         "place": {"sticky": (72, 150, 34, 40, 1), "sketch": (92, 360, 46, 252, .92), "cork": (676, 64, 800, 40, 1),
-                  "cardfile": (684, 674, 776, 672, .85), "book": (0, 0, 118, 634, .82), "warranty": (0, 0, 990, 664, .6)},
-        "shelf": [], "table_items": ["book", "cardfile", "warranty"], "sketch": True},
+                  "cardfile": (684, 674, 790, 672, .85)},
+        "shelf": [], "table_items": ["cardfile"], "sketch": True},
     # Tablets held upright: the same side table, the phone much bigger, the corkboard down beside it.
     "portrait": {"W": 1000, "H": 1304,
         "table": {"x0": 60, "x1": 940, "ty": 800, "inset": 78, "ch": 120, "sy": 1224, "H": 1304,
-                  "drawer": (286, 978, 428, 100), "knob": (650, 1028)},
+                  "drawer": (286, 978, 428, 100), "knob": (324, 1028)},
         "phone": {"x": 170, "y": 49, "w": 660},
-        "sticker": (470, 1028, .78, .78, -3),
+        "sticker": (466, 1030, .78, .78, -3),
+        "bookspine": (66, 898, 186), "peek": (624, 978),
         "place": {"sticky": (72, 150, 20, 60, 1), "sketch": (92, 360, 30, 290, .9), "cork": (676, 64, 788, 180, .72),
-                  "cardfile": (684, 674, 768, 888, .78), "book": (0, 0, 196, 1240, .76), "warranty": (0, 0, 455, 1241, .76),
-                  "spines": (0, 0, 30, 440, .8), "plant": (0, 0, 142, 453, .8)},
-        "shelf": ["spines", "book", "warranty", "plant"], "table_items": ["cardfile"], "sketch": True},
+                  "cardfile": (684, 674, 768, 888, .78), "spines": (0, 0, 120, 440, .8), "plant": (0, 0, 172, 453, .8)},
+        "shelf": ["spines", "plant"], "table_items": ["cardfile"], "sketch": True},
     # Phones: a narrow nightstand, the phone across nearly the whole width, the wall things above it,
-    # the card file on the shelf.
+    # the book and the card file on the shelf.
     "tall": {"W": 600, "H": 1340,
         "table": {"x0": 8, "x1": 592, "ty": 812, "inset": 50, "ch": 138, "sy": 1270, "H": 1340,
-                  "drawer": (70, 990, 460, 118), "knob": (470, 1049)},
+                  "drawer": (70, 990, 460, 118), "knob": (108, 1049)},
         "phone": {"x": 28, "y": 245, "w": 544},
-        "sticker": (268, 1049, .85, .85, -3),
+        "sticker": (290, 1050, .85, .85, -3),
+        "bookspine": (52, 1290, 176), "peek": (452, 990),
         "place": {"sticky": (72, 150, 12, 28, .96), "sketch": (92, 360, 14, 214, .85), "cork": (676, 64, 350, 12, .82),
-                  "cardfile": (684, 674, 236, 1286, .68), "book": (0, 0, 96, 1286, .74), "warranty": (0, 0, 414, 1287, .72)},
-        "shelf": ["book", "cardfile", "warranty"], "table_items": [], "sketch": True},
+                  "cardfile": (684, 674, 300, 1286, .68)},
+        "shelf": ["cardfile"], "table_items": [], "sketch": True},
 }
 
 def scene(name):
@@ -361,9 +448,12 @@ def scene(name):
     back, sfront, front = table(L["table"])
     draw = {"book": book, "warranty": warranty, "spines": spines, "plant": plant, "cardfile": card_file}
     item = lambda k: placed(draw[k](), pl[k])
+    bx, by, bw = L["bookspine"]; px, py = L["peek"]; dx, dy, dw, dh = L["table"]["drawer"]
+    book_here = book_spine(bx, by, bw)
+    on_shelf = by > L["table"]["sy"]
     body = (wall(W_, H_) + placed(sticky_note(), pl["sticky"]) + (placed(kid_drawing(), pl["sketch"]) if L["sketch"] else "")
-            + placed(corkboard(), pl["cork"]) + back + "".join(item(k) for k in L["shelf"]) + sfront + front
-            + sticker(*L["sticker"]) + "".join(item(k) for k in L["table_items"]))
+            + placed(corkboard(), pl["cork"]) + back + "".join(item(k) for k in L["shelf"]) + (book_here if on_shelf else "") + sfront + front
+            + drawer_peek(px, py, dx, dx + dw, "") + sticker(*L["sticker"]) + (book_here if not on_shelf else "") + "".join(item(k) for k in L["table_items"]))
     return (f'<svg xmlns="http://www.w3.org/2000/svg" class="tl-desk__scene tl-desk__l tl-desk__l--{name}" viewBox="0 0 {W_} {H_}" '
             f'preserveAspectRatio="xMidYMax meet" aria-hidden="true" focusable="false">{defs()}{body}</svg>')
 
@@ -376,10 +466,17 @@ def words(name, nm="Sam’s treehouse", quiet="8 pm – 7 am", contact=("The Par
     q = (f'<g transform="rotate(-4 160 243)"><text x="160" y="214" text-anchor="middle" {HAND} font-size="30" font-weight="700" fill="{INK}">Quiet time</text>'
          f'<text class="tl-desk__quiettext" x="160" y="256" text-anchor="middle" {HAND} font-size="30" fill="{INK}">{quiet}</text>'
          f'<path d="M108 270 Q160 278 212 268" fill="none" stroke="{BERRY}" stroke-width="2" stroke-linecap="round"/></g>')
-    c = (f'<g class="tl-desk__card"><text class="tl-desk__cardname" x="{x+12}" y="{y+46}" {HAND} font-size="25" font-weight="700" fill="{INK}">{contact[0]}</text>'
+    fr = rrect(x, y, w, h, 4)
+    paper = (f'<path d="{fr}" fill="#fffaf0"/><path d="{fr}" fill="url(#tls-wpaper)"/>'
+             f'<path d="M{x+8} {y+26} L{x+w-8} {y+26}" stroke="{BERRY}" stroke-width="1" opacity=".55"/>'
+             + "".join(f'<path d="M{x+8} {yy} L{x+w-8} {yy}" stroke="{SKY}" stroke-width=".8" opacity=".4"/>' for yy in (y+52, y+78))
+             + f'<path d="{fr}" {LN} filter="url(#tls-wwob)"/>')
+    c = (f'<g class="tl-desk__card">{paper}<text class="tl-desk__cardname" x="{x+12}" y="{y+46}" {HAND} font-size="25" font-weight="700" fill="{INK}">{contact[0]}</text>'
          f'<text class="tl-desk__cardnum" x="{x+12}" y="{y+74}" {HAND} font-size="29" fill="{SKY}">{contact[1]}</text>'
          f'<text class="tl-desk__cardcount" x="{x+w-10}" y="{y+19}" text-anchor="end" {SANS} font-size="9.5" fill="#857b6b">{count}</text></g>')
     return (f'<svg xmlns="http://www.w3.org/2000/svg" class="tl-desk__words tl-desk__l tl-desk__l--{name}" viewBox="0 0 {L["W"]} {L["H"]}" preserveAspectRatio="xMidYMax meet" aria-hidden="true" focusable="false">'
+            f'<defs><filter id="tls-wwob" x="-5%" y="-5%" width="110%" height="110%"><feTurbulence type="fractalNoise" baseFrequency="0.03" numOctaves="2" seed="7"/><feDisplacementMap in="SourceGraphic" scale="1.8"/></filter>'
+            f'<linearGradient id="tls-wpaper" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fffdf7"/><stop offset="1" stop-color="#f1e6cf"/></linearGradient></defs>'
             + placed(nmg, pl["sketch"]) + placed(q, pl["sticky"]) + placed(c, pl["cardfile"]) + '</svg>')
 
 def words_template(name):
@@ -387,7 +484,8 @@ def words_template(name):
 
 def geometry(name):
     L = LAYOUTS[name]; pl = L["place"]
-    hot = {"guide": moved(BOX["book"], pl["book"]), "licenses": moved(BOX["warranty"], pl["warranty"]),
+    bx, by, bw = L["bookspine"]; px, py = L["peek"]
+    hot = {"guide": book_box(bx, by, bw), "licenses": peek_box(px, py),
            "coffee": moved(BOX["coffee"], pl["cork"]), "card": moved(BOX["card"], pl["cork"]), "cardfile": moved(BOX["cardfile"], pl["cardfile"])}
     return {"w": L["W"], "h": L["H"], "phone": L["phone"], "hotspots": hot}
 

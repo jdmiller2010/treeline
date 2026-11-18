@@ -11,12 +11,33 @@ def pct(v, d): return f"{v / d * 100:.3f}%"
 # (tls- and tlt-) so the hidden one never steals the other's references.
 def ids(svg, k): return svg.replace('id="tls-', f'id="tl{k}-').replace("url(#tls-", f"url(#tl{k}-")
 scene = desk.scene("wide") + ids(desk.scene("portrait"), "v") + ids(desk.scene("tall"), "t")
-words = desk.words_template("wide") + desk.words_template("portrait") + desk.words_template("tall")
+words = desk.words_template("wide") + ids(desk.words_template("portrait"), "v") + ids(desk.words_template("tall"), "t")
 logic = open("/home/claude/treeline/build/phone/desk_logic.js").read()
+import desk_pages
+PICK = desk_pages.pickups(); PAGES = desk_pages.pages()
+def look(kind, label, href_tok, attr_tok, link_label, note):
+    return (f'<div class="tl-desk__look tl-desk__look--{kind}" hidden role="dialog" aria-modal="true" aria-label="{label}">'
+            f'<div class="tl-desk__scrim" data-desk-close></div>'
+            f'<div class="tl-desk__held tl-desk__held--{kind}"><a class="tl-desk__heldart tl-desk__heldart--{kind}" href="{href_tok}"{attr_tok} aria-label="{link_label}">{PICK[kind]}</a></div>'
+            f'<p class="tl-desk__heldnote">{note}</p>'
+            f'<button type="button" class="tl-desk__putback" data-desk-close>Put it back</button></div>')
+sheets = "".join(f'<div class="tl-book__sheet"><div class="tl-book__face tl-book__face--front">{PAGES[2*k]}</div><div class="tl-book__face tl-book__face--back">{PAGES[2*k+1]}</div></div>' for k in range(5))
+book_look = ('<div class="tl-desk__look tl-desk__look--book" hidden role="dialog" aria-modal="true" aria-label="Rotary Phones the easy way">'
+             '<div class="tl-desk__scrim" data-desk-close></div>'
+             f'<div class="tl-book"><div class="tl-book__fly"><div class="tl-book__spread"><div class="tl-book__base">{PAGES[10]}</div>{sheets}</div></div></div>'
+             '<div class="tl-book__nav"><button type="button" class="tl-book__turn tl-book__prev" aria-label="Turn back a page">‹</button>'
+             '<p class="tl-book__count" aria-live="polite"></p>'
+             '<button type="button" class="tl-book__turn tl-book__next" aria-label="Turn the page">›</button></div>'
+             '<button type="button" class="tl-desk__putback" data-desk-close>Close the book</button></div>')
+looks = (book_look
+         + look("coffee", "The gift certificate", "{{COFFEE}}", "{{COFFEEATTR}}", "Redeem the gift certificate: buy the person who built Treeline a coffee, on Buy Me a Coffee", "Tap it to redeem it")
+         + look("card", "The business card", "mailto:{{EMAIL}}", "", "Email Jordan Miller, who made Treeline: {{EMAIL}}", "Tap it to send Jordan an email")
+         + look("licenses", "The owner’s warranty", "{{LICENSES}}", "", "Read the open-source licenses", "Tap it to read every license"))
 
 component = r'''
   var DESK_SVG = __SCENE__;
   var DESK_WORDS = __WORDS__;
+  var DESK_LOOKS = __LOOKS__;
   function deskEsc(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
   function deskMarkup(prefix, p) {
     var list = p.contacts || [], c = list[0], name = String(p.treehouseName || "Our treehouse");
@@ -25,7 +46,14 @@ component = r'''
       .split("{{QUIET}}").join(deskEsc(p.quietTime || "not set"))
       .split("{{CNAME}}").join(deskEsc(c ? c.name : "No strings yet")).split("{{CNUM}}").join(deskEsc(c ? c.number : "ask a grown-up"))
       .split("{{CCOUNT}}").join(list.length > 1 ? "1 of " + list.length : "");
+    w = w.replace(/id="tl([stv])-/g, 'id="' + prefix + '-$1-').replace(/url\(#tl([stv])-/g, "url(#" + prefix + "-$1-");
     return art + w;
+  }
+  function deskLooks(prefix, p) {
+    var coffee = p.coffeeHref || "#support";
+    return DESK_LOOKS.replace(/id="tl([stvkb])-/g, 'id="' + prefix + '-$1-').replace(/url\(#tl([stvkb])-/g, "url(#" + prefix + "-$1-")
+      .split("{{COFFEE}}").join(deskEsc(coffee)).split("{{COFFEEATTR}}").join(coffee.charAt(0) === "#" ? "" : ' target="_blank" rel="noopener"')
+      .split("{{EMAIL}}").join(deskEsc(p.email || "jdmiller2010@gmail.com")).split("{{LICENSES}}").join(deskEsc(p.licensesHref || "#licenses"));
   }
   function SoftphoneDesk(p) {
     var ref = React.useRef(null), pfx = useId(p.id).replace(/[^a-zA-Z0-9-]/g, "") + "-d";
@@ -34,29 +62,36 @@ component = r'''
     React.useEffect(function () {
       var root = ref.current, api = attachDesk(root);
       function card(e) { if (cb.current.onCard) cb.current.onCard(e.detail.contact, e.detail.index); }
-      root.addEventListener("tl-desk-card", card);
+      function opened(e) { if (cb.current.onOpen) cb.current.onOpen(e.detail.item); if (e.detail.item === "book" && cb.current.onGuide) cb.current.onGuide(); }
+      function closed(e) { if (cb.current.onClose) cb.current.onClose(e.detail.item); }
+      function link(e) {
+        var a = e.target.closest && e.target.closest(".tl-desk__heldart"); if (!a) return;
+        if (a.classList.contains("tl-desk__heldart--licenses") && cb.current.onLicenses) cb.current.onLicenses(e);
+        if (a.classList.contains("tl-desk__heldart--coffee") && cb.current.onCoffee) cb.current.onCoffee(e);
+      }
+      root.addEventListener("tl-desk-card", card); root.addEventListener("tl-desk-open", opened); root.addEventListener("tl-desk-close", closed); root.addEventListener("click", link);
       if (p.deskRef) p.deskRef.current = api;
-      return function () { root.removeEventListener("tl-desk-card", card); };
+      return function () { root.removeEventListener("tl-desk-card", card); root.removeEventListener("tl-desk-open", opened); root.removeEventListener("tl-desk-close", closed); root.removeEventListener("click", link); };
     }, []);
     React.useEffect(function () { if (ref.current && ref.current.__tlDesk) ref.current.__tlDesk.setContacts(p.contacts || []); }, [key]);
     var markup = React.useMemo(function () { return deskMarkup(pfx, p); }, [pfx, p.treehouseName, p.quietTime, key]);
-    var email = p.email || "jdmiller2010@gmail.com";
+    var looks = React.useMemo(function () { return deskLooks(pfx, p); }, [pfx, p.coffeeHref, p.email, p.licensesHref]);
     return h("div", { ref: ref, className: cx("tl-desk", p.fill && "tl-desk--fill", p.className), "data-tl-desk": "", "data-contacts": key },
       h("div", { className: "tl-desk__stage" },
         h("div", { className: "tl-desk__art", dangerouslySetInnerHTML: { __html: markup } }),
         h("div", { className: "tl-desk__phone" },
-          h(RotaryPhone, { id: pfx + "-phone", number: p.number, colorway: p.colorway, offHook: p.offHook, defaultOffHook: p.defaultOffHook,
+          h(RotaryPhone, { id: pfx + "-phone", number: p.number, colorway: p.colorway, ringing: p.ringing, offHook: p.offHook, defaultOffHook: p.defaultOffHook,
             onDigit: p.onDigit, onHook: p.onHook, onPulse: p.onPulse, apiRef: p.apiRef, notice: false })),
         p.children ? h("div", { className: "tl-desk__slot" }, p.children) : null,
         h("p", { className: "tl-desk__sr" }, "This phone can’t call 911 or outside numbers. In an emergency, use a grown-up’s phone."),
-        h("a", { className: "tl-desk__hot tl-desk__hot--guide", href: p.guideHref || "#guide", onClick: p.onGuide, "aria-label": "The guide book: Rotary Phones the Easy Way" }),
+        h("button", { type: "button", className: "tl-desk__hot tl-desk__hot--guide", "data-desk-open": "book", "data-turn": "0", "aria-haspopup": "dialog", "aria-label": "Open the guide book, Rotary Phones the easy way" }),
         h("button", { type: "button", className: "tl-desk__hot tl-desk__hot--cardfile tl-desk__cardfile", "aria-label": "Phone book" }),
-        h("a", { className: "tl-desk__hot tl-desk__hot--coffee", href: p.coffeeHref || "#support", target: p.coffeeHref ? "_blank" : undefined, rel: p.coffeeHref ? "noopener" : undefined,
-          "aria-label": "Gift certificate: buy the person who built Treeline a coffee, on Buy Me a Coffee" }),
-        h("a", { className: "tl-desk__hot tl-desk__hot--card", href: "mailto:" + email, "aria-label": "Business card: Treeline, made by Jordan Miller, " + email + ". Copyright 2026 Jordan Miller." }),
-        h("a", { className: "tl-desk__hot tl-desk__hot--licenses", href: p.licensesHref || "#licenses", onClick: p.onLicenses, "aria-label": "Owner’s warranty and open-source licenses" })));
+        h("button", { type: "button", className: "tl-desk__hot tl-desk__hot--coffee", "data-desk-open": "coffee", "data-turn": "3", "aria-haspopup": "dialog", "aria-label": "Pick up the gift certificate" }),
+        h("button", { type: "button", className: "tl-desk__hot tl-desk__hot--card", "data-desk-open": "card", "data-turn": "-3", "aria-haspopup": "dialog", "aria-label": "Pick up the business card: Treeline, made by Jordan Miller" }),
+        h("button", { type: "button", className: "tl-desk__hot tl-desk__hot--licenses", "data-desk-open": "licenses", "data-turn": "-8", "aria-haspopup": "dialog", "aria-label": "Pick up the owner’s warranty card: open-source licenses" })),
+      h("div", { className: "tl-desk__layers", dangerouslySetInnerHTML: { __html: looks } }));
   }
-'''.replace("__SCENE__", json.dumps(scene)).replace("__WORDS__", json.dumps(words))
+'''.replace("__SCENE__", json.dumps(scene)).replace("__WORDS__", json.dumps(words)).replace("__LOOKS__", json.dumps(looks))
 
 BEGIN, END = "  // >>> desk\n", "  // <<< desk\n"
 def put(src, block, anchor):
@@ -124,10 +159,49 @@ css = f"""
 {layout_css("tall")}
 .tl-desk__slot {{ left: 32%; right: 42%; top: 2%; }}
 }}
-.tl-desk__card {{ transform-box: fill-box; transform-origin: 50% 100%; }}
-.tl-desk__card.is-flipping {{ animation: tl-desk-flip .3s ease; }}
-@keyframes tl-desk-flip {{ 50% {{ opacity: 0; transform: translateY(-10px); }} }}
-@media (prefers-reduced-motion: reduce) {{ .tl-desk__card.is-flipping {{ animation: none; }} }}
+.tl-desk__card, .tl-desk__card--falling {{ transform-box: fill-box; transform-origin: 50% 100%; }}
+/* Picking things up. Everything here is laid over the whole room. */
+.tl-desk__layers {{ position: absolute; inset: 0; pointer-events: none; z-index: 20; }}
+.tl-desk__look {{ position: absolute; inset: 0; pointer-events: auto; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-4); padding: var(--space-6) var(--space-4); }}
+.tl-desk__look[hidden] {{ display: none; }}
+.tl-desk__scrim {{ position: absolute; inset: 0; background: rgba(28, 22, 14, .58); opacity: 0; transition: opacity .32s ease; cursor: pointer; }}
+.tl-desk__look.is-in .tl-desk__scrim {{ opacity: 1; }}
+.tl-desk__held {{ position: relative; width: min(88cqw, 64cqh * 1.7, 620px); }}
+.tl-desk__held--card {{ width: min(84cqw, 64cqh * 1.7, 560px); }}
+.tl-desk__held--licenses {{ width: min(70cqw, 56cqh * .8, 400px); }}
+.tl-desk__heldart {{ display: block; border-radius: 10px; filter: drop-shadow(0 22px 34px rgba(0, 0, 0, .35)); -webkit-tap-highlight-color: transparent; }}
+.tl-desk__heldart svg {{ display: block; width: 100%; height: auto; }}
+.tl-desk__heldart:focus-visible {{ outline: var(--border-focus, 3px) solid var(--focus); outline-offset: 6px; }}
+.tl-desk__heldnote {{ position: relative; margin: 0; font: 700 26px/1.1 Caveat, "Comic Sans MS", cursive; color: #fff8ea; text-align: center; opacity: 0; transition: opacity .3s ease .25s; }}
+.tl-desk__look.is-in .tl-desk__heldnote {{ opacity: 1; }}
+.tl-desk__putback {{ position: relative; font: 600 16px/1 var(--font-sans); color: #2a251c; background: #fffaf0; border: 1.5px solid #2a251c; border-radius: 999px; padding: 12px 20px; min-height: 44px; cursor: pointer; box-shadow: 0 3px 0 #2a251c; opacity: 0; transition: opacity .3s ease .25s; }}
+.tl-desk__look.is-in .tl-desk__putback {{ opacity: 1; }}
+.tl-desk__putback:active {{ transform: translateY(2px); box-shadow: 0 1px 0 #2a251c; }}
+.tl-desk__putback:focus-visible, .tl-book__turn:focus-visible {{ outline: var(--border-focus, 3px) solid var(--focus); outline-offset: 3px; }}
+/* The guide book: two pages side by side, leaves that turn over from right to left. */
+.tl-book {{ --p: min(46cqw, 44cqh, 360px); position: relative; width: calc(var(--p) * 2); height: calc(var(--p) * 356 / 300); cursor: pointer; touch-action: pan-y; }}
+.tl-book__fly, .tl-book__spread {{ position: absolute; inset: 0; }}
+.tl-book__spread {{ perspective: calc(var(--p) * 5); transform: translateX(calc(var(--p) * -.5)); transition: transform .6s ease; }}
+.tl-book.is-open .tl-book__spread {{ transform: none; }}
+.tl-book__base, .tl-book__sheet {{ position: absolute; left: 50%; top: 0; width: 50%; height: 100%; }}
+.tl-book__base {{ border-radius: 0 6px 6px 0; overflow: hidden; box-shadow: 0 18px 30px rgba(0, 0, 0, .3); opacity: 0; transition: opacity .2s; }}
+.tl-book.is-open .tl-book__base {{ opacity: 1; }}
+.tl-book__sheet {{ transform-origin: left center; transform-style: preserve-3d; transition: transform .62s cubic-bezier(.45, .05, .25, 1); }}
+.tl-book__sheet.is-turned {{ transform: rotateY(-180deg); }}
+.tl-book__face {{ position: absolute; inset: 0; overflow: hidden; backface-visibility: hidden; -webkit-backface-visibility: hidden; background: #fbf6e9; }}
+.tl-book__face--front {{ border-radius: 0 6px 6px 0; box-shadow: 0 18px 30px rgba(0, 0, 0, .28); }}
+.tl-book__face--back {{ transform: rotateY(180deg); border-radius: 6px 0 0 6px; box-shadow: 0 18px 30px rgba(0, 0, 0, .28); }}
+.tl-book__face--front::after, .tl-book__face--back::after {{ content: ""; position: absolute; top: 0; bottom: 0; width: 14%; pointer-events: none; }}
+.tl-book__face--front::after {{ left: 0; background: linear-gradient(90deg, rgba(0, 0, 0, .16), transparent); }}
+.tl-book__face--back::after {{ right: 0; background: linear-gradient(270deg, rgba(0, 0, 0, .16), transparent); }}
+.tl-book__face svg {{ display: block; width: 100%; height: 100%; }}
+.tl-book.is-instant .tl-book__sheet, .tl-book.is-instant .tl-book__spread {{ transition: none; }}
+.tl-book__nav {{ position: relative; display: flex; align-items: center; gap: var(--space-4); opacity: 0; transition: opacity .3s ease .4s; }}
+.tl-desk__look.is-in .tl-book__nav {{ opacity: 1; }}
+.tl-book__turn {{ width: 48px; height: 48px; border-radius: 50%; border: 1.5px solid #2a251c; background: #fffaf0; color: #2a251c; font: 600 28px/1 var(--font-display); cursor: pointer; box-shadow: 0 3px 0 #2a251c; }}
+.tl-book__turn:disabled {{ opacity: .35; cursor: default; }}
+.tl-book__count {{ margin: 0; min-width: 7em; text-align: center; font: 700 22px/1 Caveat, "Comic Sans MS", cursive; color: #fff8ea; }}
+@media (prefers-reduced-motion: reduce) {{ .tl-book__sheet, .tl-book__spread, .tl-desk__scrim, .tl-desk__heldnote, .tl-desk__putback, .tl-book__nav {{ transition: none; }} }}
 .tl-desk__sr {{ position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }}
 /* <<< SoftphoneDesk */
 """
@@ -136,10 +210,12 @@ c = re.sub(r"\n/\* >>> SoftphoneDesk.*?/\* <<< SoftphoneDesk \*/\n", "", c, flag
 open(P + "bundle.css", "w").write(c.rstrip() + "\n" + css)
 
 d = open(P + "index.d.ts").read()
+d = re.sub(r"\nexport interface DeskContact.*?\n}\n\n(?=export interface RotaryPhoneProps)", "\n", d, flags=re.S)
+d = d.replace("\nexport declare function SoftphoneDesk(props: SoftphoneDeskProps): React.ReactElement;", "").replace(" SoftphoneDesk: typeof SoftphoneDesk;", "")
 if "SoftphoneDeskProps" not in d:
     types = '''
 export interface DeskContact { name: string; number: string; }
-export interface SoftphoneDeskApi { next(): void; prev(): void; setContacts(c: DeskContact[]): void; index(): number; }
+export interface SoftphoneDeskApi { next(): void; prev(): void; setContacts(c: DeskContact[]): void; index(): number; open(item: "book" | "coffee" | "card" | "licenses"): void; close(): void; isOpen(): string | null; }
 export interface SoftphoneDeskProps {
   /** The treehouse's own 4 digits, shown in the middle of the dial. */
   number?: string;
@@ -159,6 +235,10 @@ export interface SoftphoneDeskProps {
   onDigit?: (digit: number) => void; onHook?: (offHook: boolean) => void; onPulse?: (detail: any) => void;
   apiRef?: { current: RotaryPhoneApi | null };
   onCard?: (contact: DeskContact, index: number) => void;
+  /** The phone is ringing: its handset trembles. */
+  ringing?: boolean;
+  /** Something was picked up ("book", "coffee", "card", "licenses") or put back. */
+  onOpen?: (item: string) => void; onClose?: (item: string) => void; onCoffee?: (e: any) => void;
   deskRef?: { current: SoftphoneDeskApi | null };
   /** A few words on the wall above the phone (status, connection light). */
   children?: any;

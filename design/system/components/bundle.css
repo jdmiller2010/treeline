@@ -795,6 +795,15 @@ body {
 .tl-rotary__svg { display: block; width: 100%; height: auto; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; border-radius: var(--radius-lg); }
 .tl-rotary__svg:focus-visible { outline: var(--border-focus) solid var(--focus); outline-offset: 4px; }
 .tl-rotary .tlp-handset { cursor: pointer; }
+/* Ringing: no glow, nothing else moves. Only the handset trembles on its cradle, a hair's width, in bursts
+   with the bell (about a second of shaking, then a rest). Set with the ringing prop or api.setRinging(). */
+.tl-rotary.is-ringing[data-hook="on"] .tlp-handset { transform-box: fill-box; transform-origin: 50% 80%; animation: tl-rotary-ring 2.4s linear infinite; }
+@keyframes tl-rotary-ring {
+  0%, 46%, 100% { transform: none; }
+  2%, 10%, 18%, 26%, 34%, 42% { transform: translate(-.6px, -.5px) rotate(-.7deg); }
+  6%, 14%, 22%, 30%, 38% { transform: translate(.6px, -.5px) rotate(.7deg); }
+}
+@media (prefers-reduced-motion: reduce) { .tl-rotary.is-ringing[data-hook="on"] .tlp-handset { animation: none; } }
 .tl-rotary .tlp-wheel { cursor: grab; }
 .tl-rotary.is-dialing .tl-rotary__svg, .tl-rotary.is-dialing .tlp-wheel { cursor: grabbing; }
 /* A real button over the handset, so a keyboard or screen reader can lift and hang up too. */
@@ -822,11 +831,11 @@ body {
 .tl-desk__hot:focus-visible { outline: var(--border-focus, 3px) solid var(--focus); outline-offset: 2px; }
 .tl-desk__stage { width: min(100cqw, 123.596cqh); aspect-ratio: 1100 / 890; }
 .tl-desk__phone { left: 24.545%; top: 0.225%; width: 50.909%; }
-.tl-desk__hot--guide { left: 9.682%; top: 54.101%; width: 13.864%; height: 18.056%; }
-.tl-desk__hot--licenses { left: 89.455%; top: 64.157%; width: 8.182%; height: 10.787%; }
+.tl-desk__hot--guide { left: 6.364%; top: 64.944%; width: 19.636%; height: 13.483%; }
+.tl-desk__hot--licenses { left: 57.636%; top: 76.854%; width: 10.182%; height: 10.337%; }
 .tl-desk__hot--coffee { left: 73.818%; top: 6.292%; width: 24.364%; height: 18.652%; }
 .tl-desk__hot--card { left: 73.818%; top: 24.944%; width: 21.455%; height: 15.955%; }
-.tl-desk__hot--cardfile { left: 70.545%; top: 56.022%; width: 17.927%; height: 19.483%; }
+.tl-desk__hot--cardfile { left: 71.818%; top: 56.022%; width: 17.927%; height: 19.483%; }
 /* The slot: the wall above the phone. For the app's few words (what the phone is doing, the connection
    light, a sleeping card). Keep it short: two lines. */
 .tl-desk__slot { position: absolute; left: 2.5%; right: 77%; top: 50%; display: flex; flex-direction: column; align-items: center; gap: var(--space-2); text-align: center; color: var(--ink); }
@@ -835,8 +844,8 @@ body {
 .tl-desk__art > .tl-desk__l--portrait { display: block; }
 .tl-desk__stage { width: min(100cqw, 76.687cqh); aspect-ratio: 1000 / 1304; }
 .tl-desk__phone { left: 17.000%; top: 3.758%; width: 66.000%; }
-.tl-desk__hot--guide { left: 18.540%; top: 84.248%; width: 14.140%; height: 11.426%; }
-.tl-desk__hot--licenses { left: 44.740%; top: 86.135%; width: 11.400%; height: 9.325%; }
+.tl-desk__hot--guide { left: 5.800%; top: 60.276%; width: 20.200%; height: 9.202%; }
+.tl-desk__hot--licenses { left: 59.000%; top: 68.558%; width: 11.200%; height: 7.055%; }
 .tl-desk__hot--coffee { left: 79.660%; top: 14.686%; width: 19.300%; height: 9.164%; }
 .tl-desk__hot--card { left: 79.660%; top: 23.850%; width: 16.990%; height: 7.837%; }
 .tl-desk__hot--cardfile { left: 76.800%; top: 55.897%; width: 18.100%; height: 12.201%; }
@@ -847,16 +856,55 @@ body {
 .tl-desk__art > .tl-desk__l--tall { display: block; }
 .tl-desk__stage { width: min(100cqw, 44.776cqh); aspect-ratio: 600 / 1340; }
 .tl-desk__phone { left: 4.667%; top: 18.284%; width: 90.667%; }
-.tl-desk__hot--guide { left: 14.267%; top: 85.701%; width: 22.933%; height: 10.821%; }
-.tl-desk__hot--licenses { left: 67.800%; top: 87.716%; width: 18.000%; height: 8.597%; }
+.tl-desk__hot--guide { left: 7.333%; top: 87.910%; width: 32.000%; height: 8.955%; }
+.tl-desk__hot--licenses { left: 69.667%; top: 67.612%; width: 18.667%; height: 6.866%; }
 .tl-desk__hot--coffee { left: 59.967%; top: 1.873%; width: 36.633%; height: 10.157%; }
 .tl-desk__hot--card { left: 59.967%; top: 12.030%; width: 32.250%; height: 8.687%; }
-.tl-desk__hot--cardfile { left: 39.333%; top: 85.619%; width: 26.300%; height: 10.351%; }
+.tl-desk__hot--cardfile { left: 50.000%; top: 85.619%; width: 26.300%; height: 10.351%; }
 .tl-desk__slot { left: 32%; right: 42%; top: 2%; }
 }
-.tl-desk__card { transform-box: fill-box; transform-origin: 50% 100%; }
-.tl-desk__card.is-flipping { animation: tl-desk-flip .3s ease; }
-@keyframes tl-desk-flip { 50% { opacity: 0; transform: translateY(-10px); } }
-@media (prefers-reduced-motion: reduce) { .tl-desk__card.is-flipping { animation: none; } }
+.tl-desk__card, .tl-desk__card--falling { transform-box: fill-box; transform-origin: 50% 100%; }
+/* Picking things up. Everything here is laid over the whole room. */
+.tl-desk__layers { position: absolute; inset: 0; pointer-events: none; z-index: 20; }
+.tl-desk__look { position: absolute; inset: 0; pointer-events: auto; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-4); padding: var(--space-6) var(--space-4); }
+.tl-desk__look[hidden] { display: none; }
+.tl-desk__scrim { position: absolute; inset: 0; background: rgba(28, 22, 14, .58); opacity: 0; transition: opacity .32s ease; cursor: pointer; }
+.tl-desk__look.is-in .tl-desk__scrim { opacity: 1; }
+.tl-desk__held { position: relative; width: min(88cqw, 64cqh * 1.7, 620px); }
+.tl-desk__held--card { width: min(84cqw, 64cqh * 1.7, 560px); }
+.tl-desk__held--licenses { width: min(70cqw, 56cqh * .8, 400px); }
+.tl-desk__heldart { display: block; border-radius: 10px; filter: drop-shadow(0 22px 34px rgba(0, 0, 0, .35)); -webkit-tap-highlight-color: transparent; }
+.tl-desk__heldart svg { display: block; width: 100%; height: auto; }
+.tl-desk__heldart:focus-visible { outline: var(--border-focus, 3px) solid var(--focus); outline-offset: 6px; }
+.tl-desk__heldnote { position: relative; margin: 0; font: 700 26px/1.1 Caveat, "Comic Sans MS", cursive; color: #fff8ea; text-align: center; opacity: 0; transition: opacity .3s ease .25s; }
+.tl-desk__look.is-in .tl-desk__heldnote { opacity: 1; }
+.tl-desk__putback { position: relative; font: 600 16px/1 var(--font-sans); color: #2a251c; background: #fffaf0; border: 1.5px solid #2a251c; border-radius: 999px; padding: 12px 20px; min-height: 44px; cursor: pointer; box-shadow: 0 3px 0 #2a251c; opacity: 0; transition: opacity .3s ease .25s; }
+.tl-desk__look.is-in .tl-desk__putback { opacity: 1; }
+.tl-desk__putback:active { transform: translateY(2px); box-shadow: 0 1px 0 #2a251c; }
+.tl-desk__putback:focus-visible, .tl-book__turn:focus-visible { outline: var(--border-focus, 3px) solid var(--focus); outline-offset: 3px; }
+/* The guide book: two pages side by side, leaves that turn over from right to left. */
+.tl-book { --p: min(46cqw, 44cqh, 360px); position: relative; width: calc(var(--p) * 2); height: calc(var(--p) * 356 / 300); cursor: pointer; touch-action: pan-y; }
+.tl-book__fly, .tl-book__spread { position: absolute; inset: 0; }
+.tl-book__spread { perspective: calc(var(--p) * 5); transform: translateX(calc(var(--p) * -.5)); transition: transform .6s ease; }
+.tl-book.is-open .tl-book__spread { transform: none; }
+.tl-book__base, .tl-book__sheet { position: absolute; left: 50%; top: 0; width: 50%; height: 100%; }
+.tl-book__base { border-radius: 0 6px 6px 0; overflow: hidden; box-shadow: 0 18px 30px rgba(0, 0, 0, .3); opacity: 0; transition: opacity .2s; }
+.tl-book.is-open .tl-book__base { opacity: 1; }
+.tl-book__sheet { transform-origin: left center; transform-style: preserve-3d; transition: transform .62s cubic-bezier(.45, .05, .25, 1); }
+.tl-book__sheet.is-turned { transform: rotateY(-180deg); }
+.tl-book__face { position: absolute; inset: 0; overflow: hidden; backface-visibility: hidden; -webkit-backface-visibility: hidden; background: #fbf6e9; }
+.tl-book__face--front { border-radius: 0 6px 6px 0; box-shadow: 0 18px 30px rgba(0, 0, 0, .28); }
+.tl-book__face--back { transform: rotateY(180deg); border-radius: 6px 0 0 6px; box-shadow: 0 18px 30px rgba(0, 0, 0, .28); }
+.tl-book__face--front::after, .tl-book__face--back::after { content: ""; position: absolute; top: 0; bottom: 0; width: 14%; pointer-events: none; }
+.tl-book__face--front::after { left: 0; background: linear-gradient(90deg, rgba(0, 0, 0, .16), transparent); }
+.tl-book__face--back::after { right: 0; background: linear-gradient(270deg, rgba(0, 0, 0, .16), transparent); }
+.tl-book__face svg { display: block; width: 100%; height: 100%; }
+.tl-book.is-instant .tl-book__sheet, .tl-book.is-instant .tl-book__spread { transition: none; }
+.tl-book__nav { position: relative; display: flex; align-items: center; gap: var(--space-4); opacity: 0; transition: opacity .3s ease .4s; }
+.tl-desk__look.is-in .tl-book__nav { opacity: 1; }
+.tl-book__turn { width: 48px; height: 48px; border-radius: 50%; border: 1.5px solid #2a251c; background: #fffaf0; color: #2a251c; font: 600 28px/1 var(--font-display); cursor: pointer; box-shadow: 0 3px 0 #2a251c; }
+.tl-book__turn:disabled { opacity: .35; cursor: default; }
+.tl-book__count { margin: 0; min-width: 7em; text-align: center; font: 700 22px/1 Caveat, "Comic Sans MS", cursive; color: #fff8ea; }
+@media (prefers-reduced-motion: reduce) { .tl-book__sheet, .tl-book__spread, .tl-desk__scrim, .tl-desk__heldnote, .tl-desk__putback, .tl-book__nav { transition: none; } }
 .tl-desk__sr { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 /* <<< SoftphoneDesk */

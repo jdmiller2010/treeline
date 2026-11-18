@@ -117,14 +117,14 @@ export interface StatTileProps { label: string; value: React.ReactNode; unit?: s
 export declare function StatTile(props: StatTileProps): React.ReactElement;
 export interface TabsProps { label: string; tabs: Array<{ value: string; label: string; content: React.ReactNode; badge?: number }>; value?: string; defaultValue?: string; onChange?: (v: string) => void; id?: string; className?: string }
 export declare function Tabs(props: TabsProps): React.ReactElement;
-export interface RotaryPhoneApi { lift(): void; hangUp(): void; dial(digit: number): void; isOffHook(): boolean }
+export interface RotaryPhoneApi { lift(): void; hangUp(): void; dial(digit: number): void; isOffHook(): boolean; setRinging(on: boolean): void; isRinging(): boolean }
 export interface DeskContact { name: string; number: string; }
-export interface SoftphoneDeskApi { next(): void; prev(): void; setContacts(c: DeskContact[]): void; index(): number; }
+export interface SoftphoneDeskApi { next(): void; prev(): void; setContacts(c: DeskContact[]): void; index(): number; open(item: "book" | "coffee" | "card" | "licenses"): void; close(): void; isOpen(): string | null; }
 export interface SoftphoneDeskProps {
   /** The treehouse's own 4 digits, shown in the middle of the dial. */
   number?: string;
   colorway?: "moss" | "ivory" | "berry";
-  /** Printed on the label tape on the drawer, in capitals. */
+  /** Written across the top of the kid's drawing on the wall. */
   treehouseName?: string;
   /** The approved strings, one card each in the card file (the phone book). */
   contacts?: DeskContact[];
@@ -139,13 +139,21 @@ export interface SoftphoneDeskProps {
   onDigit?: (digit: number) => void; onHook?: (offHook: boolean) => void; onPulse?: (detail: any) => void;
   apiRef?: { current: RotaryPhoneApi | null };
   onCard?: (contact: DeskContact, index: number) => void;
+  /** The phone is ringing: its handset trembles. */
+  ringing?: boolean;
+  /** Something was picked up ("book", "coffee", "card", "licenses") or put back. */
+  onOpen?: (item: string) => void; onClose?: (item: string) => void; onCoffee?: (e: any) => void;
   deskRef?: { current: SoftphoneDeskApi | null };
+  /** A few words on the wall above the phone (status, connection light). */
+  children?: any;
   /** Fill the parent's height instead of the screen's. */
   fill?: boolean;
   id?: string; className?: string;
 }
 
 export interface RotaryPhoneProps {
+  /** The phone is ringing: its handset trembles a little, in bursts like the bell. */
+  ringing?: boolean;
   /** The treehouse's own 4-digit number, shown in the middle of the dial. */ number?: string;
   colorway?: "moss" | "ivory" | "berry";
   /** Controlled hook state. Leave out to let taps on the handset lift and hang up. */ offHook?: boolean;
