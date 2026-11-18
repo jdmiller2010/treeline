@@ -351,17 +351,6 @@ class Engine:
 
     # ------------------------------------------------------------ ring test
 
-    def ring_test(self, handset_id):
-        h = self.conn.execute("SELECT * FROM handset WHERE id=? AND removed_at IS NULL",
-                              (handset_id,)).fetchone()
-        if h is None:
-            return
-        out = self.ari.request("POST", "/channels", endpoint=f"PJSIP/{h['sip_user']}",
-                               app=ari_mod.APP, appArgs="ringtest", callerId='"" <0000>',
-                               timeout=15)
-        if out and "id" in out:
-            self.ringtests[out["id"]] = True
-
     def on_ringtest_answered(self, chan_id):
         """A parent tapped 'ring test' and someone picked up: say hello and hang up."""
         self.play_plan(chan_id, [("tone:440+480/500,0/300,440+480/500,0", 1.6)])

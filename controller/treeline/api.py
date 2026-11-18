@@ -90,8 +90,18 @@ def rate_limit(key, count, seconds):
     _hits[key] = hits
 
 
+TRUST_PROXY = os.environ.get("TREELINE_TRUST_PROXY") == "1"
+
+
 def client_ip():
-    return request.headers.get("X-Forwarded-For", request.remote_addr or "").split(",")[0].strip()
+    """The caller's address. Only believe X-Forwarded-For when we're really
+    behind our own proxy (TREELINE_TRUST_PROXY=1); otherwise anyone could
+    dodge the rate limits by sending the header."""
+    if TRUST_PROXY:
+        fwd = request.headers.get("X-Forwarded-For", "")
+        if fwd:
+            return fwd.split(",")[-1].strip()  # the address our proxy saw
+    return request.remote_addr or ""
 
 
 def body():

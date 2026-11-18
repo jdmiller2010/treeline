@@ -528,3 +528,15 @@ class Pages(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ClientAddress(unittest.TestCase):
+    def test_forwarded_header_is_ignored_unless_behind_our_proxy(self):
+        with api.app.test_request_context("/", headers={"X-Forwarded-For": "6.6.6.6"},
+                                          environ_base={"REMOTE_ADDR": "10.0.0.1"}):
+            self.assertEqual(api.client_ip(), "10.0.0.1")
+            api.TRUST_PROXY = True
+            try:
+                self.assertEqual(api.client_ip(), "6.6.6.6")
+            finally:
+                api.TRUST_PROXY = False
