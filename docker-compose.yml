@@ -1,10 +1,11 @@
 # Treeline - local dev stack
 #
-#   docker compose up -d --build        start Asterisk + the control app
+#   docker compose up -d --build        start Asterisk, the control app and the API
 #   docker compose run --rm testphones  run the scripted test calls
 #   docker compose logs -f controller   watch calls being allowed/blocked
 #
 # Host networking keeps SIP and call audio simple (no Docker NAT in the way).
+# The parent app is at http://localhost:8080/ and the softphone at /phone/.
 
 services:
   asterisk:
@@ -12,21 +13,45 @@ services:
     network_mode: host
     volumes:
       - ./asterisk/config:/kidphone-config:ro
+      - ./data/generated:/generated
     restart: unless-stopped
 
   controller:
     build: ./controller
+    command: ["python", "-u", "run_controller.py"]
     network_mode: host
     depends_on: [asterisk]
     environment:
       ARI_URL: http://127.0.0.1:8088/ari
-      ARI_USER: kidphone
-      ARI_PASS: kidphone-dev
-      KIDPHONE_RULES: /config/family.json
-      KIDPHONE_LOG: /data/calls.jsonl
+      ARI_USER: treeline
+      ARI_PASS: treeline-dev
+      TREELINE_DB: /data/treeline.db
+      TREELINE_OUTBOX: /data/outbox
     volumes:
-      - ./config:/config
       - ./data:/data
+    restart: unless-stopped
+
+  api:
+    build: ./controller
+    command: ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "1", "--threads", "8",
+              "--access-logfile", "-", "treeline.api:app"]
+    network_mode: host
+    depends_on: [asterisk]
+    environment:
+      ARI_URL: http://127.0.0.1:8088/ari
+      ARI_USER: treeline
+      ARI_PASS: treeline-dev
+      TREELINE_DB: /data/treeline.db
+      TREELINE_OUTBOX: /data/outbox
+      TREELINE_PJSIP_FILE: /generated/pjsip_handsets.conf
+      TREELINE_WEB: /web
+      # Dev only: show sign-in codes in the API response and the log.
+      TREELINE_DEV_CODES: "1"
+    volumes:
+      - ./data:/data
+      - ./data/generated:/generated
+      - ./web:/web/site:ro
+      - ./design/ui:/web/ui:ro
     restart: unless-stopped
 
   testphones:
@@ -36,8 +61,12 @@ services:
     depends_on: [controller]
     environment:
       SIP_SERVER: 127.0.0.1
-      KIDPHONE_RULES: /config/family.json
-      KIDPHONE_LOG: /data/calls.jsonl
+      ARI_URL: http://127.0.0.1:8088/ari
+      ARI_USER: treeline
+      ARI_PASS: treeline-dev
+      TREELINE_DB: /data/treeline.db
+      TREELINE_PJSIP_FILE: /generated/pjsip_handsets.conf
     volumes:
-      - ./config:/config
       - ./data:/data
+      - ./data/generated:/generated
+      - ./controller/treeline:/tests/treeline:ro

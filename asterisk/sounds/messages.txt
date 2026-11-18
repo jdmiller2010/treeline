@@ -1,0 +1,4 @@
+not_in_service|The number you have dialed is not in service.
+ask_grown_up|You can't call that number from this phone. Ask a grown-up.
+not_taking_calls|The treehouse you're calling isn't taking calls right now. Please try again later.
+no_911|This phone can't call 911. Use a grown-up's phone.

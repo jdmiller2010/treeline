@@ -1,0 +1,273 @@
+import datetime as dt
+import unittest
+
+from tests import helpers
+from treeline import db, rules
+
+LA = "America/Los_Angeles"
+
+
+def utc(y, mo, d, h, mi=0):
+    return dt.datetime(y, mo, d, h, mi, tzinfo=dt.timezone.utc)
+
+
+def house(c, name, number, **kw):
+    return db.create_treehouse(c, name, number=number, timezone=LA, quiet_enabled=0, **kw)
+
+
+class QuietHours(unittest.TestCase):
+    def setUp(self):
+        self.c = helpers.fresh_conn()
+
+    _n = 1000
+
+    def th(self, **kw):
+        QuietHours._n += 1
+        tid = house(self.c, "x", str(QuietHours._n))
+        sets = ",".join(f"{k}=?" for k in kw)
+        self.c.execute(f"UPDATE treehouse SET {sets} WHERE id=?", (*kw.values(), tid))
+        return db.get_treehouse(self.c, tid)
+
+    def test_overnight_window(self):
+        t = self.th(quiet_enabled=1, quiet_start="20:00", quiet_end="07:00")
+        # 2026-11-18 is a Wednesday. 21:00 PST = 05:00 UTC next day.
+        self.assertTrue(rules.in_quiet_hours(t, utc(2026, 11, 19, 5)))     # 9 pm
+        self.assertTrue(rules.in_quiet_hours(t, utc(2026, 11, 18, 10)))    # 2 am
+        self.assertFalse(rules.in_quiet_hours(t, utc(2026, 11, 18, 20)))   # noon
+        self.assertFalse(rules.in_quiet_hours(t, utc(2026, 11, 18, 15, 30)))  # 7:30 am
+
+    def test_boundaries_start_inclusive_end_exclusive(self):
+        t = self.th(quiet_enabled=1, quiet_start="20:00", quiet_end="07:00")
+        self.assertTrue(rules.in_quiet_hours(t, utc(2026, 11, 19, 4, 0)))   # 8:00 pm exactly
+        self.assertFalse(rules.in_quiet_hours(t, utc(2026, 11, 19, 3, 59)))  # 7:59 pm
+        self.assertFalse(rules.in_quiet_hours(t, utc(2026, 11, 18, 15, 0)))  # 7:00 am exactly
+
+    def test_same_day_window(self):
+        t = self.th(quiet_enabled=1, quiet_start="16:00", quiet_end="17:00")
+        self.assertTrue(rules.in_quiet_hours(t, utc(2026, 11, 19, 0, 30)))  # 4:30 pm
+        self.assertFalse(rules.in_quiet_hours(t, utc(2026, 11, 19, 1, 30)))  # 5:30 pm
+
+    def test_disabled(self):
+        t = self.th(quiet_enabled=0, quiet_start="00:00", quiet_end="23:59")
+        self.assertFalse(rules.in_quiet_hours(t, utc(2026, 11, 18, 12)))
+
+    def test_days_apply_to_the_day_the_window_starts(self):
+        # Only Friday nights (Mon=0 ... Fri=4).
+        t = self.th(quiet_enabled=1, quiet_start="20:00", quiet_end="07:00", quiet_days="0000100")
+        # Friday 2026-11-20 at 9 pm PST is quiet; so is Saturday 2 am (the same night).
+        self.assertTrue(rules.in_quiet_hours(t, utc(2026, 11, 21, 5)))
+        self.assertTrue(rules.in_quiet_hours(t, utc(2026, 11, 21, 10)))
+        # Thursday night is not.
+        self.assertFalse(rules.in_quiet_hours(t, utc(2026, 11, 20, 5)))
+        # Friday 2 am is the end of Thursday night: not quiet.
+        self.assertFalse(rules.in_quiet_hours(t, utc(2026, 11, 20, 10)))
+
+    def test_follows_the_treehouses_own_time_zone_and_dst(self):
+        # Summer: PDT is UTC-7, so 21:00 PDT = 04:00 UTC.
+        t = self.th(quiet_enabled=1, quiet_start="20:00", quiet_end="07:00")
+        self.assertTrue(rules.in_quiet_hours(t, utc(2026, 7, 2, 4)))
+        self.assertFalse(rules.in_quiet_hours(t, utc(2026, 7, 2, 2, 30)))   # 7:30 pm PDT
+        east = self.th(quiet_enabled=1, quiet_start="20:00", quiet_end="07:00", timezone="America/New_York")
+        self.assertTrue(rules.in_quiet_hours(east, utc(2026, 11, 19, 1)))   # 8 pm EST
+
+
+class Decide(unittest.TestCase):
+    NOON = utc(2026, 11, 18, 20)  # noon Pacific, a Wednesday
+
+    def setUp(self):
+        self.c = helpers.fresh_conn()
+        self.sam = house(self.c, "Sam's", "2001")
+        self.alex = house(self.c, "Alex's", "2002")
+        self.riley = house(self.c, "Riley's", "2003")
+        self.sam_h = self.handset(self.sam, "sam")
+        self.alex_h = self.handset(self.alex, "alex")
+        self.string(self.sam, self.alex, "live")
+        self.string(self.sam, self.riley, "waiting")
+
+    def handset(self, tid, name):
+        hid, _, _ = db.create_handset(self.c, tid, "ata", name)
+        return self.c.execute("SELECT * FROM handset WHERE id=?", (hid,)).fetchone()
+
+    def string(self, x, y, state):
+        a, b = db.ordered(x, y)
+        self.c.execute("INSERT INTO string(a_id,b_id,state,created_at,updated_at) VALUES(?,?,?,?,?)",
+                       (a, b, state, db.iso(), db.iso()))
+
+    def decide(self, dialed, caller=None, **kw):
+        return rules.decide(self.c, caller or self.sam_h, dialed, kw.pop("now", self.NOON), **kw)
+
+    def set(self, tid, **kw):
+        sets = ",".join(f"{k}=?" for k in kw)
+        self.c.execute(f"UPDATE treehouse SET {sets} WHERE id=?", (*kw.values(), tid))
+
+    def test_rings_when_strung(self):
+        d = self.decide("2002")
+        self.assertTrue(d.allowed)
+        self.assertEqual([h["id"] for h in d.handsets], [self.alex_h["id"]])
+
+    def test_911_and_wrong_length(self):
+        for dialed in ("911", "12", "20021", "abcd", ""):
+            d = self.decide(dialed)
+            self.assertEqual((d.result, d.sound), (rules.NO_911, rules.SOUND_NO_911), dialed)
+
+    def test_911_beats_everything_even_when_paused(self):
+        self.set(self.sam, paused=1)
+        self.assertEqual(self.decide("911").result, rules.NO_911)
+
+    def test_no_such_number(self):
+        d = self.decide("2999")
+        self.assertEqual((d.result, d.sound), (rules.NOT_IN_SERVICE, rules.SOUND_NOT_IN_SERVICE))
+
+    def test_own_number_and_system_numbers_are_not_in_service(self):
+        self.assertEqual(self.decide("2001").result, rules.NOT_IN_SERVICE)
+        db.create_treehouse(self.c, "System", number="0900", system=True)
+        self.assertEqual(self.decide("0900").result, rules.NOT_IN_SERVICE)
+
+    def test_waiting_string_does_not_connect(self):
+        d = self.decide("2003")
+        self.assertEqual(d.result, rules.NOT_STRUNG)
+        self.assertEqual(d.notify_caller_parents[0], "not_strung_attempt")
+
+    def test_paused_or_cut_string_does_not_connect(self):
+        self.c.execute("UPDATE string SET state='paused'")
+        self.assertEqual(self.decide("2002").result, rules.NOT_STRUNG)
+        self.c.execute("UPDATE string SET state='cut'")
+        self.assertEqual(self.decide("2002").result, rules.NOT_STRUNG)
+
+    def test_callers_own_line_first(self):
+        self.set(self.sam, paused=1)
+        d = self.decide("2002")
+        self.assertEqual((d.result, d.reason, d.sound), (rules.QUIET_OR_PAUSED, "caller_paused", rules.SOUND_FAST_BUSY))
+        self.set(self.sam, paused=0, quiet_enabled=1, quiet_start="11:00", quiet_end="13:00")
+        self.assertEqual(self.decide("2002").reason, "caller_quiet")
+
+    def test_other_line_quiet_or_paused_says_the_same_thing(self):
+        self.set(self.alex, paused=1)
+        a = self.decide("2002")
+        self.set(self.alex, paused=0, quiet_enabled=1, quiet_start="11:00", quiet_end="13:00")
+        b = self.decide("2002")
+        self.assertEqual((a.sound, b.sound), (rules.SOUND_NOT_TAKING_CALLS, rules.SOUND_NOT_TAKING_CALLS))
+        self.assertEqual((a.reason, b.reason), ("callee_paused", "callee_quiet"))
+
+    def test_quiet_hours_apply_on_both_sides(self):
+        self.set(self.alex, quiet_enabled=1, quiet_start="20:00", quiet_end="07:00")
+        self.assertEqual(self.decide("2002", now=utc(2026, 11, 19, 5)).reason, "callee_quiet")
+        self.assertTrue(self.decide("2002").allowed)
+
+    def test_busy_when_other_line_in_use(self):
+        carol = house(self.c, "Carol's", "2004")
+        self.string(carol, self.alex, "live")
+        carol_h = self.handset(carol, "carol")
+        self.c.execute("INSERT INTO call(started_at,caller_treehouse,callee_treehouse,state) VALUES(?,?,?,?)",
+                       (db.iso(), self.sam, self.alex, "active"))
+        d = self.decide("2002", caller=carol_h)
+        self.assertEqual((d.result, d.sound), (rules.BUSY, rules.SOUND_BUSY))
+
+    def test_busy_covers_calls_the_line_started_too(self):
+        carol = house(self.c, "Carol's", "2004")
+        self.string(carol, self.sam, "live")
+        carol_h = self.handset(carol, "carol")
+        self.c.execute("INSERT INTO call(started_at,caller_treehouse,callee_treehouse,state) VALUES(?,?,?,?)",
+                       (db.iso(), self.sam, self.alex, "ringing"))
+        self.assertEqual(self.decide("2001", caller=carol_h).result, rules.BUSY)
+
+    def test_offline_when_nothing_registered(self):
+        d = self.decide("2002", online=set())
+        self.assertEqual((d.result, d.sound), (rules.OFFLINE, rules.SOUND_FAST_BUSY))
+        d = self.decide("2002", online={self.alex_h["sip_user"]})
+        self.assertTrue(d.allowed)
+
+    def test_rings_every_online_handset(self):
+        alex2 = self.handset(self.alex, "alex2")
+        d = self.decide("2002", online={self.alex_h["sip_user"], alex2["sip_user"]})
+        self.assertEqual({h["id"] for h in d.handsets}, {self.alex_h["id"], alex2["id"]})
+        d = self.decide("2002", online={alex2["sip_user"]})
+        self.assertEqual([h["id"] for h in d.handsets], [alex2["id"]])
+
+    def test_removed_handsets_do_not_ring(self):
+        self.c.execute("UPDATE handset SET removed_at=? WHERE id=?", (db.iso(), self.alex_h["id"]))
+        self.assertEqual(self.decide("2002").result, rules.OFFLINE)
+
+    def test_repeat_limit(self):
+        db.set_setting(self.c, "repeat_limit_count", 2)
+        for _ in range(2):
+            self.c.execute("INSERT INTO call(started_at,caller_treehouse,callee_treehouse,state,result) "
+                           "VALUES(?,?,?,?,?)", (db.iso(self.NOON), self.sam, self.alex, "ended", "connected"))
+        self.assertEqual(self.decide("2002").result, rules.REPEAT_LIMIT)
+
+    def test_old_calls_do_not_count_toward_the_repeat_limit(self):
+        db.set_setting(self.c, "repeat_limit_count", 1)
+        self.c.execute("INSERT INTO call(started_at,caller_treehouse,callee_treehouse,state,result) "
+                       "VALUES(?,?,?,?,?)", (db.iso(self.NOON - dt.timedelta(minutes=30)), self.sam,
+                                             self.alex, "ended", "connected"))
+        self.assertTrue(self.decide("2002").allowed)
+
+    def test_unstrung_hunting_is_stopped_and_flagged(self):
+        db.set_setting(self.c, "unstrung_limit_count", 3)
+        for n in ("2900", "2901", "2902"):
+            self.c.execute("INSERT INTO call(started_at,caller_treehouse,dialed,state,result) VALUES(?,?,?,?,?)",
+                           (db.iso(self.NOON), self.sam, n, "ended", "not_in_service"))
+        d = self.decide("2002")
+        self.assertEqual((d.result, d.reason), (rules.REPEAT_LIMIT, "unstrung_limit"))
+        self.assertEqual(d.notify_caller_parents[0], "unstrung_dials")
+
+    def test_daily_minutes_count_both_directions(self):
+        self.set(self.sam, daily_minutes=10)
+        self.c.execute("INSERT INTO call(started_at,caller_treehouse,callee_treehouse,state,result,talk_sec) "
+                       "VALUES(?,?,?,?,?,?)", (db.iso(self.NOON), self.alex, self.sam, "ended", "connected", 600))
+        self.assertEqual(self.decide("2002").result, rules.DAILY_LIMIT)
+
+    def test_daily_limit_on_the_other_line_uses_the_gentle_message(self):
+        self.set(self.alex, daily_minutes=5)
+        self.c.execute("INSERT INTO call(started_at,caller_treehouse,callee_treehouse,state,result,talk_sec) "
+                       "VALUES(?,?,?,?,?,?)", (db.iso(self.NOON), self.sam, self.alex, "ended", "connected", 400))
+        d = self.decide("2002")
+        self.assertEqual((d.result, d.sound), (rules.QUIET_OR_PAUSED, rules.SOUND_NOT_TAKING_CALLS))
+
+    def test_daily_minutes_reset_at_local_midnight(self):
+        self.set(self.sam, daily_minutes=1)
+        # 11:30 pm Pacific the night before is not "today" at noon.
+        self.c.execute("INSERT INTO call(started_at,caller_treehouse,callee_treehouse,state,result,talk_sec) "
+                       "VALUES(?,?,?,?,?,?)", (db.iso(utc(2026, 11, 18, 7, 30)), self.sam, self.alex,
+                                               "ended", "connected", 3000))
+        self.assertTrue(self.decide("2002").allowed)
+
+    def test_call_limit_is_the_shortest_of_everything(self):
+        self.set(self.sam, max_call_minutes=30)
+        self.set(self.alex, max_call_minutes=20, daily_minutes=10)
+        sam, alex = db.get_treehouse(self.c, self.sam), db.get_treehouse(self.c, self.alex)
+        self.assertEqual(rules.call_limit_seconds(self.c, sam, alex, self.NOON), 600)
+        self.c.execute("INSERT INTO call(started_at,caller_treehouse,callee_treehouse,state,result,talk_sec) "
+                       "VALUES(?,?,?,?,?,?)", (db.iso(self.NOON), self.alex, self.sam, "ended", "connected", 420))
+        self.assertEqual(rules.call_limit_seconds(self.c, sam, alex, self.NOON), 180)
+
+    def test_line_state(self):
+        sam = db.get_treehouse(self.c, self.sam)
+        self.assertEqual(rules.line_state(self.c, sam, self.NOON), "idle")
+        cur = self.c.execute("INSERT INTO call(started_at,caller_treehouse,callee_treehouse,state) VALUES(?,?,?,?)",
+                             (db.iso(), self.sam, self.alex, "ringing"))
+        self.assertEqual(rules.line_state(self.c, sam, self.NOON), "ringing")
+        self.c.execute("UPDATE call SET state='active' WHERE id=?", (cur.lastrowid,))
+        self.assertEqual(rules.line_state(self.c, sam, self.NOON), "in_call")
+        self.set(self.sam, paused=1)
+        self.assertEqual(rules.line_state(self.c, db.get_treehouse(self.c, self.sam), self.NOON), "quiet")
+
+
+class Numbers(unittest.TestCase):
+    def test_numbers_are_four_digits_and_never_start_with_zero(self):
+        c = helpers.fresh_conn()
+        for _ in range(200):
+            n = db.assign_number(c)
+            self.assertRegex(n, r"^[1-9]\d{3}$")
+
+    def test_a_leaving_treehouses_number_rests_for_a_year(self):
+        c = helpers.fresh_conn()
+        tid = db.create_treehouse(c, "x", number="4321")
+        db.leave_treehouse(c, tid)
+        self.assertFalse(db.number_is_free(c, "4321"))
+        c.execute("UPDATE number_rest SET available_after=?", (db.iso(db.utcnow() - dt.timedelta(days=1)),))
+        self.assertTrue(db.number_is_free(c, "4321"))
+
+
+if __name__ == "__main__":
+    unittest.main()
