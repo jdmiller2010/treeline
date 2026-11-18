@@ -184,6 +184,55 @@ class Decide(unittest.TestCase):
         d = self.decide("2002", online={alex2["sip_user"]})
         self.assertEqual([h["id"] for h in d.handsets], [alex2["id"]])
 
+    def disconnect(self, handset):
+        self.c.execute("UPDATE handset SET disabled=1 WHERE id=?", (handset["id"],))
+
+    def test_a_disconnected_phone_does_not_ring_but_the_others_do(self):
+        alex2 = self.handset(self.alex, "alex2")
+        self.disconnect(self.alex_h)
+        d = self.decide("2002")
+        self.assertTrue(d.allowed)
+        self.assertEqual([h["id"] for h in d.handsets], [alex2["id"]])
+
+    def test_when_every_phone_is_disconnected_the_line_is_offline(self):
+        self.disconnect(self.alex_h)
+        d = self.decide("2002")
+        self.assertEqual((d.result, d.reason), (rules.OFFLINE, "callee_offline"))
+
+    def test_disconnecting_ignores_schedules_it_is_simply_off(self):
+        # Even with the line's quiet hours, limits and pause all off, a disconnected phone gets nothing.
+        self.disconnect(self.alex_h)
+        self.set(self.alex, quiet_enabled=0, paused=0, daily_minutes=None)
+        self.assertEqual(self.decide("2002").result, rules.OFFLINE)
+
+    def test_a_disconnected_phone_cannot_place_calls(self):
+        self.disconnect(self.sam_h)
+        sam_h = self.c.execute("SELECT * FROM handset WHERE id=?", (self.sam_h["id"],)).fetchone()
+        d = self.decide("2002", caller=sam_h)
+        self.assertEqual((d.result, d.reason, d.sound), (rules.DISCONNECTED, "caller_phone_off", rules.SOUND_FAST_BUSY))
+
+    def test_a_disconnected_phone_is_not_counted_as_a_call_attempt(self):
+        # It's stopped before any of the line's counters, so it can't trip the hunting limit or leave a note.
+        self.disconnect(self.sam_h)
+        sam_h = self.c.execute("SELECT * FROM handset WHERE id=?", (self.sam_h["id"],)).fetchone()
+        d = self.decide("2999", caller=sam_h)
+        self.assertEqual(d.result, rules.DISCONNECTED)
+        self.assertIsNone(d.notify_caller_parents)
+
+    def test_911_still_gets_its_message_from_a_disconnected_phone(self):
+        self.disconnect(self.sam_h)
+        sam_h = self.c.execute("SELECT * FROM handset WHERE id=?", (self.sam_h["id"],)).fetchone()
+        self.assertEqual(self.decide("911", caller=sam_h).result, rules.NO_911)
+
+    def test_line_state_for_a_disconnected_phone(self):
+        sam = db.get_treehouse(self.c, self.sam)
+        self.assertEqual(rules.line_state(self.c, sam, self.NOON, self.sam_h), "idle")
+        self.disconnect(self.sam_h)
+        off = self.c.execute("SELECT * FROM handset WHERE id=?", (self.sam_h["id"],)).fetchone()
+        self.assertEqual(rules.line_state(self.c, sam, self.NOON, off), "disconnected")
+        sam2 = self.handset(self.sam, "sam2")                     # its sibling is unaffected
+        self.assertEqual(rules.line_state(self.c, sam, self.NOON, sam2), "idle")
+
     def test_removed_handsets_do_not_ring(self):
         self.c.execute("UPDATE handset SET removed_at=? WHERE id=?", (db.iso(), self.alex_h["id"]))
         self.assertEqual(self.decide("2002").result, rules.OFFLINE)

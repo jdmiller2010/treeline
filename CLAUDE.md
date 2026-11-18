@@ -15,7 +15,7 @@ Treeline: a house-to-house phone network for kids, with parents holding the keys
 ./dev restart            # after Python changes: the source is mounted into the containers (docker-compose.override.yml)
 ./dev unit [module]      # unit tests; never touch the dev database
 ./dev sip [scenario]     # scripted SIP phones (real calls; 17 scenarios)
-./dev web [script.py]    # browser tablets on real WebRTC calls (phone_calls.py default, phone_ui.py)
+./dev web [script.py]    # browser softphones on real WebRTC calls (phone_calls.py default, phone_ui.py)
 ./dev ui smoke           # parent-app browser test on a local API with a throwaway DB (./dev ui start|stop|reset)
 ./dev check              # regenerate generated files, syntax-check Python/JS/compose; fails if something was stale
 ./dev all                # everything
@@ -25,7 +25,7 @@ On Docker Desktop, host-networked ports aren't reachable from the host, which is
 
 ## Working rules (each one exists because it went wrong)
 
-- **Use `./dev`, not ad hoc commands.** It holds a lock around anything that uses Asterisk or the dev database (`sip`, `web`, `clean`). If it says another run holds the stack, wait: scenarios, browser tablets and cleanups share one Asterisk, one pjsip file, one `setting` table.
+- **Use `./dev`, not ad hoc commands.** It holds a lock around anything that uses Asterisk or the dev database (`sip`, `web`, `clean`). If it says another run holds the stack, wait: scenarios, browser softphones and cleanups share one Asterisk, one pjsip file, one `setting` table.
 - **Never delete, truncate or `rm` a database a process has open**, and never empty the dev database while a run is in progress. `./dev ui reset` stops the server first; `./dev clean` takes the lock.
 - **Never `pkill -f <pattern>` where the pattern appears in your own command** (it kills your shell). `./dev ui stop` uses a pid file.
 - **Tests force their own resources.** Assign env vars (`os.environ[...] = ...`), never `setdefault`: compose already sets `TREELINE_DB` and the test would hit the real database. Tests that create families in the dev stack must delete them (through the API) when done.
@@ -43,7 +43,7 @@ On Docker Desktop, host-networked ports aren't reachable from the host, which is
 - **`calls.py`** is the ARI call engine: ring every online handset, bridge the first to answer, limit timers with pips, join a call in progress by dialing `0001`, full audit in `call` and `call_event`. It runs on the websocket thread plus timer threads, so it uses `db.local_conn()` (SQLite connections are per-thread). Tones are **named** in `asterisk/config/indications.conf` and played as `tone:<name>`: never put a raw tone string in an ARI `media` list, its commas split the list.
 - **`api.py`** (Flask) is everything the apps need: email-code sign-in, treehouse, strings (ladder codes, both families approve), handsets, QR/code pairing, adapter settings XML, call log and CSV, push, factory device registration, and it serves the web pages with a CSP. A call involves two families, so what each sees is filtered (`visible_to_callee`, `describe_call`): never leak the other family's quiet hours, rules or unstrung attempts.
 - **`db.py`**: SQLite, WAL. New columns go in the numbered `MIGRATIONS` list (never edit old steps; `CREATE TABLE IF NOT EXISTS` doesn't alter). `jobs.py` runs handset check-ins, alert email and push, and retention (one family's retention removes only *its side* of a call).
-- **`web/`**: framework-free ES modules. `web/shared/ui.js` builds the design system's exact markup; its `html` tag escapes everything, and button `attrs` must be an **object** when any value comes from data (a string is raw HTML). `web/parent/` is the hash-routed parent app; `web/phone/` is the tablet rotary phone: the drawing, finger wheel and handset are the design kit's `RotaryPhone` component (markup copied into `web/shared/assets.js` by `build_web_assets.py`, behavior from `design/ui/js/treeline.js`; we listen to its `tl-rotary-hook/pulse/digit` events); JsSIP does the calls and Web Audio the tones. Vendored libraries are in `web/phone/vendor/` and listed in `THIRD_PARTY_NOTICES.md`.
+- **`web/`**: framework-free ES modules. `web/shared/ui.js` builds the design system's exact markup; its `html` tag escapes everything, and button `attrs` must be an **object** when any value comes from data (a string is raw HTML). `web/parent/` is the hash-routed parent app; `web/phone/` is the rotary softphone: the drawing, finger wheel and handset are the design kit's `RotaryPhone` component (markup copied into `web/shared/assets.js` by `build_web_assets.py`, behavior from `design/ui/js/treeline.js`; we listen to its `tl-rotary-hook/pulse/digit` events); JsSIP does the calls and Web Audio the tones. Vendored libraries are in `web/phone/vendor/` and listed in `THIRD_PARTY_NOTICES.md`.
 - **`deploy/`** is production: Caddy for TLS (only `/ws` reaches Asterisk; ARI stays on localhost), an Asterisk overlay with TLS SIP and SRTP, backups, fail2ban. Untested on a public server.
 
 ## UI work

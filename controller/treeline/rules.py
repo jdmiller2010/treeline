@@ -30,6 +30,7 @@ TIME_LIMIT = "time_limit"
 REPEAT_LIMIT = "repeat_limit"
 DAILY_LIMIT = "daily_limit"
 CALLER_HUNG_UP = "caller_hung_up"
+DISCONNECTED = "disconnected"       # the handset was switched off by a parent
 
 # What the caller hears for each result. "tone:" names are Asterisk
 # indications (US tones); "msg:" is a short recording after the SIT tones.
@@ -129,8 +130,10 @@ def _recent(conn, treehouse_id, minutes, now, extra="", args=()):
         (treehouse_id, since, *args)).fetchone()["n"]
 
 
-def line_state(conn, th, now):
+def line_state(conn, th, now, handset=None):
     """What a handset on this line should do when picked up."""
+    if handset is not None and handset["disabled"]:
+        return "disconnected"
     if th["paused"] or in_quiet_hours(th, now) or over_daily_limit(conn, th, now):
         return "quiet"
     call = conn.execute("SELECT * FROM call WHERE state IN ('ringing','active') "
@@ -155,6 +158,10 @@ def decide(conn, caller_handset, dialed, now=None, online=None):
     # 0. 911 or a wrong-length dial.
     if dialed == "911" or not (len(dialed) == 4 and dialed.isdigit()):
         return Decision(NO_911, "911_or_wrong_length", SOUND_NO_911)
+
+    # A phone a parent has disconnected can't place calls (a call to 911 still gets the message above).
+    if caller_handset["disabled"]:
+        return Decision(DISCONNECTED, "caller_phone_off", SOUND_FAST_BUSY)
 
     # 1. The caller's own line.
     if caller["paused"]:
@@ -211,7 +218,7 @@ def decide(conn, caller_handset, dialed, now=None, online=None):
         return Decision(BUSY, "callee_in_use", SOUND_BUSY, callee=callee)
 
     # 6. Is anything on the other line registered?
-    handsets = db.handsets_of(conn, callee["id"])
+    handsets = [h for h in db.handsets_of(conn, callee["id"]) if not h["disabled"]]   # disconnected phones never ring
     if online is not None:
         handsets = [h for h in handsets if h["sip_user"] in online]
     if not handsets:

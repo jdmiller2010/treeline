@@ -50,6 +50,7 @@ CREATE TABLE IF NOT EXISTS handset (
   sip_md5 TEXT NOT NULL,
   provision_token TEXT,
   provision_secret TEXT,
+  disabled INTEGER NOT NULL DEFAULT 0,
   last_seen TEXT,
   online INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL,
@@ -219,6 +220,8 @@ MIGRATIONS = [
     # 2: a parent agrees to the privacy notes when setting up; we keep when, and which version.
     lambda c: _add_column(c, "treehouse", "consent_at", "TEXT"),
     lambda c: _add_column(c, "treehouse", "consent_version", "TEXT"),
+    # 4: a parent can disconnect one phone: it stops ringing and calling, nothing else changes.
+    lambda c: _add_column(c, "handset", "disabled", "INTEGER NOT NULL DEFAULT 0"),
 ]
 
 

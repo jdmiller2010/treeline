@@ -152,6 +152,8 @@ const ACTIONS = {
   handset_added: (a) => `Added ${a.target}`,
   handset_renamed: (a) => `Renamed a phone to ${a.target}`,
   handset_removed: (a) => `Removed ${a.target}`,
+  handset_disconnected: (a) => `Disconnected ${a.target}`,
+  handset_reconnected: (a) => `Connected ${a.target} again`,
   grown_up_added: (a) => `Added ${a.target} as a ${a.after}`,
   grown_up_removed: (a) => `Removed ${a.target}`,
   calls_exported: () => "Exported the call log",
@@ -168,22 +170,22 @@ export async function actionLog(ctx) {
   return { title: "Action log", back: "#/settings", nav: null, content };
 }
 
-/** Arrive from a QR code or link on a tablet: add it to this treehouse. */
+/** Arrive from a QR code or link on a softphone: add it to this treehouse. */
 export async function pairClaim(ctx, params) {
   const code = (params[0] || "").replace(/\D/g, "");
   const content = html`<form class="tl-card" id="pair-form" novalidate><div class="tl-stack tl-stack--group">
-    <div class="tl-stack tl-stack--tight"><h2 class="tl-card__title">Add this tablet?</h2><p class="tl-card__body">The tablet is showing the code <strong class="tl-num">${code}</strong>. Check it matches, then add it to ${ctx.me.treehouse.name}.</p></div>
-    ${textField({ id: "pair-name", name: "name", label: "Name for this tablet", placeholder: "Living room tablet", value: "" })}
+    <div class="tl-stack tl-stack--tight"><h2 class="tl-card__title">Add this softphone?</h2><p class="tl-card__body">The softphone is showing the code <strong class="tl-num">${code}</strong>. Check it matches, then add it to ${ctx.me.treehouse.name}.</p></div>
+    ${textField({ id: "pair-name", name: "name", label: "Name for this softphone", placeholder: "Living room softphone", value: "" })}
     <div data-error></div>
-    <div class="tl-actions tl-actions--stack">${button({ label: "Not now", variant: "quiet", attrs: 'data-href="#/home"' })}${button({ label: "Add tablet", variant: "primary", type: "submit" })}</div>
+    <div class="tl-actions tl-actions--stack">${button({ label: "Not now", variant: "quiet", attrs: 'data-href="#/home"' })}${button({ label: "Add softphone", variant: "primary", type: "submit" })}</div>
   </div></form>`;
   return {
-    title: "Add a tablet", back: "#/house", nav: null, template: "settings", content,
+    title: "Add a softphone", back: "#/house", nav: null, template: "settings", content,
     mount(root) {
       root.querySelector("#pair-form").addEventListener("submit", async (e) => {
         e.preventDefault();
         try {
-          const r = await post("/api/pair/claim", { code, name: root.querySelector("#pair-name").value || "Tablet" });
+          const r = await post("/api/pair/claim", { code, name: root.querySelector("#pair-name").value || "Softphone" });
           toast(`${r.handset.name} is connected`, "success"); ctx.go("#/house");
         } catch (err) { root.querySelector("[data-error]").innerHTML = String(alert({ tone: "danger", title: err.message })); }
       });

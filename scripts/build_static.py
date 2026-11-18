@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the parent app and the tablet phone as plain files for a static host
+"""Build the parent app and the softphone as plain files for a static host
 (Firebase Hosting, GitHub Pages, any bucket).
 
   python3 scripts/build_static.py --api https://phone.example.com [--out dist]

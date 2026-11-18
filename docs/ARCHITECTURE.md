@@ -4,7 +4,7 @@ How Treeline fits together. For the product decisions and phases see [PLAN.md](P
 
 ## The idea in one paragraph
 
-A household is a **treehouse** with one line, one 4-digit number, and any number of **handsets** (a tablet, a phone adapter with a rotary phone, or a Treeline rotary phone). Two treehouses can call each other only over a **string** that both families' parents approved. Asterisk carries the calls but never decides anything: every call is handed to a control app that applies the rules and writes an audit. Audio is never recorded.
+A household is a **treehouse** with one line, one 4-digit number, and any number of **handsets** (a softphone, a phone adapter with a rotary phone, or a Treeline rotary phone). Two treehouses can call each other only over a **string** that both families' parents approved. Asterisk carries the calls but never decides anything: every call is handed to a control app that applies the rules and writes an audit. Audio is never recorded.
 
 ## 1. System context
 
@@ -14,7 +14,7 @@ flowchart LR
     parent["Parent<br/>(phone or laptop)"]
 
     subgraph handsets["Handsets"]
-        tablet["Tablet phone<br/>web/phone, WebRTC"]
+        tablet["Softphone<br/>web/phone, WebRTC"]
         ata["Phone adapter + rotary phone<br/>SIP over TLS"]
         tp["Treeline rotary phone<br/>(design only)"]
     end
@@ -59,7 +59,7 @@ Two rules shape this picture. **Asterisk never routes on its own**: its only dia
 | Database | `treeline/db.py` | SQLite in WAL mode, shared by the control app and the API; numbered migrations |
 | PJSIP generator | `treeline/pjsip.py` | Writes one account per handset into `/generated/pjsip_handsets.conf`, then asks Asterisk to reload |
 | Parent app | `web/parent/` | Framework-free hash-routed app on the design system |
-| Tablet phone | `web/phone/` | The design kit's `RotaryPhone` (drawing, finger wheel, handset), Web Audio tones, calls over WebRTC with JsSIP |
+| Softphone | `web/phone/` | The design kit's `RotaryPhone` (drawing, finger wheel, handset), Web Audio tones, calls over WebRTC with JsSIP |
 | Shared web code | `web/shared/` | API client, formatting, and `ui.js`, which builds the design system's exact markup |
 | Deployment | `deploy/` | Caddy, an Asterisk overlay with TLS and SRTP, backups, fail2ban |
 
@@ -229,7 +229,7 @@ sequenceDiagram
     participant DB as SQLite
     participant F as pjsip_handsets.conf
     participant A as Asterisk
-    participant T as Tablet phone
+    participant T as Softphone
 
     T->>API: POST /api/pair/start
     API-->>T: six digits + QR (expires in 10 minutes)
@@ -243,7 +243,7 @@ sequenceDiagram
     Note over T,A: Removing the handset rewrites the file, reloads,<br/>and hangs up its channels at once
 ```
 
-## 7. Tablet phone (browser)
+## 7. Softphone (browser)
 
 ```mermaid
 stateDiagram-v2

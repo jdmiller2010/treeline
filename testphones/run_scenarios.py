@@ -114,6 +114,7 @@ class World:
 
     def reset(self):
         """Back to a clean slate between scenarios."""
+        self.conn.execute("UPDATE handset SET disabled=0 WHERE treehouse_id IN (%s)" % ",".join(str(i) for i in self.house.values()))
         for tid in self.house.values():
             self.conn.execute(
                 "UPDATE treehouse SET quiet_enabled=0, paused=0, max_call_minutes=30, daily_minutes=NULL "
@@ -403,6 +404,30 @@ def join_mid_call(w):
         s.close()
 
 
+def disconnected_phone_is_skipped(w):
+    """Alex disconnects one of his two phones: only the other one rings, and it can take the call."""
+    w.conn.execute("UPDATE handset SET disabled=1 WHERE id=?", (w.handset["alex"][0],))
+    c = call_and_check(w, "sam", "0102", ["alex", "alex2"])
+    ev = w.conn.execute("SELECT handset_id FROM call_event WHERE call_id=? AND event='rang'", (c["id"],)).fetchall()
+    return (c["result"] == "connected" and [r["handset_id"] for r in ev] == [w.handset["alex2"][0]]), \
+        {"call": dict(c), "rang": [r["handset_id"] for r in ev]}
+
+
+def every_phone_disconnected(w):
+    """Both of Alex's phones are disconnected: the line is simply offline, as if nothing were plugged in."""
+    for name in ("alex", "alex2"):
+        w.conn.execute("UPDATE handset SET disabled=1 WHERE id=?", (w.handset[name][0],))
+    c = call_and_check(w, "sam", "0102", ["alex", "alex2"])
+    return c["result"] == "offline", dict(c)
+
+
+def disconnected_phone_cannot_call(w):
+    """A disconnected phone gets fast busy when it dials, even to a friend who is home."""
+    w.conn.execute("UPDATE handset SET disabled=1 WHERE id=?", (w.handset["sam"][0],))
+    c = call_and_check(w, "sam", "0102", ["alex"])
+    return c["result"] == "disconnected" and c["reason"] == "caller_phone_off", dict(c)
+
+
 def join_with_no_call(w):
     """Dialing 0001 with no call in progress just gets a fast busy."""
     s = Session(w)
@@ -416,7 +441,8 @@ def join_with_no_call(w):
 SCENARIOS = [dial_by_number, not_in_service, not_strung, no_911, callee_paused,
              caller_quiet_hours, callee_quiet_hours, busy_line, callee_offline,
              ring_timeout, time_limit, repeat_limit, unstrung_hunting, daily_minutes,
-             shared_line, join_mid_call, join_with_no_call]
+             shared_line, join_mid_call, join_with_no_call, disconnected_phone_is_skipped,
+             every_phone_disconnected, disconnected_phone_cannot_call]
 
 
 def main(argv):

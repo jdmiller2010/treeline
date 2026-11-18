@@ -9,11 +9,11 @@ between their treehouses. It sounds like a 1960s phone, and it can't call 911
 or any outside number.
 
 This repository is the whole system: the call server, the parent app, the
-tablet phone, and the plan for real phones. [docs/PLAN.md](docs/PLAN.md) is the
+softphone, and the plan for real phones. [docs/PLAN.md](docs/PLAN.md) is the
 phased plan, [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) shows how it fits together (with diagrams); the status of each phase is below.
 
 ```
- tablet phone (WebRTC) ─┐
+ softphone (WebRTC) ─┐
  phone adapter + rotary ─┼── SIP/WebRTC ──▶ Asterisk ──every call──▶ control app ──▶ SQLite
  Treeline rotary phone ─┘                                   ▲                         ▲
                                            parent app ──▶ API ───────────────────────┘
@@ -25,7 +25,7 @@ phased plan, [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) shows how it fits toge
 | --- | --- | --- |
 | 1 | **Platform core**: treehouses, numbers, strings, call rules, classic tones, call audit, API | Built and tested: 124 unit tests and 17 scripted SIP scenarios |
 | 2 | **Parent app**: setup, strings, calls, quiet hours, phone book, settings, privacy | Built and tested in a real browser (169 checks; 6 widths, both themes) |
-| 3 | **Tablet rotary phone** and several phones on one line | Built and tested with real browser tablets on real calls (25 checks, with audio) |
+| 3 | **Rotary softphone** and several phones on one line | Built and tested with real browser softphones on real calls (25 checks, with audio) |
 | 4 | **Deploy and pilot** | Deployment files, backups, health check, push alerts and privacy are built. **Not run on a public server, and the pilot hasn't happened.** See [docs/DEPLOY.md](docs/DEPLOY.md), [docs/PILOT.md](docs/PILOT.md) |
 | 5 | **A real rotary phone** through an adapter | Server side tested; guide written. **Not tried on an adapter.** See [docs/ADAPTER.md](docs/ADAPTER.md) |
 | 6 | **Custom rotary phone** (ESP32-S3) | Server-side pairing built and tested. **No firmware or board.** See [docs/HARDWARE.md](docs/HARDWARE.md) |
@@ -121,7 +121,7 @@ docker compose up -d --build       # Asterisk, the control app and the API
 
 Then open **http://localhost:8080/** (the parent app) and sign in. This is a
 test server on your own network: it shows your sign-in code on the page, so no
-email is needed. The tablet phone is at **http://localhost:8080/phone/**.
+email is needed. The softphone is at **http://localhost:8080/phone/**.
 
 ```bash
 docker compose logs -f controller  # watch calls being allowed or blocked
@@ -135,8 +135,8 @@ docker compose logs -f controller  # watch calls being allowed or blocked
 | --- | --- | --- |
 | Unit tests | `docker compose run --rm --no-deps --entrypoint python controller -m unittest discover -s tests -t .` | The rules, the API, the database, backups |
 | Scripted SIP phones | `docker compose run --rm testphones` | 17 scenarios: real SIP calls through Asterisk and the rules |
-| Tablet phones | `docker compose run --rm webtests` | Two and three real browser tablets on real WebRTC calls, with audio |
-| The tablet's screen | `docker compose run --rm webtests phone_ui.py` | Pairing and the dial |
+| Softphones | `docker compose run --rm webtests` | Two and three real browser softphones on real WebRTC calls, with audio |
+| The softphone's screen | `docker compose run --rm webtests phone_ui.py` | Pairing and the dial |
 | The parent app | `python3 web/tests/smoke.py` | Needs Playwright and a running API (see the file's header); 169 checks across screens and widths |
 
 A passing scripted run ends with `17/17 scenarios passed`. The scripted tests
@@ -150,12 +150,12 @@ real families in it.
 
 ## Try it with phones
 
-**A tablet or a laptop.** Open `http://localhost:8080/phone/` on the same machine
+**A softphone in a browser.** Open `http://localhost:8080/phone/` on the same machine
 (a browser only lets a page use the microphone on `localhost` or over HTTPS, so
-another tablet needs the deployed, HTTPS setup in [docs/DEPLOY.md](docs/DEPLOY.md)).
-Sign in to the parent app, then Our treehouse, Add a phone, Tablet, and type the
+another device needs the deployed, HTTPS setup in [docs/DEPLOY.md](docs/DEPLOY.md)).
+Or, from the parent app on that same device, press **Use this device as a phone** under Our treehouse: no code needed. Otherwise sign in to the parent app, then Our treehouse, Add a phone, Softphone (app), and type the
 six digits the phone shows. Make two treehouses, string them with a ladder code,
-and call one from the other.
+and call one from the other. Each phone has a switch under Our treehouse (and on Home) to disconnect it for now: it stops ringing and can't call out, and your other phones carry on.
 
 **A softphone on your cell phone** (SIP over UDP, on your Wi-Fi). In the parent
 app add a **Phone adapter** (it gives you a user ID and password), then in
@@ -171,7 +171,7 @@ controller/treeline/      rules.py (the rules), calls.py (call engine), api.py (
                           db.py (SQLite and migrations), jobs.py (alerts, retention), pjsip.py
 controller/tests/         unit tests
 testphones/               scripted SIP phones and the 17 scenarios
-web/parent/               the parent app    web/phone/   the tablet rotary phone
+web/parent/               the parent app    web/phone/   the rotary softphone
 web/shared/               API client and UI builders    web/tests/   browser tests
 design/                   the design system (tokens, components, logo)
 deploy/                   production compose, Caddy, Asterisk overlay, backups, fail2ban

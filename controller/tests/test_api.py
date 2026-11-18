@@ -334,6 +334,49 @@ class Handsets(unittest.TestCase):
         self.assertNotIn(f"[{user}]", read_pjsip())
         self.assertEqual(p.get("/api/handsets").get_json()["handsets"], [])
 
+    def test_disconnect_and_reconnect_a_phone(self):
+        p = make_house()
+        hid = p.post("/api/handsets", {"kind": "softphone", "name": "Kitchen"}).get_json()["handset"]["id"]
+        r = p.patch(f"/api/handsets/{hid}", {"disabled": True}).get_json()
+        self.assertTrue(r["disabled"])
+        self.assertTrue(p.get("/api/handsets").get_json()["handsets"][0]["disabled"])
+        self.assertFalse(p.patch(f"/api/handsets/{hid}", {"disabled": False}).get_json()["disabled"])
+        kinds = [a["action"] for a in p.get("/api/actions").get_json()["actions"]]
+        self.assertIn("handset_disconnected", kinds)
+        self.assertIn("handset_reconnected", kinds)
+
+    def test_setting_it_to_what_it_already_is_logs_nothing_new(self):
+        p = make_house()
+        hid = p.post("/api/handsets", {"kind": "softphone", "name": "K"}).get_json()["handset"]["id"]
+        p.patch(f"/api/handsets/{hid}", {"disabled": False})
+        kinds = [a["action"] for a in p.get("/api/actions").get_json()["actions"]]
+        self.assertNotIn("handset_reconnected", kinds)
+
+    def test_only_parents_can_disconnect_a_phone_and_only_their_own(self):
+        a, b = make_house(), make_house()
+        hid = a.post("/api/handsets", {"kind": "softphone", "name": "K"}).get_json()["handset"]["id"]
+        self.assertEqual(b.patch(f"/api/handsets/{hid}", {"disabled": True}).status_code, 404)
+        a.post("/api/grown-ups", {"email": "sit2@example.com", "role": "sitter"})
+        sitter = Person("sit2@example.com")
+        self.assertEqual(sitter.patch(f"/api/handsets/{hid}", {"disabled": True}).status_code, 403)
+        self.assertEqual(a.patch(f"/api/handsets/{hid}", {}).status_code, 400)
+
+    def test_a_disconnected_phone_cannot_be_rung_and_reports_itself_to_the_tablet(self):
+        parent = make_house()
+        parent.patch("/api/treehouse", {"quiet": {"enabled": False}})
+        start = client.post("/api/pair/start").get_json()
+        parent.post("/api/pair/claim", {"code": start["code"], "name": "Tab"})
+        got = client.get("/api/pair/status", query_string={"token": start["token"]}).get_json()
+        hid = parent.get("/api/handsets").get_json()["handsets"][0]["id"]
+
+        def line():
+            hdr = {"Authorization": "Basic " + base64.b64encode(f"{got['sip_user']}:{got['secret']}".encode()).decode()}
+            return client.get("/api/line", headers=hdr).get_json()["state"]
+        self.assertEqual(line(), "idle")
+        parent.patch(f"/api/handsets/{hid}", {"disabled": True})
+        self.assertEqual(line(), "disconnected")
+        self.assertEqual(parent.post(f"/api/handsets/{hid}/ring-test").status_code, 409)
+
     def test_kinds_and_limits(self):
         p = make_house()
         self.assertEqual(p.post("/api/handsets", {"kind": "toaster", "name": "x"}).status_code, 400)
@@ -555,7 +598,7 @@ class CallLogs(unittest.TestCase):
     def test_describe_every_result(self):
         for r in (rules.CONNECTED, rules.NO_ANSWER, rules.BUSY, rules.NOT_IN_SERVICE, rules.NOT_STRUNG,
                   rules.QUIET_OR_PAUSED, rules.OFFLINE, rules.NO_911, rules.TIME_LIMIT, rules.REPEAT_LIMIT,
-                  rules.DAILY_LIMIT, rules.CALLER_HUNG_UP, "dropped"):
+                  rules.DAILY_LIMIT, rules.CALLER_HUNG_UP, rules.DISCONNECTED, "dropped"):
             for tid in (1, 2):
                 d = api.describe_call({"caller_treehouse": 1, "result": r, "reason": "", "talk_sec": 90,
                                        "dialed": "1234"}, tid)

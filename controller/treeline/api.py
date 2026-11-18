@@ -196,7 +196,7 @@ def th_json(t):
 def handset_json(h):
     return {"id": h["id"], "kind": h["kind"], "name": h["name"], "online": bool(h["online"]),
             "last_seen": h["last_seen"], "created_at": h["created_at"],
-            "provisioned": bool(h["provision_token"])}
+            "provisioned": bool(h["provision_token"]), "disabled": bool(h["disabled"])}
 
 
 def side_of(s, tid):
@@ -259,6 +259,9 @@ def describe_call(c, tid):
                  "detail": "Nothing on that line was connected"} if outgoing else
                 {"label": "Phone offline", "tone": "bark", "icon": "phone-off",
                  "detail": "No handset was connected to ring"})
+    if r == rules.DISCONNECTED:
+        return {"label": "Phone off", "tone": "bark", "icon": "pause",
+                "detail": "That phone was disconnected"}
     if r == rules.NOT_IN_SERVICE:
         return {"label": "Not in service", "tone": "berry", "icon": "lock",
                 "detail": f"No treehouse has {c['dialed']}"}
@@ -829,7 +832,7 @@ def handset_create():
     data = body()
     kind = data.get("kind")
     if kind not in ("rotary", "ata", "softphone"):
-        raise ApiError("Pick a rotary phone, a phone adapter or a tablet.")
+        raise ApiError("Pick a rotary phone, a phone adapter or a softphone.")
     name = clean_name(data.get("name"), "handset name")
     if len(db.handsets_of(conn(), g.th["id"])) >= 8:
         raise ApiError("A treehouse can have up to 8 handsets.", 409)
@@ -846,11 +849,22 @@ def handset_create():
 
 @app.patch("/api/handsets/<int:hid>")
 @auth(parent=True)
-def handset_rename(hid):
+def handset_update(hid):
+    """Rename a phone, and/or disconnect or reconnect it. A disconnected phone doesn't ring and
+    can't place calls; schedules and limits don't matter to it; the treehouse's other phones carry on."""
+    data = body()
     h = handset_for(hid)
-    name = clean_name(body().get("name"), "handset name")
-    conn().execute("UPDATE handset SET name=? WHERE id=?", (name, hid))
-    audit("handset_renamed", name, h["name"], name)
+    if "name" not in data and "disabled" not in data:
+        raise ApiError("Nothing to change.")
+    if "name" in data:
+        name = clean_name(data["name"], "handset name")
+        conn().execute("UPDATE handset SET name=? WHERE id=?", (name, hid))
+        audit("handset_renamed", name, h["name"], name)
+    if "disabled" in data:
+        off = 1 if data["disabled"] else 0
+        if off != h["disabled"]:
+            conn().execute("UPDATE handset SET disabled=? WHERE id=?", (off, hid))
+            audit("handset_disconnected" if off else "handset_reconnected", h["name"])
     return jsonify(handset_json(handset_for(hid)))
 
 
@@ -878,6 +892,8 @@ def handset_remove(hid):
 @auth(parent=True)
 def handset_ring_test(hid):
     h = handset_for(hid)
+    if h["disabled"]:
+        raise ApiError("That phone is disconnected. Reconnect it to ring it.", 409)
     rate_limit(f"ringtest:{hid}", 3, 60)
     out = ari_mod.Ari().request("POST", "/channels", endpoint=f"PJSIP/{h['sip_user']}",
                                 app=ari_mod.APP, appArgs="ringtest", callerId='"" <0000>', timeout=15)
@@ -930,7 +946,7 @@ def provision_file(token):
     return Response(provision_xml(h), mimetype="text/xml")
 
 
-# ================================================================ tablet softphone
+# ================================================================ softphone
 
 def pair_token_row(token):
     return conn().execute("SELECT * FROM pairing WHERE token_hash=?", (db.hash_token(token),)).fetchone()
@@ -947,7 +963,7 @@ def phone_config():
 
 @app.post("/api/pair/start")
 def pair_start():
-    """A tablet softphone asks for a code to show as a QR. No sign-in: the
+    """A softphone asks for a code to show as a QR. No sign-in: the
     handset isn't a handset until a parent approves it."""
     rate_limit(f"pair:{client_ip()}", 20, 600)
     for _ in range(20):
@@ -969,7 +985,7 @@ def factory_register():
     """Called by the factory (or you, with the programming jig) to register a Treeline phone's
     pairing code and secret before it ships. Off unless TREELINE_FACTORY_KEY is set.
 
-    The code printed under the phone is at least 10 digits: unlike a tablet's code, it lives for
+    The code printed under the phone is at least 10 digits: unlike a softphone's code, it lives for
     years, so it must not be guessable by another family trying codes."""
     rate_limit(f"factory:{client_ip()}", 20, 600)
     given = request.headers.get("X-Factory-Key", "")
@@ -1009,11 +1025,11 @@ def pair_claim():
     code = "".join(c for c in str(data.get("code", "")) if c.isdigit())
     kind = data.get("kind") or "softphone"
     if kind not in ("softphone", "rotary"):
-        raise ApiError("Pick a tablet or a Treeline phone.")
-    name = clean_name(data.get("name") or "Tablet", "handset name")
+        raise ApiError("Pick a softphone or a Treeline phone.")
+    name = clean_name(data.get("name") or "Softphone", "handset name")
     row = conn().execute("SELECT * FROM pairing WHERE code=?", (code,)).fetchone()
     if not row or row["expires_at"] < db.iso() or row["sip_user"]:
-        raise ApiError("That code didn't work. Ask the tablet for a new one.", 400, "bad_pair")
+        raise ApiError("That code didn't work. Ask the softphone for a new one.", 400, "bad_pair")
     if len(db.handsets_of(conn(), g.th["id"])) >= 8:
         raise ApiError("A treehouse can have up to 8 handsets.", 409)
     hid, user, secret = db.create_handset(conn(), g.th["id"], kind, name)
@@ -1046,7 +1062,7 @@ def line_state():
     if th is None:
         raise ApiError("This phone was removed from its treehouse.", 401, "removed")
     conn().execute("UPDATE handset SET last_seen=? WHERE id=?", (db.iso(), h["id"]))
-    return jsonify(state=rules.line_state(conn(), th, now()), name=h["name"], number=th["number"],
+    return jsonify(state=rules.line_state(conn(), th, now(), h), name=h["name"], number=th["number"],
                    treehouse=th["name"])
 
 

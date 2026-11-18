@@ -1,4 +1,4 @@
-# Caddy: HTTPS for the parent app, the tablet phone and the API, and the
+# Caddy: HTTPS for the parent app, the softphone and the API, and the
 # secure WebSocket browser phones use. It gets and renews the certificate itself.
 #
 # Only /ws is passed on to Asterisk. Its REST interface (ARI) is never reachable

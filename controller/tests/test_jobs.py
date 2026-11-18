@@ -33,6 +33,21 @@ class Jobs(unittest.TestCase):
         self.assertEqual(self.notes(), [])
         self.assertEqual(self.c.execute("SELECT online FROM handset").fetchone()["online"], 1)
 
+    def test_a_disconnected_phone_never_raises_an_offline_note(self):
+        t0 = db.utcnow()
+        self.c.execute("UPDATE handset SET last_seen=?, disabled=1", (db.iso(t0 - dt.timedelta(hours=5)),))
+        jobs.check_handsets(self.c, FakeAri(set()), t0)
+        self.assertEqual(self.notes(), [])
+
+    def test_disconnecting_a_phone_clears_its_existing_offline_note(self):
+        t0 = db.utcnow()
+        self.c.execute("UPDATE handset SET last_seen=?", (db.iso(t0 - dt.timedelta(hours=5)),))
+        jobs.check_handsets(self.c, FakeAri(set()), t0)
+        self.assertEqual(len(self.notes()), 1)
+        self.c.execute("UPDATE handset SET disabled=1")
+        jobs.check_handsets(self.c, FakeAri(set()), t0)
+        self.assertEqual(self.notes(), [])
+
     def test_a_brief_blip_raises_nothing(self):
         t0 = db.utcnow()
         self.c.execute("UPDATE handset SET last_seen=?", (db.iso(t0 - dt.timedelta(minutes=2)),))

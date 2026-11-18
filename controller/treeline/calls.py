@@ -153,6 +153,10 @@ class Engine:
         self.conn.execute("UPDATE handset SET last_seen=?, online=1 WHERE id=?",
                           (db.iso(), handset["id"]))
         if dialed == rules.SYSTEM_JOIN_NUMBER:
+            if handset["disabled"]:                     # a disconnected phone can't join either
+                self.ari.request("POST", f"/channels/{chan_id}/answer")
+                self.play_plan(chan_id, sound_plan("fast_busy"))
+                return
             self.join_call(chan_id, handset)
             return
 

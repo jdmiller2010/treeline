@@ -26,7 +26,7 @@ The phone itself stays unmodified: its own cord plugs into the SLIC board.
 ```
 
 1. **Dial pulses.** A rotary dial opens and closes the line about ten times a second. The firmware counts breaks to read digits, with an inter-digit gap of about 300–700 ms between digits. Ignore the hook-switch "bounce" and the hook flash (a short on-hook tap).
-2. **Tones, made on the phone.** Dial tone 350+440 Hz; ringback 440+480 Hz, 2 s on, 4 s off; busy 480+620 Hz, 0.5 s on and off; fast busy 480+620 Hz, 0.25 s on and off; the off-hook howler after 30 s. The same table the tablet phone uses (`web/phone/js/tones.js`).
+2. **Tones, made on the phone.** Dial tone 350+440 Hz; ringback 440+480 Hz, 2 s on, 4 s off; busy 480+620 Hz, 0.5 s on and off; fast busy 480+620 Hz, 0.25 s on and off; the off-hook howler after 30 s. The same table the softphone uses (`web/phone/js/tones.js`).
 3. **Line state from the server.** On pickup the phone asks `GET /api/line` (HTTP Basic with its own SIP account), exactly as the tablet does, and plays dial tone, joins a call in progress by dialing `0001`, or plays fast busy during quiet hours. Because the phone plays its own tones, *this* is where quiet hours finally give fast busy the instant the handset is lifted, which the adapter of Phase 5 can't do.
 4. **Calls.** SIP over TLS (port 5061) with SRTP, registering as a handset of kind `rotary`. G.711 (µ-law or A-law) is enough.
 5. **Ringing.** On an incoming call, drive the SLIC's ring mode at 20 Hz in a 2 s on, 4 s off cadence, and stop on hook-off.
@@ -44,7 +44,7 @@ X-Factory-Key: <TREELINE_FACTORY_KEY>
 
 The endpoint is off unless the server has `TREELINE_FACTORY_KEY` set. The first time the phone is on Wi-Fi it polls `GET /api/pair/status?token=<device secret>`. A parent opens Our treehouse, Add a phone, **Treeline rotary phone**, and types the code. The server then makes the handset and the phone's next poll returns its SIP account (once). Removing the phone in the parent app drops it at once.
 
-**The printed code is at least 10 digits, not 6 as the plan first said.** A tablet's six digits only live for 10 minutes, but a code on a label lives for years, and with only a million six-digit codes another family could guess one and claim your phone. Claims are also rate-limited per parent and for everyone.
+**The printed code is at least 10 digits, not 6 as the plan first said.** A softphone's six digits only live for 10 minutes, but a code on a label lives for years, and with only a million six-digit codes another family could guess one and claim your phone. Claims are also rate-limited per parent and for everyone.
 
 **Known gap:** a pairing is single use. If a phone is factory-reset after pairing it has to be re-registered at the jig. If that isn't acceptable, give each phone a way to ask the server to reissue its account to the same secret.
 

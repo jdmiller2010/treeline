@@ -1,4 +1,4 @@
-// The Treeline rotary phone for a tablet: a real dial, real tones, calls over WebRTC.
+// The Treeline softphone, the rotary phone as an app or in a browser: a real dial, real tones, calls over WebRTC.
 import { api } from "/shared/api.js";
 import { ROTARY } from "/shared/assets.js";
 import { brand, footer, html, presence, raw, str } from "/shared/ui.js";
@@ -21,7 +21,7 @@ const S = {
 };
 let ui = null;
 // Everything start() attaches to the page hangs off this, so starting again (after a
-// tablet is removed and added back) doesn't stack listeners and timers.
+// softphone is removed and added back) doesn't stack listeners and timers.
 let life = new AbortController();
 
 const say = (main, sub = "") => { if (ui) { ui.status.textContent = main; ui.sub.textContent = sub; } document.body.dataset.state = S.phase; };
@@ -43,7 +43,7 @@ function draw() {
   </main>
   <div class="ph-wake" id="wake" hidden><div class="tl-card" style="max-width:var(--sheet-max);text-align:center"><div class="tl-stack tl-stack--group">
     <h2 class="tl-card__title">Tap to turn the phone on</h2>
-    <p class="tl-card__body">Your tablet needs one tap before it can ring.</p>
+    <p class="tl-card__body">Your device needs one tap before it can ring.</p>
     <div class="tl-actions"><button type="button" class="tl-btn tl-btn--primary tl-btn--lg" id="wake-btn"><span class="tl-btn__label">Turn on</span></button></div>
   </div></div></div>`);
   const el = root.querySelector("[data-tl-rotary]");
@@ -55,7 +55,12 @@ function draw() {
   el.addEventListener("tl-rotary-hook", async (e) => {
     if (e.detail.offHook) { await tones.unlock(); ui.wake.hidden = true; lift(); } else hangUp();
   });
-  el.addEventListener("tl-rotary-pulse", () => tones.click(0.25));         // the dial's ticking as it returns
+  el.addEventListener("tl-rotary-pulse", () => tones.pulseClick());        // the dial's contacts, once per number
+  // The wheel's own sounds: watch it turn. Forward ticks the ratchet; back whirrs; home thunks.
+  new MutationObserver(() => {
+    const m = /rotate\(([-\d.]+)/.exec(ui.el.querySelector(".tlp-wheel").getAttribute("transform") || "");
+    if (m) tones.dialAngle(Number(m[1]), ui.el.classList.contains("is-dialing"));
+  }).observe(el.querySelector(".tlp-wheel"), { attributes: true, attributeFilter: ["transform"] });
   el.addEventListener("tl-rotary-digit", (e) => { if (e.detail.offHook) onDigit(e.detail.digit); });
   document.addEventListener("keydown", (e) => {
     // The phone dials number keys itself when it has focus; this is for when it doesn't.
@@ -73,7 +78,9 @@ function render() {
   if (ui.number) ui.number.textContent = S.number || "";
   // The kit labels the handset button "Lift the handset"; a ringing phone should say what lifting does.
   if (S.hook === "on" && ui.hookButton) ui.hookButton.setAttribute("aria-label", S.phase === "ringing" ? "Answer the phone" : "Lift the handset");
-  ui.night.innerHTML = S.line === "quiet" && S.hook === "on"
+  ui.night.innerHTML = S.line === "disconnected" && S.hook === "on"
+    ? str(html`<section class="tl-card tl-card--plank"><header class="tl-card__head"><div><p class="tl-card__eyebrow">Switched off</p><h3 class="tl-card__title">This phone is off for now</h3></div></header><p class="tl-card__body">A parent turned it off. It won't ring or call out until they turn it back on.</p></section>`)
+    : S.line === "quiet" && S.hook === "on"
     ? str(html`<section class="tl-card tl-card--night"><header class="tl-card__head"><div><p class="tl-card__eyebrow">Tonight</p><h3 class="tl-card__title">The phone is sleeping</h3></div></header><p class="tl-card__body">Calls wait until morning.</p></section>`) : "";
   document.body.dataset.state = S.phase;
   document.body.dataset.digits = S.digits;
@@ -105,7 +112,7 @@ function removed() {
   forgetPhone(); stopUa(); tones.stop();
   life.abort(); clearInterval(S.timers.refresh);
   S.creds = null; S.registered = false; S.session = null; S.incoming = null; S.hook = "on"; S.phase = "idle";
-  pairScreen(root, "This tablet was removed from its treehouse. Add it again to keep using it.")
+  pairScreen(root, "This softphone was removed from its treehouse. Add it again to keep using it.")
     .then((c) => { S.pairing = false; return start(c); })
     .catch(() => { S.pairing = false; });
 }
@@ -121,14 +128,16 @@ async function lift() {
   decideLift(S.line);
   const before = S.line;
   await refreshLine();
-  if (S.hook === "off" && S.phase === "dialtone" && S.line !== before) decideLift(S.line);
+  // The answer may differ from what we knew (a phone just reconnected, quiet hours just ended): follow it.
+  if (S.hook === "off" && ["dialtone", "off", "sleep"].includes(S.phase) && S.line !== before) decideLift(S.line);
 }
 
 /** What to do the moment the handset comes up, given the line's state. */
 function decideLift(state) {
   cancel("howl", "inter", "after");
-  if (S.insecure) { S.phase = "busy"; tones.play("fastbusy"); say("This tablet can't use its microphone", "Open the phone from a secure (https) address."); render(); return; }
+  if (S.insecure) { S.phase = "busy"; tones.play("fastbusy"); say("This device can't use its microphone", "Open the phone from a secure (https) address."); render(); return; }
   if (!S.registered) { S.phase = "busy"; tones.play("fastbusy"); say("Can't connect right now", "The phone is still getting online."); render(); return; }
+  if (state === "disconnected") { S.phase = "off"; tones.play("fastbusy"); say("This phone is switched off", "A parent turned it off for now."); render(); return; }
   if (state === "quiet") { S.phase = "sleep"; tones.play("fastbusy"); say("The phone is sleeping", "Try again later."); render(); return; }
   if (state === "in_call" && Date.now() >= S.noJoinUntil) { joinCall(); return; }
   S.phase = "dialtone"; tones.play("dial"); say("Dial a number", ""); render();
@@ -283,11 +292,11 @@ async function start(creds) {
   try { const cfg = await api("GET", "/api/phone/config", undefined, { auth: "none" }); S.iceServers = cfg.ice_servers || []; } catch { /* a LAN needs none */ }
   draw();
   say("Lift the handset to make a call", "");
-  if (S.insecure) say("This tablet can't use its microphone", "Open the phone from a secure (https) address. See docs/DEPLOY.md.");
+  if (S.insecure) say("This device can't use its microphone", "Open the phone from a secure (https) address. See docs/DEPLOY.md.");
   stopUa(); startUa();
   refreshLine();
   S.timers.refresh = setInterval(() => { if (S.hook === "on") refreshLine(); }, 15000);
-  // Keep the tablet awake: a phone that sleeps can't ring.
+  // Keep the device awake: a phone that sleeps can't ring.
   const keepAwake = async () => { try { await navigator.wakeLock?.request("screen"); } catch { /* not allowed here */ } };
   keepAwake();
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") keepAwake(); }, { signal: life.signal });
@@ -306,7 +315,7 @@ async function boot() {
 // A hook for the browser tests, on this machine only, and without the SIP secret.
 if (location.search.includes("test=1") && ["localhost", "127.0.0.1"].includes(location.hostname)) {
   const view = new Proxy(S, { get: (t, k) => (k === "creds" ? undefined : t[k]), set: (t, k, v) => { t[k] = v; return true; } });
-  window.__phone = { S: view, lift: () => (ui.api.isOffHook() ? ui.api.hangUp() : ui.api.lift()), dial: (d) => S.dial?.(d), rotary: () => ui.api, tones,
+  window.__phone = { S: view, tonesLevel: () => tones.effectiveLevel(), lift: () => (ui.api.isOffHook() ? ui.api.hangUp() : ui.api.lift()), dial: (d) => S.dial?.(d), rotary: () => ui.api, tones,
     async stats() { const pc = S.session?.connection; if (!pc) return null; const r = await pc.getStats(); let rx = 0, tx = 0; r.forEach((x) => { if (x.type === "inbound-rtp" && x.kind === "audio") rx += x.bytesReceived; if (x.type === "outbound-rtp" && x.kind === "audio") tx += x.bytesSent; }); return { rx, tx }; } };
 }
 

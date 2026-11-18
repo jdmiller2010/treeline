@@ -1,6 +1,6 @@
 # Pilot: two or three families, two weeks
 
-Phase 4 of [PLAN.md](PLAN.md) ends with a pilot: 2–3 friend families use Treeline every day on tablet phones, and nothing is added until the pilot goes well. This is the checklist. **The pilot itself can't be run for you.** It needs real families and a deployed server.
+Phase 4 of [PLAN.md](PLAN.md) ends with a pilot: 2–3 friend families use Treeline every day on softphones, and nothing is added until the pilot goes well. This is the checklist. **The pilot itself can't be run for you.** It needs real families and a deployed server.
 
 ## Before you start
 
@@ -23,7 +23,7 @@ Say plainly, to the parents and to the kids:
 ## Each family, on day one
 
 1. A parent signs in, makes the treehouse, and ticks both boxes.
-2. A parent adds the tablet by QR code. Lift the handset, listen for the dial tone, ring another family.
+2. A parent adds the softphone by QR code. Lift the handset, listen for the dial tone, ring another family.
 3. Make a ladder code, send it, and approve the other family's request.
 4. Set quiet hours and call limits together with the kids, so the rules aren't a surprise.
 5. Show how to pause the line (one tap on Home) and where the call log is.
@@ -33,10 +33,10 @@ Say plainly, to the parents and to the kids:
 Keep a simple log for the two weeks: date, what happened, who was confused, what you changed.
 
 - Do kids understand the dial and the tones without help? Where do they get stuck?
-- Does the tablet ring every time, even after it has been asleep or restarted? Any missed calls the parents didn't expect?
+- Does the softphone ring every time, even after it has been asleep or restarted? Any missed calls the parents didn't expect?
 - Does anything in the call log surprise a parent? Compare it with what really happened.
 - Does a parent get stuck in the app? Where?
-- Calls that dropped, echo, one-way audio, a tablet that went offline.
+- Calls that dropped, echo, one-way audio, a softphone that went offline.
 
 ## Done when (from the plan)
 

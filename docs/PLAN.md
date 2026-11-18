@@ -15,7 +15,7 @@ This plan turns the decisions on the Treeline planning whiteboard into phases. E
 | --- | --- |
 | **Treehouse** | A household: its grown-ups, kids and one phone line. |
 | **Treeline number** | The 4 digits that ring a treehouse's line. One per treehouse, not per kid. |
-| **Handset** | Anything that rings for a treehouse's line: a real rotary phone, or a tablet softphone. A line can have several. |
+| **Handset** | Anything that rings for a treehouse's line: a real rotary phone, or a softphone. A line can have several. |
 | **String** | An approved connection between two treehouses. Both sets of parents say yes; after that, the kids call freely. |
 | **Ladder code** | A one-time invite one parent shares with another family to start a string. |
 | **Quiet hours / Pause** | Times a treehouse's line won't ring or call out, set by its own parents. |
@@ -91,7 +91,7 @@ This plan turns the decisions on the Treeline planning whiteboard into phases. E
 
 ---
 
-## Phase 3: Tablet rotary softphone and shared lines
+## Phase 3: Rotary softphone and shared lines
 
 **Goal:** a kid can use a 1960s rotary phone on a tablet, and a treehouse can have several handsets on one line.
 
@@ -108,13 +108,13 @@ This plan turns the decisions on the Treeline planning whiteboard into phases. E
    - The softphone knows the line's state, so on pickup it plays dial tone, joins the call in progress, or plays fast busy during its own quiet hours.
 6. **Audit:** which handsets rang, which answered, and who joined or left, with times.
 
-**Done when:** a tablet softphone and a SIP softphone in the same treehouse both ring, either answers, the other can join mid-call with the join tone, and outside callers get busy until both hang up.
+**Done when:** a softphone and a SIP softphone in the same treehouse both ring, either answers, the other can join mid-call with the join tone, and outside callers get busy until both hang up.
 
 ---
 
 ## Phase 4: Deploy and pilot
 
-**Goal:** Treeline runs on a small cloud server and 2–3 friend families use it every day, on tablet softphones. No phone hardware needed yet.
+**Goal:** Treeline runs on a small cloud server and 2–3 friend families use it every day, on softphones. No phone hardware needed yet.
 
 **Build**
 
@@ -132,7 +132,7 @@ This plan turns the decisions on the Treeline planning whiteboard into phases. E
 
 ## Phase 5: A real rotary phone through a SIP adapter
 
-**Goal:** pilot families can add a real vintage rotary phone with an off-the-shelf adapter, alongside their tablets, before the custom build.
+**Goal:** pilot families can add a real vintage rotary phone with an off-the-shelf adapter, alongside their softphones, before the custom build.
 
 **Build**
 
@@ -143,7 +143,7 @@ This plan turns the decisions on the Treeline planning whiteboard into phases. E
 5. **Known limit:** the adapter makes its own dial tone, so fast busy during your own quiet hours comes after dialing, not on pickup. Phase 6 fixes this on the custom phone.
 6. **Echo and volume:** tune the adapter's gain and echo settings for old carbon-style handsets.
 
-**Done when:** a pilot family's rotary phone and tablet share their line, the rotary dials other treehouses by number, hears the right sound in every case in the call flow, and shows up in the audit as its own handset.
+**Done when:** a pilot family's rotary phone and softphone share their line, the rotary dials other treehouses by number, hears the right sound in every case in the call flow, and shows up in the audit as its own handset.
 
 ---
 

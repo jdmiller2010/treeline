@@ -1,8 +1,8 @@
 # Deploying Treeline
 
-This puts Treeline on one small cloud machine so families can use it every day, on tablets or phone adapters. It follows Phase 4 of [PLAN.md](PLAN.md).
+This puts Treeline on one small cloud machine so families can use it every day, on softphones or phone adapters. It follows Phase 4 of [PLAN.md](PLAN.md).
 
-> **What has and hasn't been tested.** Everything here was written against the same Docker images and configuration that pass the project's tests on a development machine: the call rules, the API, the parent app, the tablet phone and real calls. The production pieces below (Caddy and Let's Encrypt, SIP over TLS, SRTP, the backup service, fail2ban) were **not** run on a public server, because the work was done without one. Expect to fix small things on first deploy, and read the logs.
+> **What has and hasn't been tested.** Everything here was written against the same Docker images and configuration that pass the project's tests on a development machine: the call rules, the API, the parent app, the softphone and real calls. The production pieces below (Caddy and Let's Encrypt, SIP over TLS, SRTP, the backup service, fail2ban) were **not** run on a public server, because the work was done without one. Expect to fix small things on first deploy, and read the logs.
 
 ## What you need
 
@@ -15,7 +15,7 @@ Open these ports, in the cloud firewall and `ufw` if you use it:
 
 | Port | Why |
 | --- | --- |
-| 80/tcp, 443/tcp | Caddy: the website, the API and the secure WebSocket for tablets. Port 80 is for getting the certificate. |
+| 80/tcp, 443/tcp | Caddy: the website, the API and the secure WebSocket for softphones. Port 80 is for getting the certificate. |
 | 5061/tcp | SIP over TLS, for phone adapters and the Treeline rotary phone |
 | 10000–10100/udp | Call audio (encrypted) |
 
@@ -46,17 +46,17 @@ docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env up -d --
 Check it:
 
 - `https://YOUR-DOMAIN/api/health` says `{"ok": true, ...}`.
-- `https://YOUR-DOMAIN/parent/` shows sign-in. Sign in, set up a treehouse, and add a tablet.
+- `https://YOUR-DOMAIN/parent/` shows sign-in. Sign in, set up a treehouse, and add a softphone.
 - `docker compose ... logs controller` shows `connected; waiting for calls`.
 
-## Tablets
+## Softphones (on a tablet, phone or computer)
 
-The tablet phone (`https://YOUR-DOMAIN/phone/`) **needs HTTPS** so the browser will let it use the microphone. That's why a plain `http://192.168.x.x` address from the development stack won't work on a tablet, even though `localhost` does. Deploying with a real domain is the simplest fix.
+The softphone (`https://YOUR-DOMAIN/phone/`) **needs HTTPS** so the browser will let it use the microphone. That's why a plain `http://192.168.x.x` address from the development stack won't work on a tablet, even though `localhost` does. Deploying with a real domain is the simplest fix.
 
-Set up each tablet once, then leave it:
+Set up each device once, then leave it (a dedicated tablet is the simplest, but any phone or computer with a browser works):
 
 1. Open `https://YOUR-DOMAIN/phone/` in Chrome (Android) or Safari (iPad). Add it to the home screen and open it from there, so it runs full screen.
-2. A parent scans the QR code, or types the six digits under Our treehouse, Add a phone, Tablet.
+2. A parent scans the QR code, or types the six digits under Our treehouse, Add a phone, Softphone (app).
 3. Keep it plugged in, with the screen kept on. The phone asks the browser to hold a wake lock; also set the tablet's own screen timeout to never.
 4. Lock it to the app so kids can't leave it: on iPad turn on Guided Access (Settings, Accessibility); on Android use screen pinning. Treeline shows no menus and has nothing to sign out of.
 5. The browser lets the phone ring only after one tap since it opened. If the tablet restarts, tap once ("Tap to turn the phone on").
@@ -79,7 +79,7 @@ docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env start ap
 ## Watching it
 
 - Point an uptime monitor at `https://YOUR-DOMAIN/api/health`. It answers 200 when the database and Asterisk are fine, and 503 when Asterisk can't be reached. `deploy/uptime-check.sh` does the same from cron.
-- If the server is down, tablets can't register and callers hear fast busy. Phone adapters should be set to play a fast-busy (reorder) tone when they aren't registered; see [ADAPTER.md](ADAPTER.md).
+- If the server is down, softphones can't register and callers hear fast busy. Phone adapters should be set to play a fast-busy (reorder) tone when they aren't registered; see [ADAPTER.md](ADAPTER.md).
 - Brute-force guessing at SIP passwords is limited by every handset having its own random secret. For more, `deploy/fail2ban/` has a filter and jail for Asterisk's log. They are **untested**; you also need Asterisk's log on the host (a `./logs:/var/log/asterisk` volume and a `[logfiles]` entry in `logger.conf`).
 
 ## Certificate renewal
@@ -109,7 +109,7 @@ The database changes itself to match (numbered migrations in `controller/treelin
 
 ## Web pages on a static host (optional)
 
-If you would rather host the parent app and tablet phone on Firebase Hosting or GitHub Pages, and keep only the API and Asterisk on the machine:
+If you would rather host the parent app and softphone on Firebase Hosting or GitHub Pages, and keep only the API and Asterisk on the machine:
 
 ```bash
 python3 scripts/build_static.py --api https://phone.example.com --out dist

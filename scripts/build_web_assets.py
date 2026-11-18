@@ -39,7 +39,7 @@ def brand():
 
 
 def rotary():
-    """The tablet phone's drawing, from components/RotaryPhone.html (moss, on the hook)."""
+    """The softphone's drawing, from components/RotaryPhone.html (moss, on the hook)."""
     text = (UI / "components" / "RotaryPhone.html").read_text()
     m = re.search(r"<!-- Moss, on the hook -->\s*(<div class=\"tl-rotary .*?</p>\s*</div>)", text, re.S)
     return m.group(1)

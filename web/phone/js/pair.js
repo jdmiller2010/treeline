@@ -1,4 +1,4 @@
-// The screen a tablet shows until a parent adds it to a treehouse: a QR code and six digits.
+// The screen a softphone shows until a parent adds it to a treehouse: a QR code and six digits.
 import { alert, art, footer, html, raw, str } from "/shared/ui.js";
 import { get, post } from "/shared/api.js";
 
@@ -49,8 +49,8 @@ export function pairScreen(root, notice) {
         <div class="tl-stack tl-stack--related"><img src="/ui/logo/treeline-lockup.svg" width="200" alt="Treeline" style="max-width:100%;height:auto"></div>
         <section class="tl-stack">
           <div style="max-width:220px">${art("treehouse")}</div>
-          <h1 class="display-md">Add this tablet to your treehouse</h1>
-          <p class="body" style="color:var(--ink-muted)">On a parent's phone, open Treeline, then Our treehouse, then Add a phone. Scan this code, or choose Tablet and type the six digits.</p>
+          <h1 class="display-md">Add this softphone to your treehouse</h1>
+          <p class="body" style="color:var(--ink-muted)">On a parent's phone, open Treeline, then Our treehouse, then Add a phone. Scan this code, or choose Softphone (app) and type the six digits.</p>
         </section>
         ${notice ? alert({ tone: "info", title: notice }) : ""}
         ${error ? alert({ tone: "danger", title: error }) : ""}

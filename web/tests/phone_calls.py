@@ -180,6 +180,24 @@ def run(families):
         check("joined" in kinds or "joined" in [e["event"] for e in sam.call("GET", f"/api/calls/{newest_call(sam)['id']}")["events"]],
               "the join is in the audit")
 
+        # ---- a disconnected tablet is simply off: no ringing in, no calling out
+        ah = alex.call("GET", "/api/handsets")["handsets"][0]["id"]
+        alex.call("PATCH", f"/api/handsets/{ah}", {"disabled": True})
+        a.lift()
+        check(a.wait_phase("off", 15000), "a disconnected tablet says it's switched off on pickup")
+        check(a.tone() == "fastbusy", "and plays fast busy")
+        a.lift()
+        s.lift()
+        s.wait_phase("dialtone")
+        s.dial(alex.number)
+        s.wait_phase("after", 20000)
+        check(newest_call(sam)["result"] == "offline", "calling a treehouse whose only phone is disconnected goes nowhere")
+        s.lift()
+        alex.call("PATCH", f"/api/handsets/{ah}", {"disabled": False})
+        a.lift()
+        check(a.wait_phase("dialtone", 15000), "reconnected, the tablet gives a dial tone again")
+        a.lift()
+
         # ---- rules apply to tablets as they do to every phone
         s.lift()
         s.wait_phase("dialtone")
@@ -215,6 +233,21 @@ def run(families):
         check(s.wait_phase("after", 25000) or s.wait_phase("dialtone", 25000), "dialing 911 plays the message and ends")
         check(newest_call(sam)["result"] == "no_911", "911 is audited as not available")
         s.lift()
+
+        # ---- "use this device as a phone": the parent app makes the account and the browser keeps it
+        made = sam.call("POST", "/api/handsets", {"kind": "softphone", "name": "This device"})
+        c = made["credentials"]
+        dev = browser.new_context(permissions=["microphone"])
+        pg = dev.new_page()
+        pg.goto(f"{BASE}/phone/?test=1")
+        pg.evaluate("(c) => localStorage.setItem('treeline.phone', JSON.stringify(c))",
+                    {"sip_user": c["sip_user"], "secret": c["secret"], "server": c["server"], "ws_url": c["ws_url"],
+                     "realm": c["realm"], "handset_id": made["handset"]["id"]})
+        pg.reload()
+        pg.wait_for_selector(".tl-rotary", timeout=20000)
+        pg.wait_for_function("() => window.__phone.S.registered === true", timeout=30000)
+        check(pg.evaluate("() => window.__phone.S.registered === true"), "a browser given its sign-in by the parent app becomes a working phone")
+        dev.close()
 
         # ---- removing a tablet drops it at once
         hs = sam.call("GET", "/api/handsets")["handsets"]

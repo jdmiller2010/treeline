@@ -23,6 +23,10 @@ def check_handsets(conn, ari, now=None):
                         "ON t.id=h.treehouse_id WHERE h.removed_at IS NULL AND t.left_at IS NULL")
     for h in rows.fetchall():
         key = f"offline:{h['id']}"
+        if h["disabled"]:                    # switched off on purpose: nothing to worry about
+            conn.execute("UPDATE notice SET dismissed_at=? WHERE treehouse_id=? AND key=? AND dismissed_at IS NULL",
+                         (db.iso(now), h["treehouse_id"], key))
+            continue
         if h["sip_user"] in online:
             conn.execute("UPDATE handset SET online=1, last_seen=? WHERE id=?", (db.iso(now), h["id"]))
             conn.execute("UPDATE notice SET dismissed_at=? WHERE treehouse_id=? AND key=? "

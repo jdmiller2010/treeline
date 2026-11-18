@@ -6,12 +6,12 @@ import { plural, relative } from "/shared/format.js";
 import { confirmDialog, formDialog, infoDialog } from "./dialogs.js";
 
 export const KIND = {
-  softphone: ["Tablet", "A tablet running the Treeline rotary phone app."],
+  softphone: ["Softphone (app)", "The Treeline rotary phone as an app or in a browser, on a tablet, phone or computer."],
   ata: ["Phone adapter", "A Grandstream adapter with a rotary phone plugged in."],
   rotary: ["Treeline rotary phone", "The Treeline phone, paired with the code printed under it."],
 };
 
-/** Add a handset: pick the kind, name it, and (for tablets and Treeline phones) enter the code it shows. */
+/** Add a handset: pick the kind, name it, and (for softphones and Treeline phones) enter the code it shows. */
 export async function addHandsetDialog(ctx) {
   const added = await formDialog({
     title: "Add a phone",
@@ -21,7 +21,7 @@ export async function addHandsetDialog(ctx) {
       ${radioGroup({ name: "kind", legend: "What are you adding?", cards: true, value: "softphone",
         options: [["softphone", ...KIND.softphone], ["ata", ...KIND.ata], ["rotary", ...KIND.rotary]] })}
       ${textField({ id: "hs-name", name: "name", label: "Name for this phone", placeholder: "Kitchen phone", hint: "You'll see this in your call log." })}
-      <div data-for="code">${codeInput({ legend: "Code on the phone", hint: "Six digits. Tablets show it on screen; the Treeline phone has it printed underneath." })}</div>`,
+      <div data-for="code">${codeInput({ legend: "Code on the phone", hint: "Six digits. A softphone shows it on screen; the Treeline phone has it printed underneath." })}</div>`,
     onOpen(scrim) {
       const sync = () => {
         const kind = scrim.querySelector("input[name=kind]:checked").value;
@@ -60,20 +60,53 @@ async function showAdapterSettings({ handset, credentials: c }) {
   });
 }
 
-function handsetRow(h) {
+const PHONE_KEY = "treeline.phone";            // where the softphone keeps its sign-in (same browser, same origin)
+
+/** The phone this browser already is, if any: { handset_id, ... }. */
+export function thisDevice() {
+  try { return JSON.parse(localStorage.getItem(PHONE_KEY)); } catch { return null; }
+}
+
+/** Turn this browser into a phone for the treehouse, with no QR code: a parent is already signed in. */
+export async function useThisDevice(ctx) {
+  const made = await formDialog({
+    title: "Use this device as a phone",
+    intro: "This browser becomes one of your treehouse's phones: the rotary phone opens here, rings when a friend calls, and can call out. You can disconnect or remove it any time from Our treehouse.",
+    submit: "Make this a phone",
+    body: textField({ id: "dev-name", name: "name", label: "Name for this phone", value: "This device", hint: "You'll see this in your call log." }),
+    onSubmit: (f) => post("/api/handsets", { kind: "softphone", name: f.querySelector("[name=name]").value }),
+  });
+  if (!made) return false;
+  const c = made.credentials;
+  try {
+    localStorage.setItem(PHONE_KEY, JSON.stringify({ sip_user: c.sip_user, secret: c.secret, server: c.server, ws_url: c.ws_url, realm: c.realm, handset_id: made.handset.id }));
+  } catch { toast("This browser wouldn't save the phone's sign-in, so it can't be used as a phone.", "warning"); return false; }
+  await infoDialog({
+    title: `${made.handset.name} is ready`,
+    close: "Not now",
+    body: html`<p class="tl-sheet__body">Open the phone to lift the handset. Keep that tab open to receive calls. The browser will ask to use the microphone the first time.</p>
+      <div class="tl-actions"><a class="tl-btn tl-btn--primary tl-btn--md" href="/phone/" target="_blank" rel="noopener"><span class="tl-btn__label">Open the phone</span></a></div>`,
+  });
+  return true;
+}
+
+function handsetRow(h, thisId) {
   const [kindName] = KIND[h.kind];
   const menuId = nextId("hm");
-  return html`<div class="tl-row tl-log tl-log--${h.online ? "canopy" : "bark"}">
-  <span class="tl-log__icon" aria-hidden="true">${icon("phone")}</span>
+  const off = h.disabled;
+  const status = off ? "Disconnected: no calls in or out" : h.online ? "Connected" : h.last_seen ? `Last seen ${relative(h.last_seen)}` : "Hasn't connected yet";
+  return html`<div class="tl-row tl-log tl-log--${off ? "bark" : h.online ? "canopy" : "bark"}">
+  <span class="tl-log__icon" aria-hidden="true">${icon(off ? "phone-off" : "phone")}</span>
   <div class="tl-row__main">
-    <div class="tl-row__title">${h.name}</div>
-    <div class="tl-row__meta"><span>${kindName}</span><span>${h.online ? "Connected" : h.last_seen ? `Last seen ${relative(h.last_seen)}` : "Hasn't connected yet"}</span></div>
+    <div class="tl-row__title">${h.name}${h.id === thisId ? " (this device)" : ""}</div>
+    <div class="tl-row__meta"><span>${kindName}</span><span>${status}</span></div>
   </div>
-  ${presence(h.online ? "canopy" : "bark", h.online ? "Online" : "Offline")}
+  ${off ? presence("bark", "Disconnected") : presence(h.online ? "canopy" : "bark", h.online ? "Online" : "Offline")}
+  <button type="button" role="switch" aria-checked="${off ? "false" : "true"}" aria-label="${h.name} connected" class="tl-switch${off ? "" : " is-on"}" data-handset-switch data-id="${h.id}" data-name="${h.name}"><span class="tl-switch__thumb">${off ? "" : icon("check", 12)}</span></button>
   <div class="tl-menu">
     <button type="button" class="tl-iconbtn tl-btn--quiet tl-iconbtn--md" aria-label="More for ${h.name}" title="More" aria-haspopup="menu" aria-expanded="false" aria-controls="${menuId}" data-tl-menu="${menuId}">${icon("more")}</button>
     <div class="tl-menu__panel" id="${menuId}" role="menu" hidden aria-label="${h.name}">
-      <button role="menuitem" type="button" class="tl-menu__item" data-handset="ring" data-id="${h.id}">${icon("bell")}<span>Ring test</span></button>
+      ${off ? "" : html`<button role="menuitem" type="button" class="tl-menu__item" data-handset="ring" data-id="${h.id}">${icon("bell")}<span>Ring test</span></button>`}
       <button role="menuitem" type="button" class="tl-menu__item" data-handset="rename" data-id="${h.id}" data-name="${h.name}">${icon("settings")}<span>Rename</span></button>
       <div class="tl-menu__sep" role="separator"></div>
       <button role="menuitem" type="button" class="tl-menu__item tl-menu__item--danger" data-handset="remove" data-id="${h.id}" data-name="${h.name}">${icon("close")}<span>Remove</span></button>
@@ -82,9 +115,17 @@ function handsetRow(h) {
 </div>`;
 }
 
+/** The button that makes this browser a phone, or opens the phone if it already is one. */
+export function deviceButton(thisId) {
+  return thisId
+    ? html`<div class="tl-actions"><a class="tl-btn tl-btn--secondary tl-btn--sm" href="/phone/" target="_blank" rel="noopener"><span class="tl-btn__label">Open the phone on this device</span></a></div>`
+    : html`<div class="tl-actions">${button({ label: "Use this device as a phone", size: "sm", attrs: "data-this-device" })}</div>`;
+}
+
 export async function house(ctx) {
   const [{ handsets }, { grown_ups }] = await Promise.all([get("/api/handsets"), get("/api/grown-ups")]);
   const th = ctx.me.treehouse, parent = ctx.isParent();
+  const thisId = (handsets.find((h) => h.id === thisDevice()?.handset_id) || {}).id;
   const content = html`
   <section class="tl-card tl-card--plank">
     <header class="tl-card__head"><div><p class="tl-card__eyebrow">Your number</p><h2 class="tl-card__title numeral tl-num" style="font-size:42px;line-height:50px">${th.number}</h2></div></header>
@@ -94,9 +135,11 @@ export async function house(ctx) {
 
   <section class="tl-stack">
     <div class="tl-split"><h2 class="title-lg">Phones</h2>${parent ? button({ label: "Add a phone", size: "sm", icon: "plus", attrs: "data-add-phone" }) : ""}</div>
+    ${parent ? deviceButton(thisId) : ""}
     ${handsets.length
-      ? html`<div class="tl-card tl-card--list">${handsets.map(handsetRow)}</div>`
-      : emptyState({ art: "treehouse", title: "No phones yet", body: "Add a tablet, a phone adapter or the Treeline phone. They all ring together when a friend calls.",
+      ? html`<div class="tl-card tl-card--list">${handsets.map((h) => handsetRow(h, thisId))}</div>
+        <p class="tl-card__body tl-measure" style="color:var(--ink-muted)">Use the switch to disconnect a phone for now. A disconnected phone doesn't ring and can't call out; your other phones carry on as usual.</p>`
+      : emptyState({ art: "treehouse", title: "No phones yet", body: "Add a softphone, a phone adapter or the Treeline phone. They all ring together when a friend calls.",
           action: parent ? button({ label: "Add a phone", variant: "primary", icon: "plus", attrs: "data-add-phone" }) : null })}
   </section>
 
@@ -117,6 +160,8 @@ export async function house(ctx) {
     mount(root) {
       const refresh = () => ctx.render();
       root.querySelectorAll("[data-add-phone]").forEach((b) => b.addEventListener("click", async () => { if (await addHandsetDialog(ctx)) refresh(); }));
+      root.querySelectorAll("[data-this-device]").forEach((b) => b.addEventListener("click", async () => { if (await useThisDevice(ctx)) refresh(); }));
+      bindPhoneSwitches(root, refresh);
       root.querySelector("[data-change-number]")?.addEventListener("click", async () => { if (await changeNumber(ctx)) { await ctx.refreshMe(); refresh(); } });
       root.querySelector("[data-add-grownup]")?.addEventListener("click", async () => { if (await addGrownUp(ctx)) refresh(); });
       root.querySelectorAll("[data-remove-grownup]").forEach((b) => b.addEventListener("click", async () => {
@@ -141,6 +186,21 @@ export async function house(ctx) {
       }));
     },
   };
+}
+
+/** The connect/disconnect switch on a phone's row. */
+export function bindPhoneSwitches(root, refresh) {
+  root.querySelectorAll("[data-handset-switch]").forEach((sw) => sw.addEventListener("tl-change", async (e) => {
+    const { id, name } = sw.dataset, connected = e.detail.checked;
+    try {
+      await patch(`/api/handsets/${id}`, { disabled: !connected });
+      toast(connected ? `${name} is connected again` : `${name} is disconnected. It won't ring or place calls.`, connected ? "success" : "neutral");
+      refresh();
+    } catch (err) {
+      window.TreelineUI?.setSwitch(sw, !connected);          // put the switch back; nothing changed
+      toast(err.message, "warning");
+    }
+  }));
 }
 
 async function changeNumber(ctx) {

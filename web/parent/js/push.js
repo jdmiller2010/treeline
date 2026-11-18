@@ -1,4 +1,4 @@
-// Notifications on this device (Web Push). Email always works; this adds a nudge on the phone or tablet.
+// Notifications on this device (Web Push). Email always works; this adds a nudge on the phone or computer.
 import { ApiError, del, get, post } from "/shared/api.js";
 
 const b64 = (s) => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(s.length / 4) * 4, "=")), (c) => c.charCodeAt(0));
@@ -12,7 +12,7 @@ export async function pushState() {
   const sub = reg && (await reg.pushManager.getSubscription());
   if (!sub) return "off";
   // The browser keeps its subscription when someone signs out. Tie it to whoever is signed in
-  // now, so a shared tablet's alerts go to the right person.
+  // now, so a shared device's alerts go to the right person.
   await post("/api/push/subscribe", sub.toJSON()).catch(() => {});
   return "on";
 }

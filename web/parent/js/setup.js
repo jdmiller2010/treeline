@@ -97,7 +97,7 @@ export async function setup(ctx) {
         </section>
         <section class="tl-stack">
           <h1 class="display-md">Add your first phone</h1>
-          <p class="body tl-measure" style="color:var(--ink-muted)">A tablet with the Treeline phone app works today. A phone adapter or the Treeline rotary phone works too. You can add more later, and they all ring together.</p>
+          <p class="body tl-measure" style="color:var(--ink-muted)">A softphone, the Treeline phone app on a tablet, phone or computer, works today. A phone adapter or the Treeline rotary phone works too. You can add more later, and they all ring together.</p>
         </section>
         <section class="tl-card"><div class="tl-stack tl-stack--group">
           <div data-error></div>

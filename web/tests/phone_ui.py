@@ -115,8 +115,23 @@ def main():
         check(tablet.get_attribute(".tl-rotary", "data-hook") == "off", "the handset lifts")
         tablet.wait_for_timeout(600)
         tablet.screenshot(path=f"{SHOTS}/phone-lifted.png", full_page=True)
+        # Count the sounds the mechanism makes: winding ticks, the governor's whirr, the pulse clicks and the thunk.
+        tablet.evaluate("""async () => {
+          await window.__phone.tones.unlock();
+          window.__made = { sources: 0, oscs: 0 };
+          const AC = AudioContext.prototype, bs = AC.createBufferSource, co = AC.createOscillator;
+          AC.createBufferSource = function () { window.__made.sources++; return bs.apply(this, arguments); };
+          AC.createOscillator = function () { window.__made.oscs++; return co.apply(this, arguments); };
+        }""")
         drag_digit(tablet, 7)
         check(digits_become(tablet, "7"), "turning the wheel to the stop dials the digit")
+        tablet.wait_for_timeout(300)
+        made = tablet.evaluate("() => window.__made")
+        # 7 turns 240 degrees: about 32 ratchet ticks (2 bursts each), 7 pulse clicks (2 each), a whirr and a thunk.
+        check(made["sources"] >= 60, "winding and returning the dial make ratchet, pulse and whirr sounds", str(made))
+        check(made["oscs"] >= 3, "and the governor's hum and the thunk", str(made))
+        level = tablet.evaluate("() => window.__phone.tonesLevel()")
+        check(level <= 0.05, "the dial tone is quieter than before (was 0.09 per wave)", str(level))
         before = tablet.evaluate("document.body.dataset.digits")
         # A short turn that doesn't reach the stop dials nothing.
         p0 = to_screen(tablet, CX + HOLE_K * R * math.cos(math.radians(-88)), CY + SQ * HOLE_K * R * math.sin(math.radians(-88)))

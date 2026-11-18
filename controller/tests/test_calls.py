@@ -85,6 +85,18 @@ class EngineTests(unittest.TestCase):
         e.join_call("j1", h)
         self.assertNotIn("j1", call.legs)
 
+    def test_a_disconnected_phone_cannot_join_a_call(self):
+        e, call = self.engine()
+        self.add_legs(e, call)
+        e.connect(call, call.legs["a1"])
+        for t in call.timers:
+            t.cancel()
+        self.conn.execute("UPDATE handset SET disabled=1 WHERE id=?", (self.sam_h,))
+        handset = self.conn.execute("SELECT * FROM handset WHERE id=?", (self.sam_h,)).fetchone()
+        e.on_incoming({"id": "j1", "name": f"PJSIP/{handset['sip_user']}-0001", "dialplan": {"exten": rules.SYSTEM_JOIN_NUMBER}})
+        self.assertNotIn("j1", call.legs)
+        self.assertTrue(any(m == "POST" and path.startswith("/channels/j1/play/") for m, path, _ in e.ari.sent))   # fast busy
+
     def test_sound_plans(self):
         self.assertEqual(calls.sound_plan("busy")[0][0], "tone:busy")
         self.assertEqual(calls.sound_plan("fast_busy")[0][0], "tone:congestion")
