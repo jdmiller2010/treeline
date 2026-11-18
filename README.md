@@ -173,13 +173,14 @@ These settings are for a private test network only:
 
 ## Next steps
 
-1. **Phase 1, softphones (now):** add a parent web app on top of `family.json`
-   (approvals, schedules, call log), and record friendly kid prompts such as
-   "Sam's phone is sleeping right now".
-2. **Phase 2, SIP adapter:** a Grandstream HT801 plus a vintage phone registers
-   as one of these extensions. No server changes are needed.
-3. **Phase 3, custom rotary build:** ESP32-S3, ES8388 codec and AG1171 SLIC,
-   registering the same way.
+The full phased plan is in **[docs/PLAN.md](docs/PLAN.md)**:
+
+1. **Platform core:** treehouses, 4-digit numbers, strings, classic phone sounds and a full call audit (replaces speed dials).
+2. **Parent app:** setup, strings, rules, calls and the phone book, built from `design/`.
+3. **Tablet rotary softphone** and several handsets on one line.
+4. **A real rotary phone** through a SIP adapter (Grandstream HT801).
+5. **Deploy and pilot** with 2–3 friend families.
+6. **Custom rotary phone:** ESP32-S3, ES8388 codec and AG1171 SLIC.
 
 ## Hosting later
 
