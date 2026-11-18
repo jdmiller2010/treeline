@@ -45,6 +45,7 @@ component = r'''
         h("div", { className: "tl-desk__phone" },
           h(RotaryPhone, { id: pfx + "-phone", number: p.number, colorway: p.colorway, offHook: p.offHook, defaultOffHook: p.defaultOffHook,
             onDigit: p.onDigit, onHook: p.onHook, onPulse: p.onPulse, apiRef: p.apiRef, notice: false })),
+        p.children ? h("div", { className: "tl-desk__slot" }, p.children) : null,
         h("p", { className: "tl-desk__sr" }, "This phone can’t call 911 or outside numbers. In an emergency, use a grown-up’s phone."),
         h("a", { className: "tl-desk__hot tl-desk__hot--guide", href: p.guideHref || "#guide", onClick: p.onGuide, "aria-label": "The guide book: Rotary Phones the Easy Way" }),
         h("button", { type: "button", className: "tl-desk__hot tl-desk__hot--cardfile tl-desk__cardfile", "aria-label": "Phone book" }),
@@ -98,6 +99,9 @@ css = f"""
 .tl-desk__art, .tl-desk__art > svg {{ position: absolute; inset: 0; width: 100%; height: 100%; display: block; }}
 .tl-desk__phone {{ position: absolute; left: {pct(ph["x"], W)}; top: {pct(ph["y"], H)}; width: {pct(ph["w"], W)}; }}
 .tl-desk__phone .tl-rotary {{ max-width: none; gap: 0; }}
+/* The slot: the wall above the phone, between the sticky note and the corkboard. For the app's few words
+   (what the phone is doing, the connection light, a lesson or a sleeping card). Keep it short: two lines. */
+.tl-desk__slot {{ position: absolute; left: 26%; right: 31.5%; top: 1.6%; display: flex; flex-direction: column; align-items: center; gap: var(--space-2); text-align: center; color: #2a251c; }}
 .tl-desk__hot {{ position: absolute; display: block; padding: 0; border: 0; border-radius: 14px; background: none; cursor: pointer; -webkit-tap-highlight-color: transparent; }}
 .tl-desk__hot:focus-visible {{ outline: var(--border-focus, 3px) solid var(--focus); outline-offset: 2px; }}
 {hot}
@@ -137,6 +141,8 @@ export interface SoftphoneDeskProps {
   apiRef?: { current: RotaryPhoneApi | null };
   onCard?: (contact: DeskContact, index: number) => void;
   deskRef?: { current: SoftphoneDeskApi | null };
+  /** A few words on the wall above the phone (status, connection light). */
+  children?: any;
   /** Fill the parent's height instead of the screen's. */
   fill?: boolean;
   id?: string; className?: string;

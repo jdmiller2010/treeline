@@ -676,6 +676,7 @@
         h("div", { className: "tl-desk__phone" },
           h(RotaryPhone, { id: pfx + "-phone", number: p.number, colorway: p.colorway, offHook: p.offHook, defaultOffHook: p.defaultOffHook,
             onDigit: p.onDigit, onHook: p.onHook, onPulse: p.onPulse, apiRef: p.apiRef, notice: false })),
+        p.children ? h("div", { className: "tl-desk__slot" }, p.children) : null,
         h("p", { className: "tl-desk__sr" }, "This phone can’t call 911 or outside numbers. In an emergency, use a grown-up’s phone."),
         h("a", { className: "tl-desk__hot tl-desk__hot--guide", href: p.guideHref || "#guide", onClick: p.onGuide, "aria-label": "The guide book: Rotary Phones the Easy Way" }),
         h("button", { type: "button", className: "tl-desk__hot tl-desk__hot--cardfile tl-desk__cardfile", "aria-label": "Phone book" }),

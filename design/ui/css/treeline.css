@@ -823,6 +823,9 @@ body {
 .tl-desk__art, .tl-desk__art > svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .tl-desk__phone { position: absolute; left: 26.500%; top: 7.769%; width: 47.000%; }
 .tl-desk__phone .tl-rotary { max-width: none; gap: 0; }
+/* The slot: the wall above the phone, between the sticky note and the corkboard. For the app's few words
+   (what the phone is doing, the connection light, a lesson or a sleeping card). Keep it short: two lines. */
+.tl-desk__slot { position: absolute; left: 26%; right: 31.5%; top: 1.6%; display: flex; flex-direction: column; align-items: center; gap: var(--space-2); text-align: center; color: #2a251c; }
 .tl-desk__hot { position: absolute; display: block; padding: 0; border: 0; border-radius: 14px; background: none; cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .tl-desk__hot:focus-visible { outline: var(--border-focus, 3px) solid var(--focus); outline-offset: 2px; }
 .tl-desk__hot--guide { left: 19.200%; top: 65.538%; width: 18.600%; height: 15.077%; }

@@ -30,6 +30,10 @@ The tablet softphone screen. It should feel like a corner of a 1990s house, not 
 - The room keeps its own colors in Lantern (dark mode); it's a place, not part of the UI.
 - Motion respects reduced-motion settings: the card file swaps cards without the flick.
 
+## In the app
+
+The live softphone (`web/phone`) has a few things to say beyond the props. They go on the wall above the phone, in the `children` slot (`.tl-desk__slot`): the status words ("Dial a number", "Ringing", "Talking"), the dialing progress, and the connection light, two short lines at most, in Fraunces on the wallpaper. The "switched off" and "sleeping" cards go there too, as a small card pinned to the wall. A ringing phone keeps its pool of light under it on the table (put the glow class on `.tl-desk__phone`). The "How do I dial?" lesson opens from the guide book. The tap-to-turn-on sheet stays a sheet over the room. The phone's own notice is off, because the sticker says it.
+
 ## HTML
 
 Exact markup for use without React, with `tokens.css` and `components/bundle.css`, and `js/treeline.js` for the phone and the card file. Put the approved strings in `data-contacts` as JSON; change the words in `.tl-desk__words` (label tape, quiet time, the first card) to match. Each copy on a page has its own `id` prefix on the drawing's filters and gradients. The room picture is long, so it's shown once.
