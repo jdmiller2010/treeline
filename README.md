@@ -10,7 +10,7 @@ or any outside number.
 
 This repository is the whole system: the call server, the parent app, the
 tablet phone, and the plan for real phones. [docs/PLAN.md](docs/PLAN.md) is the
-phased plan; the status of each phase is below.
+phased plan, [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) shows how it fits together (with diagrams); the status of each phase is below.
 
 ```
  tablet phone (WebRTC) ─┐
