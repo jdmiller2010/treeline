@@ -130,18 +130,27 @@ class World:
         sets = ",".join(f"{k}=?" for k in cols)
         self.conn.execute(f"UPDATE treehouse SET {sets} WHERE id=?", (*cols.values(), self.house[house]))
 
+    def _mine(self):
+        """SQL that limits a query to calls involving this test world. The dev database may hold real
+        families too (someone trying the app while the tests run), and their calls aren't ours."""
+        ids = ",".join(str(i) for i in self.house.values())
+        return f"(caller_treehouse IN ({ids}) OR callee_treehouse IN ({ids}))"
+
     def calls(self):
-        return self.conn.execute("SELECT * FROM call ORDER BY id").fetchall()
+        return self.conn.execute(f"SELECT * FROM call WHERE {self._mine()} ORDER BY id").fetchall()
+
+    def newest(self):
+        return self.conn.execute(f"SELECT * FROM call WHERE {self._mine()} ORDER BY id DESC LIMIT 1").fetchone()
 
     def last_call(self, wait=20):
-        """The newest call row once it has ended."""
+        """The newest of our calls once it has ended."""
         deadline = time.time() + wait
         while time.time() < deadline:
-            row = self.conn.execute("SELECT * FROM call ORDER BY id DESC LIMIT 1").fetchone()
+            row = self.newest()
             if row and row["state"] == "ended":
                 return row
             time.sleep(0.4)
-        return self.conn.execute("SELECT * FROM call ORDER BY id DESC LIMIT 1").fetchone()
+        return self.newest()
 
     def events(self, call_id):
         return [r["event"] for r in self.conn.execute(
@@ -394,7 +403,7 @@ def join_mid_call(w):
         time.sleep(7)
         s.dial("sam2", "0001", seconds=4, wait=False)
         time.sleep(5)
-        cid = w.conn.execute("SELECT id FROM call ORDER BY id DESC LIMIT 1").fetchone()["id"]
+        cid = w.newest()["id"]
         ev = w.events(cid)
         for p in s.phones:
             p.wait()
