@@ -35,7 +35,7 @@ def parent_session(api, email, house):
     return h, r.json()["treehouse"]
 
 
-def digits_become(page, want, timeout=5000):
+def digits_become(page, want, timeout=8000):
     try:
         page.wait_for_function("(d) => document.body.dataset.digits === d", arg=want, timeout=timeout)
         return True
@@ -43,25 +43,28 @@ def digits_become(page, want, timeout=5000):
         return False
 
 
-def wheel_center(page):
-    return page.evaluate("""() => { const r = document.querySelector('.rp').getBoundingClientRect();
-      return { x: r.left + r.width * 180 / 360, y: r.top + r.height * 292 / 470, k: r.width / 360 }; }""")
+# The kit's dial geometry (design/ui/js/treeline.js, ROTARY): centre, radius, squash, hole ring.
+CX, CY, R, SQ, HOLE_K = 200, 292, 73, 0.93, 0.79
+
+
+def to_screen(page, x, y):
+    """An SVG point in the phone's drawing, as a point on screen."""
+    return page.evaluate("""([x, y]) => { const svg = document.querySelector('.tl-rotary__svg'); const p = svg.createSVGPoint();
+      p.x = x; p.y = y; const q = p.matrixTransform(svg.getScreenCTM()); return { x: q.x, y: q.y }; }""", [x, y])
 
 
 def drag_digit(page, digit):
     """Turn the wheel with the mouse the way a finger would: grab the hole, go clockwise to the stop."""
-    c = wheel_center(page)
-    hole = page.locator(f'.rp-hole[data-digit="{digit}"]').bounding_box()
-    hx, hy = hole["x"] + hole["width"] / 2, hole["y"] + hole["height"] / 2
-    start = math.degrees(math.atan2(hx - c["x"], -(hy - c["y"])))
     pulses = 10 if digit == 0 else digit
     total = 30 * pulses + 30
-    r = math.hypot(hx - c["x"], hy - c["y"])
-    page.mouse.move(hx, hy)
+    start = -28 - 30 * (pulses - 1)                          # where that hole rests, in the drawing's angle
+    at = lambda a, k: to_screen(page, CX + k * math.cos(math.radians(a)), CY + SQ * k * math.sin(math.radians(a)))
+    p0 = at(start, HOLE_K * R)
+    page.mouse.move(p0["x"], p0["y"])
     page.mouse.down()
     for step in range(1, 25):
-        a = math.radians(start + total * step / 24)
-        page.mouse.move(c["x"] + r * math.sin(a), c["y"] - r * math.cos(a))
+        p = at(start + total * step / 24, HOLE_K * R)
+        page.mouse.move(p["x"], p["y"])
     page.mouse.up()
 
 
@@ -89,15 +92,15 @@ def main():
         h, house = parent_session(api, f"phone-parent-{int(__import__('time').time())}@example.com", "Dial house")
         r = api.post(f"{BASE}/api/pair/claim", headers=h, data={"code": code, "name": "Kitchen tablet"})
         check(r.status == 201, "a parent claims the code")
-        tablet.wait_for_selector(".rp", timeout=15000)
-        check(tablet.locator(".rp").count() == 1 and tablet.locator(".ph-code").count() == 0, "the tablet becomes a phone")
-        tablet.wait_for_function("(n) => document.querySelector('#rp-number').textContent === n", arg=house["number"], timeout=15000)
-        check(tablet.text_content("#rp-number") == house["number"], "the number card shows the treehouse's number")
+        tablet.wait_for_selector(".tl-rotary", timeout=15000)
+        check(tablet.locator(".tl-rotary").count() == 1 and tablet.locator(".ph-code").count() == 0, "the tablet becomes a phone")
+        tablet.wait_for_function("(n) => document.querySelector('.tl-rotary__number').textContent === n", arg=house["number"], timeout=15000)
+        check(tablet.text_content(".tl-rotary__number") == house["number"], "the number card shows the treehouse's number")
 
         # ---- what's on the screen
-        check(tablet.locator(".rp-hole").count() == 10, "ten finger holes")
-        check(tablet.locator(".rp-digit").count() == 10, "ten numerals under the holes")
-        check("Can't call 911 or outside numbers" in tablet.inner_text("body"), "the phone's main screen says it can't call 911")
+        check(tablet.locator(".tlp-wheel").count() == 1 and tablet.locator(".tlp-handset").count() == 1, "the design system's wheel and handset are there")
+        check("Can’t call 911 or outside numbers" in tablet.inner_text(".tl-rotary__notice"), "the phone's main screen says it can't call 911")
+        check(tablet.locator("text=Can’t call 911").count() + tablet.locator("text=Can't call 911").count() == 1, "and says it once")
         check("Open-source licenses" in tablet.inner_text("body"), "the footer is there")
         wide = tablet.evaluate("document.documentElement.scrollWidth > document.documentElement.clientWidth + 1")
         check(not wide, "nothing scrolls sideways")
@@ -107,25 +110,32 @@ def main():
         tablet.evaluate("document.documentElement.setAttribute('data-theme','light')")
 
         # ---- the dial really turns (pretend we're off the hook, with a dial tone)
-        tablet.evaluate("() => { __phone.S.hook = 'off'; __phone.S.phase = 'dialtone'; document.querySelector('.rp').classList.add('is-off'); }")
+        # (no Asterisk here, so lift the handset quietly and set the phase by hand)
+        tablet.evaluate("() => { __phone.S.hook = 'off'; __phone.S.phase = 'dialtone'; __phone.rotary().setHook(true, true); }")
+        check(tablet.get_attribute(".tl-rotary", "data-hook") == "off", "the handset lifts")
+        tablet.wait_for_timeout(600)
         tablet.screenshot(path=f"{SHOTS}/phone-lifted.png", full_page=True)
         drag_digit(tablet, 7)
         check(digits_become(tablet, "7"), "turning the wheel to the stop dials the digit")
         before = tablet.evaluate("document.body.dataset.digits")
         # A short turn that doesn't reach the stop dials nothing.
-        c = wheel_center(tablet)
-        hole = tablet.locator('.rp-hole[data-digit="3"]').bounding_box()
-        hx, hy = hole["x"] + hole["width"] / 2, hole["y"] + hole["height"] / 2
-        tablet.mouse.move(hx, hy); tablet.mouse.down()
-        tablet.mouse.move(hx + 6, hy + 6); tablet.mouse.up()
-        tablet.wait_for_timeout(600)
+        p0 = to_screen(tablet, CX + HOLE_K * R * math.cos(math.radians(-88)), CY + SQ * HOLE_K * R * math.sin(math.radians(-88)))
+        tablet.mouse.move(p0["x"], p0["y"]); tablet.mouse.down()
+        tablet.mouse.move(p0["x"] + 6, p0["y"] + 6); tablet.mouse.up()
+        tablet.wait_for_timeout(900)
         check(tablet.evaluate("document.body.dataset.digits") == before, "a short turn dials nothing")
         drag_digit(tablet, 0)
         check(digits_become(tablet, "70"), "0 takes the long way round and still counts")
         tablet.keyboard.press("5")
         check(digits_become(tablet, "705"), "a keyboard can dial too")
-        angle = tablet.evaluate("document.querySelector('#wheel').getAttribute('transform')")
-        check(angle in ("rotate(0 180 292)", None), "the wheel is back at rest after dialing", str(angle))
+        tablet.wait_for_timeout(1500)
+        angle = tablet.evaluate("document.querySelector('.tlp-wheel').getAttribute('transform')")
+        check(angle.startswith("rotate(0.00 "), "the wheel is back at rest after dialing", str(angle))
+        # Digits dialed while the handset is on the hook do nothing, as on a real phone.
+        tablet.evaluate("() => { __phone.rotary().setHook(false, true); __phone.S.hook = 'on'; }")
+        tablet.keyboard.press("Tab"); tablet.focus(".tl-rotary__svg"); tablet.keyboard.press("3")
+        tablet.wait_for_timeout(1500)
+        check(tablet.evaluate("document.body.dataset.digits") == "705", "dialing with the handset down adds nothing")
 
         # ---- the debug hook never exposes the SIP secret
         check(tablet.evaluate("() => window.__phone.S.creds === undefined"), "the test hook can't read the SIP secret")

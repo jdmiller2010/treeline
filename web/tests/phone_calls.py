@@ -68,7 +68,7 @@ class Tablet:
         self.page.wait_for_selector(".ph-code")
         code = "".join(c for c in self.page.inner_text(".ph-code") if c.isdigit())
         family.call("POST", "/api/pair/claim", {"code": code, "name": name})
-        self.page.wait_for_selector(".rp", timeout=20000)
+        self.page.wait_for_selector(".tl-rotary", timeout=20000)
         self.page.wait_for_function("() => window.__phone.S.registered === true", timeout=30000)
         self.page.wait_for_function("() => window.__phone.S.number", timeout=15000)
 
@@ -89,17 +89,16 @@ class Tablet:
         self.page.evaluate("() => window.__phone.lift()")
 
     def dial(self, number):
-        """Turn the dial once per digit, waiting for each to finish like a person would."""
+        """Turn the dial once per digit, waiting for each to come back round like a person would."""
         for i, d in enumerate(number, 1):
-            for _ in range(40):                                  # the wheel may still be returning
-                if self.page.evaluate("(d) => window.__phone.dial(Number(d))", d):
+            for _ in range(5):
+                self.page.evaluate("(d) => window.__phone.dial(Number(d))", d)    # ignored while the wheel is still returning
+                try:
+                    self.page.wait_for_function("(n) => window.__phone.S.digits.length >= n || ['calling', 'talking', 'after', 'busy', 'sleep'].includes(window.__phone.S.phase)",
+                                                arg=i, timeout=3500)
                     break
-                time.sleep(0.15)
-            try:
-                self.page.wait_for_function("(n) => window.__phone.S.digits.length >= n || window.__phone.S.phase !== 'dialing'",
-                                            arg=i, timeout=8000)
-            except Exception:
-                pass
+                except Exception:
+                    continue
             time.sleep(0.2)
 
     def stats(self):
@@ -240,7 +239,7 @@ def run(families):
         if gone:
             code = "".join(c for c in s.page.inner_text(".ph-code") if c.isdigit())
             sam.call("POST", "/api/pair/claim", {"code": code, "name": "Sam tablet again"})
-            s.page.wait_for_selector(".rp", timeout=20000)
+            s.page.wait_for_selector(".tl-rotary", timeout=20000)
             s.page.wait_for_function("() => window.__phone.S.registered === true", timeout=30000)
             s.page.wait_for_function("() => window.__phone.S.number", timeout=15000)
             s.lift()

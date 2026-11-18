@@ -1,7 +1,7 @@
 // The Treeline rotary phone for a tablet: a real dial, real tones, calls over WebRTC.
 import { api } from "/shared/api.js";
-import { brand, footer, html, presence, str } from "/shared/ui.js";
-import { attachDial, buildPhone } from "./dial.js";
+import { ROTARY } from "/shared/assets.js";
+import { brand, footer, html, presence, raw, str } from "/shared/ui.js";
 import { forgetPhone, pairScreen, savedPhone } from "./pair.js";
 import * as tones from "./tones.js";
 
@@ -31,31 +31,35 @@ const cancel = (...names) => names.forEach((n) => clearTimeout(S.timers[n]));
 // ------------------------------------------------------------------ screen
 
 function draw() {
-  const { svg, wheel, handset } = buildPhone(S.number);
+  // The phone itself, its dial and its handset come from the design system (components/RotaryPhone):
+  // a drawing, a finger wheel that really turns, and a handset that really lifts. We listen to its events.
   root.innerHTML = str(html`<main class="ph">
     <div class="ph__top">${brand("#")}<span id="reg"></span></div>
-    <div class="ph__stage"><div class="ph__glow" id="glow"></div></div>
+    <div class="ph__stage"><div class="ph__glow" id="glow">${raw(ROTARY)}</div></div>
     <p class="ph__status" id="status" role="status" aria-live="polite"></p>
     <p class="ph__sub body" id="sub"></p>
     <div class="ph__night" id="night"></div>
-    <div class="ph__bottom">
-      <p class="caption ph__911">Can't call 911 or outside numbers.</p>
-      ${footer("/phone/licenses.html")}
-    </div>
+    <div class="ph__bottom">${footer("/phone/licenses.html")}</div>
   </main>
   <div class="ph-wake" id="wake" hidden><div class="tl-card" style="max-width:var(--sheet-max);text-align:center"><div class="tl-stack tl-stack--group">
     <h2 class="tl-card__title">Tap to turn the phone on</h2>
     <p class="tl-card__body">Your tablet needs one tap before it can ring.</p>
     <div class="tl-actions"><button type="button" class="tl-btn tl-btn--primary tl-btn--lg" id="wake-btn"><span class="tl-btn__label">Turn on</span></button></div>
   </div></div></div>`);
-  root.querySelector("#glow").appendChild(svg);
+  const el = root.querySelector("[data-tl-rotary]");
   ui = { glow: root.querySelector("#glow"), status: root.querySelector("#status"), sub: root.querySelector("#sub"),
-    night: root.querySelector("#night"), reg: root.querySelector("#reg"), wake: root.querySelector("#wake"), svg, wheel, handset };
-  const dialer = attachDial(svg, wheel, { enabled: () => S.hook === "off" && ["dialtone", "dialing"].includes(S.phase), onDigit });
-  S.dial = dialer.dial;
-  handset.addEventListener("click", toggleHook);
-  handset.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleHook(); } });
+    night: root.querySelector("#night"), reg: root.querySelector("#reg"), wake: root.querySelector("#wake"), el,
+    hookButton: el.querySelector(".tl-rotary__hook"), number: el.querySelector(".tl-rotary__number"),
+    api: window.TreelineUI.rotary(el) };
+  S.dial = (d) => ui.api.dial(d);
+  el.addEventListener("tl-rotary-hook", async (e) => {
+    if (e.detail.offHook) { await tones.unlock(); ui.wake.hidden = true; lift(); } else hangUp();
+  });
+  el.addEventListener("tl-rotary-pulse", () => tones.click(0.25));         // the dial's ticking as it returns
+  el.addEventListener("tl-rotary-digit", (e) => { if (e.detail.offHook) onDigit(e.detail.digit); });
   document.addEventListener("keydown", (e) => {
+    // The phone dials number keys itself when it has focus; this is for when it doesn't.
+    if (e.target.closest?.(".tl-rotary__svg")) return;
     if (/^[0-9]$/.test(e.key) && !e.metaKey && !e.ctrlKey && !e.altKey && !/input|textarea|select/i.test(e.target.tagName)) S.dial?.(Number(e.key));
   }, { signal: life.signal });
   ui.wake.querySelector("#wake-btn").addEventListener("click", async () => { await tones.unlock(); ui.wake.hidden = true; });
@@ -65,12 +69,10 @@ function draw() {
 
 function render() {
   if (!ui) return;
-  ui.svg.classList.toggle("is-off", S.hook === "off");
-  ui.svg.parentElement.classList.toggle("is-off", S.hook === "off");
-  ui.handset.setAttribute("aria-pressed", String(S.hook === "off"));
-  ui.handset.setAttribute("aria-label", S.hook === "off" ? "Handset, lifted. Put it back to hang up." : S.phase === "ringing" ? "Handset, ringing. Lift it to answer." : "Handset, on the hook. Lift it to make a call.");
   ui.glow.classList.toggle("is-ringing", S.phase === "ringing");
-  const n = root.querySelector("#rp-number"); if (n) n.textContent = S.number || "";
+  if (ui.number) ui.number.textContent = S.number || "";
+  // The kit labels the handset button "Lift the handset"; a ringing phone should say what lifting does.
+  if (S.hook === "on" && ui.hookButton) ui.hookButton.setAttribute("aria-label", S.phase === "ringing" ? "Answer the phone" : "Lift the handset");
   ui.night.innerHTML = S.line === "quiet" && S.hook === "on"
     ? str(html`<section class="tl-card tl-card--night"><header class="tl-card__head"><div><p class="tl-card__eyebrow">Tonight</p><h3 class="tl-card__title">The phone is sleeping</h3></div></header><p class="tl-card__body">Calls wait until morning.</p></section>`) : "";
   document.body.dataset.state = S.phase;
@@ -109,12 +111,6 @@ function removed() {
 }
 
 // ------------------------------------------------------------------ hook
-
-async function toggleHook() {
-  await tones.unlock();
-  ui.wake.hidden = true;
-  if (S.hook === "on") lift(); else hangUp();
-}
 
 async function lift() {
   S.hook = "off"; S.digits = "";
@@ -310,7 +306,7 @@ async function boot() {
 // A hook for the browser tests, on this machine only, and without the SIP secret.
 if (location.search.includes("test=1") && ["localhost", "127.0.0.1"].includes(location.hostname)) {
   const view = new Proxy(S, { get: (t, k) => (k === "creds" ? undefined : t[k]), set: (t, k, v) => { t[k] = v; return true; } });
-  window.__phone = { S: view, lift: () => toggleHook(), dial: (d) => S.dial?.(d), tones,
+  window.__phone = { S: view, lift: () => (ui.api.isOffHook() ? ui.api.hangUp() : ui.api.lift()), dial: (d) => S.dial?.(d), rotary: () => ui.api, tones,
     async stats() { const pc = S.session?.connection; if (!pc) return null; const r = await pc.getStats(); let rx = 0, tx = 0; r.forEach((x) => { if (x.type === "inbound-rtp" && x.kind === "audio") rx += x.bytesReceived; if (x.type === "outbound-rtp" && x.kind === "audio") tx += x.bytesSent; }); return { rx, tx }; } };
 }
 

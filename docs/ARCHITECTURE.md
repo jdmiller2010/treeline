@@ -59,7 +59,7 @@ Two rules shape this picture. **Asterisk never routes on its own**: its only dia
 | Database | `treeline/db.py` | SQLite in WAL mode, shared by the control app and the API; numbered migrations |
 | PJSIP generator | `treeline/pjsip.py` | Writes one account per handset into `/generated/pjsip_handsets.conf`, then asks Asterisk to reload |
 | Parent app | `web/parent/` | Framework-free hash-routed app on the design system |
-| Tablet phone | `web/phone/` | A rotary dial you really turn, Web Audio tones, calls over WebRTC with JsSIP |
+| Tablet phone | `web/phone/` | The design kit's `RotaryPhone` (drawing, finger wheel, handset), Web Audio tones, calls over WebRTC with JsSIP |
 | Shared web code | `web/shared/` | API client, formatting, and `ui.js`, which builds the design system's exact markup |
 | Deployment | `deploy/` | Caddy, an Asterisk overlay with TLS and SRTP, backups, fail2ban |
 
@@ -269,7 +269,7 @@ stateDiagram-v2
     Idle --> Unpaired: removed by a parent
 ```
 
-The tablet makes its own dial tone, ringback, busy, bell, howler and click with Web Audio. On pickup it asks `GET /api/line` (HTTP Basic with its own account) what to do. The phone needs HTTPS for the microphone, except on `localhost`.
+The phone's drawing and dial come from the design system's `RotaryPhone` component, which reports the handset lifting, each dial pulse and each finished digit as events; the phone adds the logic around them. The tablet makes its own dial tone, ringback, busy, bell, howler and click with Web Audio. On pickup it asks `GET /api/line` (HTTP Basic with its own account) what to do. The phone needs HTTPS for the microphone, except on `localhost`.
 
 ## 8. Parent app and API
 
