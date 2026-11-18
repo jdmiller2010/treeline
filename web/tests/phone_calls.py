@@ -1,0 +1,235 @@
+"""Real calls between tablet softphones, through Asterisk, in headless browsers.
+
+Needs the Docker stack:  docker compose up -d --build && docker compose run --rm webtests
+
+Each tablet is a browser page with a fake microphone. Calls go over WebRTC
+(DTLS-SRTP) to Asterisk, through the control app's rules, and back out.
+"""
+
+import json
+import os
+import sys
+import time
+import urllib.error
+import urllib.request
+
+from playwright.sync_api import sync_playwright
+
+BASE = os.environ.get("BASE", "http://127.0.0.1:8080")
+errors, count = [], [0]
+
+
+def check(cond, what, detail=""):
+    count[0] += 1
+    print(("ok   " if cond else "FAIL ") + what + (f"  [{detail}]" if detail and not cond else ""), flush=True)
+    if not cond:
+        errors.append(what)
+
+
+def api(method, path, body=None, token=None):
+    req = urllib.request.Request(BASE + path, method=method, data=json.dumps(body or {}).encode() if method != "GET" else None,
+                                 headers={"Content-Type": "application/json", **({"Authorization": f"Bearer {token}"} if token else {})})
+    try:
+        with urllib.request.urlopen(req, timeout=15) as r:
+            return json.loads(r.read() or b"{}")
+    except urllib.error.HTTPError as e:
+        raise RuntimeError(f"{method} {path}: {e.code} {e.read()[:200]}")
+
+
+class Family:
+    def __init__(self, tag, name):
+        self.email = f"{tag}-{int(time.time())}@example.com"
+        code = api("POST", "/api/auth/request", {"email": self.email})["dev_code"]
+        self.token = api("POST", "/api/auth/verify", {"email": self.email, "code": code})["token"]
+        self.house = api("POST", "/api/treehouse", {"name": name, "ack_911": True}, self.token)["treehouse"]
+        # Quiet hours would make results depend on the time of day.
+        api("PATCH", "/api/treehouse", {"quiet": {"enabled": False}}, self.token)
+        self.number = self.house["number"]
+
+    def call(self, method, path, body=None):
+        return api(method, path, body, self.token)
+
+
+def string_up(a, b):
+    code = a.call("POST", "/api/ladder-codes")["code"]
+    s = b.call("POST", "/api/strings/redeem", {"code": code})
+    a.call("POST", f"/api/strings/{s['id']}/approve")
+
+
+class Tablet:
+    """One browser page running the Treeline phone, paired to a family."""
+
+    def __init__(self, browser, family, name):
+        self.family, self.name = family, name
+        self.ctx = browser.new_context(permissions=["microphone"], viewport={"width": 820, "height": 1100})
+        self.page = self.ctx.new_page()
+        self.page.on("pageerror", lambda e: errors.append(f"{name} page error: {e}"))
+        self.page.goto(f"{BASE}/phone/?test=1")
+        self.page.wait_for_selector(".ph-code")
+        code = "".join(c for c in self.page.inner_text(".ph-code") if c.isdigit())
+        family.call("POST", "/api/pair/claim", {"code": code, "name": name})
+        self.page.wait_for_selector(".rp", timeout=20000)
+        self.page.wait_for_function("() => window.__phone.S.registered === true", timeout=30000)
+        self.page.wait_for_function("() => window.__phone.S.number", timeout=15000)
+
+    def phase(self):
+        return self.page.evaluate("() => window.__phone.S.phase")
+
+    def wait_phase(self, phase, timeout=20000):
+        try:
+            self.page.wait_for_function("(p) => window.__phone.S.phase === p", arg=phase, timeout=timeout)
+            return True
+        except Exception:
+            return False
+
+    def tone(self):
+        return self.page.evaluate("() => window.__phone.tones.playing()")
+
+    def lift(self):
+        self.page.evaluate("() => window.__phone.lift()")
+
+    def dial(self, number):
+        """Turn the dial once per digit, waiting for each to finish like a person would."""
+        for i, d in enumerate(number, 1):
+            for _ in range(40):                                  # the wheel may still be returning
+                if self.page.evaluate("(d) => window.__phone.dial(Number(d))", d):
+                    break
+                time.sleep(0.15)
+            try:
+                self.page.wait_for_function("(n) => window.__phone.S.digits.length >= n || window.__phone.S.phase !== 'dialing'",
+                                            arg=i, timeout=8000)
+            except Exception:
+                pass
+            time.sleep(0.2)
+
+    def stats(self):
+        return self.page.evaluate("() => window.__phone.stats()")
+
+    def close(self):
+        self.ctx.close()
+
+
+def newest_call(family):
+    calls = family.call("GET", "/api/calls?range=all")["calls"]
+    return calls[0] if calls else None
+
+
+def main():
+    families = []
+    try:
+        run(families)
+    finally:
+        for f in families:                         # leave the dev database as we found it
+            try:
+                f.call("DELETE", "/api/treehouse", {"confirm": f.house["name"]})
+            except Exception:
+                pass
+    if errors:
+        print("\nPROBLEMS:")
+        for e in dict.fromkeys(errors):
+            print(" -", e)
+        sys.exit(1)
+    print(f"\nall {count[0]} checks passed")
+
+
+def run(families):
+    with sync_playwright() as p:
+        browser = p.chromium.launch(args=["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream",
+                                          "--autoplay-policy=no-user-gesture-required"])
+        alex, sam = Family("alex", "Alex's house"), Family("sam", "Sam's house")
+        families += [alex, sam]
+        string_up(alex, sam)
+        a = Tablet(browser, alex, "Alex tablet")
+        s = Tablet(browser, sam, "Sam tablet")
+        check(a.page.evaluate("() => window.__phone.S.registered"), "both tablets register with Asterisk over WebSocket")
+
+        # ---- dial tone on pickup
+        s.lift()
+        check(s.wait_phase("dialtone"), "lifting the handset gives a dial tone")
+        check(s.tone() == "dial", "the dial tone is playing")
+
+        # ---- a call: Sam dials Alex; Alex's tablet rings; Alex answers; audio flows both ways
+        s.dial(alex.number)
+        check(s.wait_phase("calling"), "four digits place the call")
+        check(a.wait_phase("ringing"), "the called tablet rings")
+        check(a.tone() == "bell", "it plays the bell")
+        check(s.tone() == "ringback", "the caller hears ringback")
+        a.lift()
+        check(a.wait_phase("talking") and s.wait_phase("talking"), "answering connects both tablets")
+        time.sleep(3)
+        sa, ss = a.stats(), s.stats()
+        check(sa and sa["rx"] > 1000 and sa["tx"] > 1000, "audio flows both ways (called side)", str(sa))
+        check(ss and ss["rx"] > 1000 and ss["tx"] > 1000, "audio flows both ways (calling side)", str(ss))
+
+        # ---- someone else on the line joins mid-call
+        s2 = Tablet(browser, sam, "Sam second tablet")
+        time.sleep(1)
+        s2.lift()
+        check(s2.wait_phase("talking", 25000), "a second tablet on the same line joins the call in progress")
+        s2.page.evaluate("() => window.__phone.lift()")        # hang up the extra one
+
+        # ---- hang up: the other side gets a click, then dial tone
+        s.lift()
+        check(a.wait_phase("after", 15000) or a.wait_phase("dialtone", 15000), "when one side hangs up, the other hears the click")
+        check(a.wait_phase("dialtone", 15000), "and then the dial tone comes back")
+        a.lift()                                               # put it back
+        time.sleep(1)
+        c = newest_call(alex)
+        check(c and c["result"] == "connected" and c["talk_sec"] >= 3, "the call is in the audit as connected", str(c))
+        detail = alex.call("GET", f"/api/calls/{c['id']}")
+        kinds = [e["event"] for e in detail["events"]]
+        check("joined" in kinds or "joined" in [e["event"] for e in sam.call("GET", f"/api/calls/{newest_call(sam)['id']}")["events"]],
+              "the join is in the audit")
+
+        # ---- rules apply to tablets as they do to every phone
+        s.lift()
+        s.wait_phase("dialtone")
+        s.dial("0199")
+        heard = 0
+        for _ in range(12):                                      # the tones and the message are real audio
+            st = s.stats()
+            heard = max(heard, (st or {}).get("rx", 0))
+            if heard > 2000:
+                break
+            time.sleep(0.3)
+        check(heard > 2000, "the caller hears the three tones and the message", str(heard))
+        check(s.wait_phase("after", 20000) or s.wait_phase("dialtone", 20000), "an unknown number gets a message, then the line is free again")
+        check(newest_call(sam)["result"] == "not_in_service", "unknown numbers are blocked and audited")
+        s.lift()
+        time.sleep(0.5)
+
+        # ---- quiet hours: lifting the handset just gives fast busy
+        sam.call("PATCH", "/api/treehouse", {"paused": True})
+        time.sleep(0.3)
+        s.page.evaluate("() => { window.__phone.S.line = 'idle'; }")
+        s.lift()
+        check(s.wait_phase("sleep", 15000), "a paused line says the phone is sleeping on pickup")
+        check(s.tone() == "fastbusy", "and plays fast busy")
+        s.lift()
+        sam.call("PATCH", "/api/treehouse", {"paused": False})
+
+        # ---- 911
+        s.page.evaluate("() => { window.__phone.S.line = 'idle'; }")
+        s.lift()
+        s.wait_phase("dialtone")
+        s.dial("911")
+        check(s.wait_phase("after", 25000) or s.wait_phase("dialtone", 25000), "dialing 911 plays the message and ends")
+        check(newest_call(sam)["result"] == "no_911", "911 is audited as not available")
+        s.lift()
+
+        # ---- removing a tablet drops it at once
+        hs = sam.call("GET", "/api/handsets")["handsets"]
+        for h in hs:
+            sam.call("DELETE", f"/api/handsets/{h['id']}")
+        time.sleep(1)
+        a.lift()
+        a.wait_phase("dialtone")
+        a.dial(sam.number)
+        time.sleep(4)
+        check(newest_call(alex)["result"] == "offline", "calling a treehouse with no phones fails cleanly")
+        a.lift()
+        browser.close()
+
+
+if __name__ == "__main__":
+    main()

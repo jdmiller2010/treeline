@@ -199,6 +199,32 @@ def parse(s):
     return dt.datetime.fromisoformat(s) if s else None
 
 
+# Changes to tables that already exist. CREATE TABLE IF NOT EXISTS never alters a
+# table, so every later change to the schema goes here as a numbered step. Never
+# edit or reorder an old step; add a new one.
+def _has_column(conn, table, column):
+    return any(r["name"] == column for r in conn.execute(f"PRAGMA table_info({table})"))
+
+
+def _add_column(conn, table, column, decl):
+    if not _has_column(conn, table, column):
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+
+
+MIGRATIONS = [
+    # 1: adapters fetch their settings by a private link, which needs the secret kept.
+    lambda c: _add_column(c, "handset", "provision_secret", "TEXT"),
+]
+
+
+def migrate(conn):
+    version = conn.execute("PRAGMA user_version").fetchone()[0]
+    for number, step in enumerate(MIGRATIONS, 1):
+        if number > version:
+            step(conn)
+            conn.execute(f"PRAGMA user_version={number}")
+
+
 _initialized = set()
 
 
@@ -212,6 +238,7 @@ def connect(path=None):
     conn.execute("PRAGMA busy_timeout=15000")
     if path == ":memory:" or path not in _initialized:
         conn.executescript(SCHEMA)
+        migrate(conn)
         _initialized.add(path)
     return conn
 

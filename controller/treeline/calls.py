@@ -19,13 +19,15 @@ from . import db, rules
 
 log = logging.getLogger("treeline")
 
-# Raw tone strings for Asterisk (ARI "tone:" media). See docs/PLAN.md, Sounds.
+# Tones are named in asterisk/config/indications.conf and played as "tone:<name>".
+# (Not as raw strings: ARI splits a media list on commas, which tone strings are full of.)
 TONES = {
-    "busy": ("tone:480+620/500,0/500", 4.0),
-    "fast_busy": ("tone:480+620/250,0/250", 4.0),
-    "sit": ("tone:!913/274,!1371/274,!1777/380,0", 1.2),
-    "pips": ("tone:!1400/120,0/180,!1400/120,0/180,!1400/120,0", 1.0),
-    "join": ("tone:!1000/80,0/80,!660/200,0", 0.6),
+    "busy": ("tone:busy", 4.0),
+    "fast_busy": ("tone:congestion", 4.0),
+    "sit": ("tone:sit", 1.2),
+    "pips": ("tone:pips", 1.0),
+    "join": ("tone:join", 0.6),
+    "ringtest": ("tone:ringtest", 1.6),
 }
 # Recordings after the three rising tones.
 MESSAGES = {
@@ -362,7 +364,7 @@ class Engine:
 
     def on_ringtest_answered(self, chan_id):
         """A parent tapped 'ring test' and someone picked up: say hello and hang up."""
-        self.play_plan(chan_id, [("tone:440+480/500,0/300,440+480/500,0", 1.6)])
+        self.play_plan(chan_id, [TONES["ringtest"]])
 
     # ------------------------------------------------------------ events
 

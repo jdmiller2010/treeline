@@ -11,6 +11,11 @@ This file is the source for the **Open-source licenses** page in the parent app 
 | [Fraunces](https://github.com/undercasetype/Fraunces) | Display typeface (`design/ui/fonts/`) | SIL Open Font License 1.1 (`design/ui/fonts/OFL-Fraunces.txt`) | 2020 The Fraunces Project Authors |
 | [Figtree](https://github.com/erikdkennedy/figtree) | Interface typeface (`design/ui/fonts/`) | SIL Open Font License 1.1 (`design/ui/fonts/OFL-Figtree.txt`) | 2022 The Figtree Project Authors |
 
+| [JsSIP](https://github.com/versatica/JsSIP) 3.11.1 | SIP over WebSocket in the tablet phone (`web/phone/vendor/jssip.min.js`, a minified build from cdnjs) | MIT (`web/phone/vendor/LICENSE-JsSIP.txt`) | 2012-2026 José Luis Millán and Iñaki Baz Castillo |
+| [qrcode-generator](https://github.com/kazuhikoarase/qrcode-generator) 1.4.4 | The QR code on the tablet's pairing screen (`web/phone/vendor/qrcode.js`) | MIT | 2009 Kazuhiko Arase |
+
+"QR Code" is a registered trademark of DENSO WAVE INCORPORATED.
+
 ## Installed by the containers (not copied into this repo)
 
 | Component | Used for | License |
@@ -23,6 +28,7 @@ This file is the source for the **Open-source licenses** page in the parent app 
 | [eSpeak NG](https://github.com/espeak-ng/espeak-ng) (Ubuntu package `espeak-ng`) | Builds the placeholder operator voice at image build time; not shipped in the running app | GPL-3.0-or-later |
 | [SoX](https://sox.sourceforge.net/) (Ubuntu package `sox`) | Converts the operator messages to 8 kHz WAV at image build time | GPL-2.0-or-later |
 | [SQLite](https://www.sqlite.org/) (built into Python) | The database | Public domain |
+| [Playwright](https://github.com/microsoft/playwright) (Python package and the `mcr.microsoft.com/playwright/python` image) | Browser tests only; never part of a deployment | Apache-2.0 |
 | [baresip](https://github.com/baresip/baresip) (Ubuntu package `baresip-core`) | Scripted test phones only | BSD-3-Clause |
 | Ubuntu 24.04 and the official Python 3.12 image | Container base images | Various open-source licenses, listed in each image |
 
@@ -31,4 +37,3 @@ If you publish built container images, the GPL-2.0 and CC BY-SA 3.0 terms above 
 ## Planned (add here when used)
 
 - ESP-IDF and ESP-ADF (Espressif) for the custom rotary phone firmware.
-- The WebRTC/SIP library chosen for the tablet softphone.

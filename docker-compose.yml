@@ -70,3 +70,11 @@ services:
       - ./data:/data
       - ./data/generated:/generated
       - ./controller/treeline:/tests/treeline:ro
+
+  webtests:
+    build: ./web/tests
+    network_mode: host
+    profiles: [test]
+    depends_on: [api, controller]
+    environment:
+      BASE: http://127.0.0.1:8080

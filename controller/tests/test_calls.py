@@ -86,7 +86,10 @@ class EngineTests(unittest.TestCase):
         self.assertNotIn("j1", call.legs)
 
     def test_sound_plans(self):
-        self.assertEqual(calls.sound_plan("busy")[0][0], "tone:480+620/500,0/500")
+        self.assertEqual(calls.sound_plan("busy")[0][0], "tone:busy")
+        self.assertEqual(calls.sound_plan("fast_busy")[0][0], "tone:congestion")
+        for media, _ in calls.TONES.values():
+            self.assertNotIn(",", media)      # ARI would split it into separate "files"
         plan = calls.sound_plan(rules.SOUND_NO_911)
         self.assertEqual(plan[0][0], calls.TONES["sit"][0])
         self.assertEqual(plan[1][0], "sound:treeline/no_911")
