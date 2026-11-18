@@ -1,0 +1,19 @@
+<!-- @dsCard group="Containers" height=400 -->
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Card — Treeline</title></head>
+<body>
+<div id="root" class="tl-root"></div>
+<script>
+  var T = window.Treeline, h = React.createElement;
+  function render(el) { ReactDOM.createRoot(document.getElementById('root')).render(el); }
+  render(h('div', {className:'tl-demo', style:{alignItems:'stretch', gap:'24px'}},
+    h(T.Card, {eyebrow:'Today', title:'3 calls, 42 minutes', action:h(T.IconButton, {icon:'chevron-right', label:'Open call log', size:'sm'}), className:'', }, h('p', {style:{margin:0, color:'var(--ink-muted)', maxWidth:'240px'}}, 'Sam talked with Alex and Grandma. No blocked calls.')),
+    h(T.Card, {tone:'breeze', eyebrow:'Good news', title:'Alex is in the treehouse'}, h('p', {className:'tl-card__body', style:{maxWidth:'240px'}}, 'Both families approved. Speed dial 1.')),
+    h(T.Card, {tone:'dusk', eyebrow:'Quiet hours', title:'8:00 pm – 7:00 am'}, h('p', {style:{margin:0, color:'var(--ink)', maxWidth:'240px'}}, 'Calls wait until morning.')),
+    h(T.Card, {tone:'plank', eyebrow:'Your house', title:'Parents: Jordan and Alex'}, h('p', {className:'tl-card__body', style:{maxWidth:'240px'}}, 'Two kids, two phones, five approved friends.')),
+    h(T.Card, {tone:'night', eyebrow:'Tonight', title:'Sam’s phone is sleeping'}, h('p', {className:'tl-card__body', style:{maxWidth:'240px'}}, 'Calls wait until 7:00 am.'))
+  ));
+</script>
+</body>
+</html>

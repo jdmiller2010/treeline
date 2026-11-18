@@ -1,0 +1,14 @@
+<!-- Treeline · TimeField
+     Enter a time of day.
+     Needs css/tokens.css and css/treeline.css.
+     Rules and notes: components/TimeField.md -->
+
+<!-- Time -->
+<div class="tl-textfield tl-timefield">
+  <label for="bedtime" class="tl-textfield__label">Bedtime</label>
+  <div class="tl-textfield__control">
+    <svg class="tl-icon tl-textfield__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+    <input id="bedtime" class="tl-textfield__input" aria-describedby="bedtime-hint" type="time" value="20:00"/>
+  </div>
+  <p id="bedtime-hint" class="tl-textfield__hint">Calls wait after this.</p>
+</div>

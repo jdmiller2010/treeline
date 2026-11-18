@@ -1,0 +1,15 @@
+<!-- @dsCard group="Status" height=180 subtitle="Wide, then at phone width (the labels fold into one line)" -->
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Steps — Treeline</title></head>
+<body>
+<div id="root" class="tl-root"></div>
+<script>
+  var T = window.Treeline, h = React.createElement;
+  function render(el) { ReactDOM.createRoot(document.getElementById('root')).render(el); }
+  render(h('div', {className:'tl-stack tl-stack--sections', style:{padding:'24px'}},
+    h('div', {style:{maxWidth:'640px'}}, h(T.Steps, {steps:['Your household', 'Add a kid', 'Pair the phone', 'Invite a friend'], current:2})),
+    h('div', {className:'tl-root', style:{width:'360px'}}, h(T.Steps, {steps:['Your household', 'Add a kid', 'Pair the phone', 'Invite a friend'], current:3}))));
+</script>
+</body>
+</html>

@@ -1,0 +1,533 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Treeline · app shell</title>
+<link rel="stylesheet" href="css/tokens.css">
+<link rel="stylesheet" href="css/treeline.css">
+<link rel="icon" href="logo/exports/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="logo/exports/favicon.ico" sizes="48x48">
+<link rel="apple-touch-icon" href="logo/exports/apple-touch-icon.png">
+<meta name="theme-color" content="#f0e7d3">
+</head>
+<body style="margin:0">
+<div class="tl-app">
+  <div class="tl-app__layout">
+    <header class="tl-appbar">
+      <h1 class="tl-appbar__title" id="app-title">Home</h1>
+      <div class="tl-appbar__actions">
+        <button class="tl-btn tl-btn--secondary tl-btn--md tl-btn--collapse" type="button" data-tl-open="add-friend"><svg class="tl-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span class="tl-btn__label">Add friend</span></button>
+<div class="tl-menu">
+  <button type="button" class="tl-avatar-btn" aria-label="Account" aria-haspopup="menu" aria-expanded="false" aria-controls="account-menu" data-tl-menu="account-menu">
+    <span class="tl-avatar tl-avatar--sm tl-avatar--petal" role="img" aria-label="Jordan Bennett">JB</span>
+  </button>
+  <div class="tl-menu__panel" id="account-menu" role="menu" hidden="" aria-label="Account">
+    <div class="tl-menu__head">
+      <span class="tl-menu__name">Jordan Bennett</span>
+      <span class="tl-menu__meta">Bennett house</span>
+    </div>
+    <a role="menuitem" href="#settings" class="tl-menu__item">
+      <svg class="tl-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg>
+      <span>Settings</span>
+    </a>
+    <a role="menuitem" href="#household" class="tl-menu__item">
+      <svg class="tl-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11l8-6 8 6"/><path d="M6 10v9h12v-9"/><path d="M10 19v-5h4v5"/></svg>
+      <span>Household</span>
+    </a>
+    <a role="menuitem" href="#privacy" class="tl-menu__item">
+      <svg class="tl-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v5c0 5-3 8.5-7 10-4-1.5-7-5-7-10V6z"/><path d="M9 12l2 2 4-4"/></svg>
+      <span>Privacy and safety</span>
+    </a>
+    <div class="tl-menu__sep" role="separator">
+    </div>
+    <button role="menuitem" type="button" class="tl-menu__item tl-menu__item--danger">
+      <svg class="tl-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 4.5H6.5a1.5 1.5 0 0 0-1.5 1.5v12a1.5 1.5 0 0 0 1.5 1.5H10"/><path d="M15 8l4 4-4 4"/><path d="M19 12H9.5"/></svg>
+      <span>Sign out</span>
+    </button>
+  </div>
+</div>
+      </div>
+    </header>
+    <main class="tl-app__main">
+      <div class="tl-page" data-panel="home">
+        <div class="tl-stack tl-stack--sections">
+<div class="tl-alert tl-alert--warning" role="alert"><!-- dismissible: add the close button from components/Alert.html -->
+  <span class="tl-alert__icon" aria-hidden="true">
+    <svg class="tl-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.3 4.6a2 2 0 0 1 3.4 0l7.4 12.9A2 2 0 0 1 19.4 20.5H4.6a2 2 0 0 1-1.7-3z"/><path d="M12 9.5v4.5"/><path d="M12 17v.01"/></svg>
+  </span>
+  <div>
+    <p class="tl-alert__title">Sam’s phone is offline</p>
+    <p class="tl-alert__body">It hasn’t checked in since 3:40 pm. Calls can’t reach it.</p>
+    <div class="tl-alert__actions">
+      <button type="button" class="tl-btn tl-btn--secondary tl-btn--sm">
+        <span class="tl-btn__label">How to fix it</span>
+      </button>
+      <button type="button" class="tl-btn tl-btn--quiet tl-btn--sm">
+        <span class="tl-btn__label">Remind me later</span>
+      </button>
+    </div>
+  </div>
+  <span>
+  </span>
+</div>
+          <div class="tl-grid tl-grid--2">
+<section class="tl-card tl-card--breeze">
+  <header class="tl-card__head">
+    <div>
+      <p class="tl-card__eyebrow">Good news</p>
+      <h3 class="tl-card__title">Alex is in the treehouse</h3>
+    </div>
+  </header>
+  <p class="tl-card__body">Both families approved. Speed dial 1.</p>
+</section>
+<section class="tl-card">
+  <header class="tl-card__head">
+    <div>
+      <p class="tl-card__eyebrow">Today</p>
+      <h3 class="tl-card__title">3 calls, 42 minutes</h3>
+    </div>
+    <button type="button" aria-label="Open call log" title="Open call log" class="tl-iconbtn tl-btn--quiet tl-iconbtn--sm">
+      <svg class="tl-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
+    </button>
+  </header>
+  <p class="tl-card__body">Sam talked with Alex and Grandma. No blocked calls.</p>
+</section>
+          </div>
+          <section class="tl-card" aria-label="This week">
+
+  <div class="tl-stats">
+    <div class="tl-stat">
+      <span class="tl-stat__label">Calls</span>
+      <span class="tl-stat__value">9</span>
+      <span class="tl-stat__note">This week</span>
+    </div>
+    <div class="tl-stat">
+      <span class="tl-stat__label">Talk time</span>
+      <span class="tl-stat__value">42<span class="tl-stat__unit">min</span>
+      </span>
+      <span class="tl-stat__note">This week</span>
+    </div>
+    <div class="tl-stat">
+      <span class="tl-stat__label">Friends</span>
+      <span class="tl-stat__value">5</span>
+      <span class="tl-stat__note">2 waiting</span>
+    </div>
+  </div>
+
+          </section>
+          <section class="tl-stack">
+            <h2 class="title-lg">Waiting on families</h2>
+<section class="tl-card tl-approval">
+  <div class="tl-approval__people">
+    <span class="tl-avatar tl-avatar--md tl-avatar--sun" role="img" aria-label="Sam">S</span>
+    <span class="tl-approval__link" aria-hidden="true">
+      <svg class="tl-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+    </span>
+    <span class="tl-avatar tl-avatar--md tl-avatar--pond" role="img" aria-label="Riley">R</span>
+  </div>
+  <h3 class="tl-card__title">Sam and Riley</h3>
+  <div class="tl-approval__sides">
+    <div class="tl-approval__side is-yes">
+      <span class="tl-approval__mark" aria-hidden="true">
+        <svg class="tl-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+      </span>
+      <span>
+        <span class="tl-approval__who">Your house</span>
+        <span class="tl-approval__state">Approved</span>
+      </span>
+    </div>
+    <div class="tl-approval__side is-waiting">
+      <span class="tl-approval__mark" aria-hidden="true">
+        <svg class="tl-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+      </span>
+      <span>
+        <span class="tl-approval__who">Riley&#x27;s house</span>
+        <span class="tl-approval__state">Waiting</span>
+      </span>
+    </div>
+  </div>
+  <p class="tl-approval__note">Calls connect once Riley&#x27;s house approves too.</p>
+  <div class="tl-approval__actions">
+    <button type="button" class="tl-btn tl-btn--quiet tl-btn--sm">
+      <svg class="tl-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      <span class="tl-btn__label">Withdraw</span>
+    </button>
+  </div>
+</section>
+          </section>
+        </div>
+      </div>
+      <div class="tl-page" data-panel="friends" hidden>
+        <div class="tl-listdetail">
+          <section class="tl-listdetail__list tl-stack">
+            <h2 class="title-lg">Approved friends</h2>
+<div class="tl-card tl-card--list">
+  <div data-tl-detail class="tl-row">
+    <span class="tl-avatar tl-avatar--md tl-avatar--sun" role="img" aria-label="Alex">A<span class="tl-avatar__status tl-presence--canopy" aria-hidden="true">
+      </span>
+    </span>
+    <div data-tl-detail class="tl-row__main">
+      <div data-tl-detail class="tl-row__title">Alex</div>
+      <div data-tl-detail class="tl-row__meta">
+        <span class="tl-household">
+          <svg class="tl-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11l8-6 8 6"/><path d="M6 10v9h12v-9"/><path d="M10 19v-5h4v5"/></svg>Alex&#x27;s house</span>
+        <span class="tl-speeddial" aria-label="Speed dial 1">1</span>
+        <span class="tl-presence tl-presence--canopy tl-row__presence-inline">
+          <span class="tl-presence__dot" aria-hidden="true">
+          </span>
+          <span>Available</span>
+        </span>
+      </div>
+    </div>
+    <span class="tl-presence tl-presence--canopy">
+      <span class="tl-presence__dot" aria-hidden="true">
+      </span>
+      <span>Available</span>
+    </span>
+    <button type="button" aria-label="Call Alex" title="Call Alex" class="tl-iconbtn tl-btn--primary tl-iconbtn--md">
+      <svg class="tl-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 9.2V8.4C3.5 6.2 7.3 4.5 12 4.5s8.5 1.7 8.5 3.9v.8a1 1 0 0 1-1 1H17a1 1 0 0 1-1-1V8H8v1.2a1 1 0 0 1-1 1H4.5a1 1 0 0 1-1-1z"/><path d="M8 10.2h8l3.5 8.3a1 1 0 0 1-.9 1.5H5.4a1 1 0 0 1-.9-1.5z"/><circle cx="12" cy="15.2" r="2.6"/></svg>
+    </button>
+  </div>
+  <div data-tl-detail class="tl-row">
+    <span class="tl-avatar tl-avatar--md tl-avatar--moss" role="img" aria-label="Grandma Jo">GJ<span class="tl-avatar__status tl-presence--sunbeam" aria-hidden="true">
+      </span>
+    </span>
+    <div data-tl-detail class="tl-row__main">
+      <div data-tl-detail class="tl-row__title">Grandma Jo</div>
+      <div data-tl-detail class="tl-row__meta">
+        <span class="tl-household">
+          <svg class="tl-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11l8-6 8 6"/><path d="M6 10v9h12v-9"/><path d="M10 19v-5h4v5"/></svg>Grandma</span>
+        <span class="tl-speeddial" aria-label="Speed dial 2">2</span>
+        <span class="tl-presence tl-presence--sunbeam tl-row__presence-inline">
+          <span class="tl-presence__dot" aria-hidden="true">
+          </span>
+          <span>Ringing</span>
+        </span>
+      </div>
+    </div>
+    <span class="tl-presence tl-presence--sunbeam">
+      <span class="tl-presence__dot" aria-hidden="true">
+      </span>
+      <span>Ringing</span>
+    </span>
+    <button type="button" aria-label="Call Grandma" title="Call Grandma" class="tl-iconbtn tl-btn--secondary tl-iconbtn--md">
+      <svg class="tl-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 9.2V8.4C3.5 6.2 7.3 4.5 12 4.5s8.5 1.7 8.5 3.9v.8a1 1 0 0 1-1 1H17a1 1 0 0 1-1-1V8H8v1.2a1 1 0 0 1-1 1H4.5a1 1 0 0 1-1-1z"/><path d="M8 10.2h8l3.5 8.3a1 1 0 0 1-.9 1.5H5.4a1 1 0 0 1-.9-1.5z"/><circle cx="12" cy="15.2" r="2.6"/></svg>
+    </button>
+  </div>
+  <div data-tl-detail class="tl-row">
+    <span class="tl-avatar tl-avatar--md tl-avatar--pond" role="img" aria-label="Riley Park">RP<span class="tl-avatar__status tl-presence--sky" aria-hidden="true">
+      </span>
+    </span>
+    <div data-tl-detail class="tl-row__main">
+      <div data-tl-detail class="tl-row__title">Riley Park</div>
+      <div data-tl-detail class="tl-row__meta">
+        <span class="tl-household">
+          <svg class="tl-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11l8-6 8 6"/><path d="M6 10v9h12v-9"/><path d="M10 19v-5h4v5"/></svg>Riley&#x27;s house</span>
+        <span class="tl-speeddial" aria-label="Speed dial 3">3</span>
+        <span class="tl-presence tl-presence--sky tl-row__presence-inline">
+          <span class="tl-presence__dot" aria-hidden="true">
+          </span>
+          <span>Quiet hours</span>
+        </span>
+      </div>
+    </div>
+    <span class="tl-presence tl-presence--sky">
+      <span class="tl-presence__dot" aria-hidden="true">
+      </span>
+      <span>Quiet hours</span>
+    </span>
+    <button type="button" aria-label="Riley details" title="Riley details" class="tl-iconbtn tl-btn--quiet tl-iconbtn--md">
+      <svg class="tl-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
+    </button>
+  </div>
+</div>
+          </section>
+          <section class="tl-listdetail__detail tl-stack">
+            <button class="tl-btn tl-btn--quiet tl-btn--sm tl-listdetail__back" type="button"><span class="tl-btn__label">‹ All friends</span></button>
+            <div class="tl-card">
+              <header class="tl-card__head"><div><p class="tl-card__eyebrow">Alex's house</p><h3 class="tl-card__title">Alex</h3></div></header>
+<div class="tl-tabs" data-tl-tabs="">
+  <div class="tl-tabs__list" role="tablist" aria-label="Alex">
+    <button type="button" role="tab" id="alex-tab-overview" aria-selected="true" aria-controls="alex-panel-overview" tabindex="0" class="tl-tabs__tab">Overview</button>
+    <button type="button" role="tab" id="alex-tab-calls" aria-selected="false" aria-controls="alex-panel-calls" tabindex="-1" class="tl-tabs__tab">Calls<span class="tl-badge tl-badge--quiet">3</span>
+    </button>
+    <button type="button" role="tab" id="alex-tab-settings" aria-selected="false" aria-controls="alex-panel-settings" tabindex="-1" class="tl-tabs__tab">Settings</button>
+  </div>
+  <div role="tabpanel" id="alex-panel-overview" aria-labelledby="alex-tab-overview" tabindex="0" class="tl-tabs__panel">
+    <dl class="tl-dl">
+  <div class="tl-dl__row">
+    <dt>Phone</dt>
+    <dd>Alex’s rotary phone</dd>
+  </div>
+  <div class="tl-dl__row">
+    <dt>Last check-in</dt>
+    <dd>Today, 4:12 pm</dd>
+  </div>
+  <div class="tl-dl__row">
+    <dt>Wi-Fi</dt>
+    <dd>Rivera-House</dd>
+  </div>
+  <div class="tl-dl__row">
+    <dt>Software</dt>
+    <dd>1.4.2, up to date</dd>
+  </div>
+</dl>
+  </div>
+  <div role="tabpanel" id="alex-panel-calls" aria-labelledby="alex-tab-calls" tabindex="0" class="tl-tabs__panel" hidden="">
+    <p class="tl-card__body">3 calls this week, 42 minutes.</p>
+  </div>
+  <div role="tabpanel" id="alex-panel-settings" aria-labelledby="alex-tab-settings" tabindex="0" class="tl-tabs__panel" hidden="">
+    <p class="tl-card__body">Pause calls or remove Alex.</p>
+  </div>
+</div>
+              <div class="tl-actions tl-actions--stack">
+                <button class="tl-btn tl-btn--secondary tl-btn--md" type="button"><span class="tl-btn__label">Pause calls</span></button>
+                <button class="tl-btn tl-btn--primary tl-btn--md" type="button"><svg class="tl-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 9.2V8.4C3.5 6.2 7.3 4.5 12 4.5s8.5 1.7 8.5 3.9v.8a1 1 0 0 1-1 1H17a1 1 0 0 1-1-1V8H8v1.2a1 1 0 0 1-1 1H4.5a1 1 0 0 1-1-1z"/><path d="M8 10.2h8l3.5 8.3a1 1 0 0 1-.9 1.5H5.4a1 1 0 0 1-.9-1.5z"/><circle cx="12" cy="15.2" r="2.6"/></svg><span class="tl-btn__label">Call Alex</span></button>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+      <div class="tl-page" data-panel="calls" hidden>
+        <section class="tl-stack">
+<fieldset class="tl-segmented" aria-label="Show calls from">
+  <label class="tl-segmented__opt">
+    <input type="radio" name="calls-range" checked="" value="today"/>
+    <span>Today</span>
+  </label>
+  <label class="tl-segmented__opt">
+    <input type="radio" name="calls-range" value="week"/>
+    <span>This week</span>
+  </label>
+  <label class="tl-segmented__opt">
+    <input type="radio" name="calls-range" value="all"/>
+    <span>All</span>
+  </label>
+</fieldset>
+<div class="tl-card tl-card--list">
+  <div class="tl-row tl-log tl-log--canopy">
+    <span class="tl-log__icon" aria-hidden="true">
+      <svg class="tl-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 10.4v-.7C2.5 7.8 5.6 6.3 9.5 6.3s7 1.5 7 3.4v.7a.8.8 0 0 1-.8.8h-2a.8.8 0 0 1-.8-.8V9.3H6.1v1.1a.8.8 0 0 1-.8.8h-2a.8.8 0 0 1-.8-.8z"/><path d="M6.2 11.2h6.6l2.9 7a.8.8 0 0 1-.7 1.1H4a.8.8 0 0 1-.7-1.1z"/><circle cx="9.5" cy="15.5" r="2.1"/><path d="M16.5 7.5l5-5"/><path d="M17.5 2.5h4v4"/></svg>
+    </span>
+    <div class="tl-row__main">
+      <div class="tl-row__title">Sam<span class="tl-log__arrow" aria-hidden="true"> → </span>Alex</div>
+      <div class="tl-row__meta">
+        <span>Today, 4:12 pm</span>
+      </div>
+    </div>
+    <span class="tl-log__dur tl-num">12 min</span>
+  </div>
+  <div class="tl-row tl-log tl-log--canopy">
+    <span class="tl-log__icon" aria-hidden="true">
+      <svg class="tl-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 10.4v-.7C2.5 7.8 5.6 6.3 9.5 6.3s7 1.5 7 3.4v.7a.8.8 0 0 1-.8.8h-2a.8.8 0 0 1-.8-.8V9.3H6.1v1.1a.8.8 0 0 1-.8.8h-2a.8.8 0 0 1-.8-.8z"/><path d="M6.2 11.2h6.6l2.9 7a.8.8 0 0 1-.7 1.1H4a.8.8 0 0 1-.7-1.1z"/><circle cx="9.5" cy="15.5" r="2.1"/><path d="M21.5 2.5l-5 5"/><path d="M16.5 3.5v4h4"/></svg>
+    </span>
+    <div class="tl-row__main">
+      <div class="tl-row__title">Grandma Jo<span class="tl-log__arrow" aria-hidden="true"> → </span>Sam</div>
+      <div class="tl-row__meta">
+        <span>Today, 5:30 pm</span>
+      </div>
+    </div>
+    <span class="tl-log__dur tl-num">24 min</span>
+  </div>
+  <div class="tl-row tl-log tl-log--bark">
+    <span class="tl-log__icon" aria-hidden="true">
+      <svg class="tl-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 9.2V8.4C3.5 6.2 7.3 4.5 12 4.5s8.5 1.7 8.5 3.9v.8a1 1 0 0 1-1 1H17a1 1 0 0 1-1-1V8H8v1.2a1 1 0 0 1-1 1H4.5a1 1 0 0 1-1-1z"/><path d="M8 10.2h8l3.5 8.3a1 1 0 0 1-.9 1.5H5.4a1 1 0 0 1-.9-1.5z"/><circle cx="12" cy="15.2" r="2.6"/><path d="M3 3l18 18"/></svg>
+    </span>
+    <div class="tl-row__main">
+      <div class="tl-row__title">Alex<span class="tl-log__arrow" aria-hidden="true"> → </span>Sam</div>
+      <div class="tl-row__meta">
+        <span>Today, 6:05 pm</span>
+      </div>
+    </div>
+    <span class="tl-tag tl-tag--bark">
+      <svg class="tl-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 9.2V8.4C3.5 6.2 7.3 4.5 12 4.5s8.5 1.7 8.5 3.9v.8a1 1 0 0 1-1 1H17a1 1 0 0 1-1-1V8H8v1.2a1 1 0 0 1-1 1H4.5a1 1 0 0 1-1-1z"/><path d="M8 10.2h8l3.5 8.3a1 1 0 0 1-.9 1.5H5.4a1 1 0 0 1-.9-1.5z"/><circle cx="12" cy="15.2" r="2.6"/><path d="M3 3l18 18"/></svg>Missed</span>
+  </div>
+  <div class="tl-row tl-log tl-log--sky">
+    <span class="tl-log__icon" aria-hidden="true">
+      <svg class="tl-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+    </span>
+    <div class="tl-row__main">
+      <div class="tl-row__title">Sam<span class="tl-log__arrow" aria-hidden="true"> → </span>Alex</div>
+      <div class="tl-row__meta">
+        <span>Yesterday, 3:40 pm</span>
+        <span>Ended at 30 min</span>
+      </div>
+    </div>
+    <span class="tl-tag tl-tag--sky">
+      <svg class="tl-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Time limit</span>
+  </div>
+  <div class="tl-row tl-log tl-log--berry">
+    <span class="tl-log__icon" aria-hidden="true">
+      <svg class="tl-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+    </span>
+    <div class="tl-row__main">
+      <div class="tl-row__title">Sam<span class="tl-log__arrow" aria-hidden="true"> → </span>Riley</div>
+      <div class="tl-row__meta">
+        <span>Yesterday, 8:15 pm</span>
+        <span>Not approved by Riley&#x27;s house</span>
+      </div>
+    </div>
+    <span class="tl-tag tl-tag--berry">
+      <svg class="tl-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>Blocked</span>
+  </div>
+</div>
+        </section>
+      </div>
+      <div class="tl-page tl-page--narrow" data-panel="quiet" hidden>
+        <div class="tl-stack tl-stack--cards">
+<div class="tl-quiet">
+  <span class="tl-quiet__icon" aria-hidden="true">
+    <svg class="tl-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg>
+  </span>
+  <div class="tl-quiet__main">
+    <div class="tl-row__title">Quiet hours</div>
+    <div class="tl-quiet__time">
+      <span class="tl-num">8:00 pm</span>
+      <span class="tl-quiet__to">to</span>
+      <span class="tl-num">7:00 am</span>
+    </div>
+    <div class="tl-quiet__days" aria-label="Days">
+      <span class="tl-day is-on">M</span>
+      <span class="tl-day is-on">T</span>
+      <span class="tl-day is-on">W</span>
+      <span class="tl-day is-on">T</span>
+      <span class="tl-day is-on">F</span>
+      <span class="tl-day is-on">S</span>
+      <span class="tl-day is-on">S</span>
+    </div>
+  </div>
+  <div class="tl-field-row">
+    <button id="qh-night" type="button" role="switch" aria-checked="true" class="tl-switch is-on">
+      <span class="tl-switch__thumb">
+        <svg class="tl-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+      </span>
+    </button>
+  </div>
+</div>
+<div class="tl-quiet">
+  <span class="tl-quiet__icon" aria-hidden="true">
+    <svg class="tl-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg>
+  </span>
+  <div class="tl-quiet__main">
+    <div class="tl-row__title">Homework time</div>
+    <div class="tl-quiet__time">
+      <span class="tl-num">4:00</span>
+      <span class="tl-quiet__to">to</span>
+      <span class="tl-num">5:00 pm</span>
+    </div>
+    <div class="tl-quiet__days" aria-label="Days">
+      <span class="tl-day is-on">M</span>
+      <span class="tl-day is-on">T</span>
+      <span class="tl-day is-on">W</span>
+      <span class="tl-day is-on">T</span>
+      <span class="tl-day">F</span>
+      <span class="tl-day">S</span>
+      <span class="tl-day">S</span>
+    </div>
+  </div>
+  <div class="tl-field-row">
+    <button id="qh-homework" type="button" role="switch" aria-checked="false" class="tl-switch">
+      <span class="tl-switch__thumb">
+      </span>
+    </button>
+  </div>
+</div>
+          <section class="tl-card">
+            <div class="tl-stack tl-stack--group">
+              <div class="tl-stack tl-stack--tight"><h2 class="tl-card__title">Add a schedule</h2><p class="tl-card__body">Calls wait during these hours.</p></div>
+<fieldset class="tl-timerange">
+  <legend>Quiet hours</legend>
+  <div class="tl-timerange__row">
+    <div class="tl-textfield tl-timefield">
+      <label for="new-start" class="tl-textfield__label">From</label>
+      <div class="tl-textfield__control">
+        <svg class="tl-icon tl-textfield__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+        <input id="new-start" class="tl-textfield__input" type="time" value="20:00"/>
+      </div>
+    </div>
+    <span class="tl-timerange__to" aria-hidden="true">to</span>
+    <div class="tl-textfield tl-timefield">
+      <label for="new-end" class="tl-textfield__label">Until</label>
+      <div class="tl-textfield__control">
+        <svg class="tl-icon tl-textfield__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+        <input id="new-end" class="tl-textfield__input" type="time" value="07:00"/>
+      </div>
+    </div>
+  </div>
+  <p class="tl-textfield__hint">Overnight is fine: 8:00 pm to 7:00 am.</p>
+</fieldset>
+<div class="tl-textfield">
+  <label for="longest-call" class="tl-textfield__label">Longest call</label>
+  <div class="tl-textfield__control">
+    <select id="longest-call" class="tl-textfield__input tl-select" aria-describedby="longest-call-hint">
+      <option value="15">15 minutes</option>
+      <option value="30" selected="">30 minutes</option>
+      <option value="45">45 minutes</option>
+      <option value="60">1 hour</option>
+      <option value="none">No limit</option>
+    </select>
+    <svg class="tl-icon tl-textfield__chevron" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+  </div>
+  <p id="longest-call-hint" class="tl-textfield__hint">A gentle beep plays a minute before.</p>
+</div>
+            </div>
+            <div class="tl-actions tl-actions--stack">
+              <button class="tl-btn tl-btn--quiet tl-btn--md" type="button"><span class="tl-btn__label">Cancel</span></button>
+              <button class="tl-btn tl-btn--primary tl-btn--md" type="button" data-tl-toast="Schedule saved" data-tl-toast-tone="success"><span class="tl-btn__label">Save</span></button>
+            </div>
+          </section>
+        </div>
+      </div>
+    </main>
+    <nav class="tl-nav" aria-label="Main">
+      <div class="tl-nav__inner">
+        <div class="tl-nav__brand"><a class="tl-brand" href="#home" aria-label="Treeline home"><svg class="tl-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 19c0-8 5-14 14-14 0 9-6 14-14 14z"/><path d="M5 19l8-8"/></svg><span class="tl-brand__word">Treeline</span></a></div>
+        <ul class="tl-nav__list">
+          <li><a class="tl-nav__item" href="#home" data-view="home" aria-current="page"><svg class="tl-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11l8-6 8 6"/><path d="M6 10v9h12v-9"/><path d="M10 19v-5h4v5"/></svg><span class="tl-nav__label">Home</span></a></li>
+          <li><a class="tl-nav__item" href="#friends" data-view="friends"><span class="tl-badge-anchor"><svg class="tl-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3 19a6 6 0 0 1 12 0"/><circle cx="17" cy="9" r="2.5"/><path d="M16.5 14.2A5 5 0 0 1 21 19"/></svg><span class="tl-badge" aria-hidden="true">2</span><span class="tl-sr">2 approvals waiting</span></span><span class="tl-nav__label">Friends</span></a></li>
+          <li><a class="tl-nav__item" href="#calls" data-view="calls"><svg class="tl-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 9.2V8.4C3.5 6.2 7.3 4.5 12 4.5s8.5 1.7 8.5 3.9v.8a1 1 0 0 1-1 1H17a1 1 0 0 1-1-1V8H8v1.2a1 1 0 0 1-1 1H4.5a1 1 0 0 1-1-1z"/><path d="M8 10.2h8l3.5 8.3a1 1 0 0 1-.9 1.5H5.4a1 1 0 0 1-.9-1.5z"/><circle cx="12" cy="15.2" r="2.6"/></svg><span class="tl-nav__label">Calls</span></a></li>
+          <li><a class="tl-nav__item" href="#quiet" data-view="quiet"><svg class="tl-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span class="tl-nav__label">Quiet hours</span></a></li>
+        </ul>
+        <div class="tl-nav__foot"><div class="tl-split"><div class="tl-stack tl-stack--tight"><span class="tl-nav__house">Bennett house</span><span class="tl-nav__meta">2 kids · 2 phones</span></div><button type="button" aria-label="Settings" title="Settings" class="tl-iconbtn tl-btn--quiet tl-iconbtn--sm"><svg class="tl-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></button></div></div>
+      </div>
+    </nav>
+  </div>
+  <div class="tl-sheet-scrim" id="add-friend" hidden>
+    <div class="tl-sheet" role="dialog" aria-modal="true" aria-labelledby="add-friend-title">
+      <span class="tl-sheet__grabber" aria-hidden="true"></span>
+      <div class="tl-sheet__head"><h2 class="tl-sheet__title" id="add-friend-title">Add a friend</h2>
+        <button type="button" aria-label="Close" title="Close" class="tl-iconbtn tl-btn--quiet tl-iconbtn--md tl-sheet__close"><svg class="tl-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+      <div class="tl-stack tl-stack--group">
+        <p class="tl-sheet__body">We'll ask their family to approve. Calls start once both houses say yes.</p>
+<div class="tl-textfield">
+  <label for="find-family" class="tl-textfield__label">Find a family</label>
+  <div class="tl-textfield__control">
+    <svg class="tl-icon tl-textfield__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3 19a6 6 0 0 1 12 0"/><circle cx="17" cy="9" r="2.5"/><path d="M16.5 14.2A5 5 0 0 1 21 19"/></svg>
+    <input id="find-family" class="tl-textfield__input" placeholder="Search by name"/>
+  </div>
+</div>
+      </div>
+      <div class="tl-actions">
+        <button class="tl-btn tl-btn--secondary tl-btn--md" type="button" data-tl-close><span class="tl-btn__label">Cancel</span></button>
+        <button class="tl-btn tl-btn--primary tl-btn--md" type="button" data-tl-close data-tl-toast="Request sent to the Chen house" data-tl-toast-tone="success"><span class="tl-btn__label">Send request</span></button>
+      </div>
+    </div>
+  </div>
+  <div class="tl-toasts" aria-live="polite"></div>
+</div>
+<script src="js/treeline.js"></script>
+<script>
+  // Demo only: switch panels from the nav. A real app routes instead.
+  var titles = {home: 'Home', friends: 'Friends', calls: 'Calls', quiet: 'Quiet hours'};
+  function show(v) {
+    if (!titles[v]) v = 'home';
+    document.querySelectorAll('[data-panel]').forEach(function (p) { p.hidden = p.getAttribute('data-panel') !== v; });
+    document.querySelectorAll('.tl-nav__item').forEach(function (a) { if (a.dataset.view === v) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
+    document.getElementById('app-title').textContent = titles[v];
+  }
+  window.addEventListener('hashchange', function () { show(location.hash.slice(1)); });
+  show(location.hash.slice(1));
+</script>
+</body>
+</html>

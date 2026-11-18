@@ -1,0 +1,17 @@
+<!-- @dsCard group="Feedback" height=520 -->
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Alert — Treeline</title></head>
+<body>
+<div id="root" class="tl-root"></div>
+<script>
+  var T = window.Treeline, h = React.createElement;
+  function render(el) { ReactDOM.createRoot(document.getElementById('root')).render(el); }
+  render(h('div', {className:'tl-stack tl-stack--group', style:{padding:'24px', maxWidth:'560px'}},
+    h(T.Alert, {tone:'info', title:'Quiet hours start at 8:00 pm'}, 'Calls to Sam will wait until 7:00 am.'),
+    h(T.Alert, {tone:'success', title:'Maya’s family approved'}, 'Sam and Maya can call each other now. Speed dial 3.'),
+    h(T.Alert, {tone:'warning', title:'Sam’s phone is offline', actions:[h(T.Button, {key:'a', size:'sm'}, 'How to fix it'), h(T.Button, {key:'b', size:'sm', variant:'quiet'}, 'Remind me later')]}, 'It hasn’t checked in since 3:40 pm. Calls can’t reach it.'),
+    h(T.Alert, {tone:'danger', title:'Couldn’t save quiet hours', dismissible:true}, 'Check your connection and try again.')));
+</script>
+</body>
+</html>

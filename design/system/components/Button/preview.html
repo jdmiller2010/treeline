@@ -1,0 +1,24 @@
+<!-- @dsCard group="Actions" height=210 -->
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Button — Treeline</title></head>
+<body>
+<div id="root" class="tl-root"></div>
+<script>
+  var T = window.Treeline, h = React.createElement;
+  function render(el) { ReactDOM.createRoot(document.getElementById('root')).render(el); }
+  render(h('div', {className:'tl-demo'},
+    h(T.Button, {variant:'primary', icon:'check'}, 'Approve'),
+    h(T.Button, null, 'Not now'),
+    h(T.Button, {variant:'quiet', iconEnd:'chevron-right'}, 'See call log'),
+    h(T.Button, {variant:'danger', icon:'close'}, 'Remove Riley'),
+    h(T.Button, {variant:'ring', icon:'phone'}, 'Answer'),
+    h('p', {className:'tl-demo__label'}, 'Sizes'),
+    h(T.Button, {variant:'primary', size:'sm'}, 'Small'),
+    h(T.Button, {variant:'primary'}, 'Medium'),
+    h(T.Button, {variant:'primary', size:'lg', icon:'phone'}, 'Call Grandma'),
+    h(T.Button, {disabled:true}, 'Disabled')
+  ));
+</script>
+</body>
+</html>

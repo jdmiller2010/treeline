@@ -1,0 +1,75 @@
+<!-- Treeline · PageTemplates
+     Every parent screen is one of four templates. Pick the template first, then fill it with components.
+     Needs css/tokens.css and css/treeline.css.
+     Rules and notes: components/PageTemplates.md -->
+
+<!-- Overview (Home) -->
+<div class="tl-page">
+  <div class="tl-stack tl-stack--sections">
+    <div class="tl-grid tl-grid--2">
+      <section class="tl-card tl-card--breeze">
+        <header class="tl-card__head">
+          <div>
+            <p class="tl-card__eyebrow">Good news</p>
+            <h3 class="tl-card__title">Alex is in the treehouse</h3>
+          </div>
+        </header>
+        <p class="tl-card__body">Both families approved.</p>
+      </section>
+      <section class="tl-card">
+        <header class="tl-card__head">
+          <div>
+            <p class="tl-card__eyebrow">Today</p>
+            <h3 class="tl-card__title">3 calls, 42 minutes</h3>
+          </div>
+        </header>
+        <p class="tl-card__body">Sam talked with Alex and Grandma.</p>
+      </section>
+    </div>
+    <section class="tl-stack">
+      <h2 class="title-lg">Waiting on families</h2>…ApprovalCards…</section>
+    <section class="tl-stack">
+      <h2 class="title-lg">Approved friends</h2>
+      <div class="tl-card tl-card--list">…FriendRows…</div>
+    </section>
+  </div>
+</div>
+
+<!-- Settings form -->
+<div class="tl-page tl-page--narrow">
+  <div class="tl-stack tl-stack--cards">
+    <section class="tl-card">
+      <div class="tl-stack tl-stack--group">
+        <div class="tl-stack tl-stack--tight">
+          <h2 class="tl-card__title">Call limits</h2>
+          <p class="tl-card__body">Applies to every friend.</p>
+        </div>
+        <div class="tl-textfield">
+          <label for="longest" class="tl-textfield__label">Longest call</label>
+          <div class="tl-textfield__control">
+            <input id="longest" class="tl-textfield__input" placeholder="30 minutes"/>
+          </div>
+        </div>
+        <div class="tl-field-row">
+          <button id="warn" type="button" role="switch" aria-checked="true" class="tl-switch is-on">
+            <span class="tl-switch__thumb">
+              <svg class="tl-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+            </span>
+          </button>
+          <label for="warn" class="tl-field-row__text">
+            <span class="tl-field-row__label">Warn before ending</span>
+            <span class="tl-field-row__desc">One beep, one minute before the limit.</span>
+          </label>
+        </div>
+      </div>
+      <div class="tl-actions tl-actions--stack">
+        <button type="button" class="tl-btn tl-btn--quiet tl-btn--md">
+          <span class="tl-btn__label">Cancel</span>
+        </button>
+        <button type="button" class="tl-btn tl-btn--primary tl-btn--md">
+          <span class="tl-btn__label">Save</span>
+        </button>
+      </div>
+    </section>
+  </div>
+</div>

@@ -1,0 +1,15 @@
+<!-- @dsCard group="Inputs" height=240 -->
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Select — Treeline</title></head>
+<body>
+<div id="root" class="tl-root"></div>
+<script>
+  var T = window.Treeline, h = React.createElement;
+  function render(el) { ReactDOM.createRoot(document.getElementById('root')).render(el); }
+  render(h('div', {className:'tl-demo', style:{gap:'32px', alignItems:'flex-start'}},
+    h(T.Select, {label:'Longest call', id:'p-longest', hint:'A gentle beep plays a minute before.', defaultValue:'30', options:[{value:'15', label:'15 minutes'}, {value:'30', label:'30 minutes'}, {value:'45', label:'45 minutes'}, {value:'60', label:'1 hour'}, {value:'none', label:'No limit'}]}),
+    h(T.Select, {label:'Which phone', id:'p-which', error:'Pick a phone to continue.', defaultValue:'', options:[{value:'', label:'Choose…'}, {value:'sam', label:'Sam’s phone'}, {value:'ivy', label:'Ivy’s phone'}]})));
+</script>
+</body>
+</html>

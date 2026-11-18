@@ -1,0 +1,20 @@
+<!-- @dsCard group="Patterns" height=448 -->
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>CallLogItem — Treeline</title></head>
+<body>
+<div id="root" class="tl-root"></div>
+<script>
+  var T = window.Treeline, h = React.createElement;
+  function render(el) { ReactDOM.createRoot(document.getElementById('root')).render(el); }
+  render(h('div', {className:'tl-demo tl-demo--col', style:{maxWidth:'560px'}},
+    h('div', {className:'tl-card', style:{padding:'4px'}},
+      h(T.CallLogItem, {kind:'outgoing', from:'Sam', to:'Alex', time:'Today, 4:12 pm', duration:'12 min'}),
+      h(T.CallLogItem, {kind:'incoming', from:'Grandma Jo', to:'Sam', time:'Today, 5:30 pm', duration:'24 min'}),
+      h(T.CallLogItem, {kind:'missed', from:'Alex', to:'Sam', time:'Today, 6:05 pm'}),
+      h(T.CallLogItem, {kind:'time-limit', from:'Sam', to:'Alex', time:'Yesterday, 3:40 pm', reason:'Ended at 30 min'}),
+      h(T.CallLogItem, {kind:'blocked', from:'Sam', to:'Riley', time:'Yesterday, 8:15 pm', reason:"Not approved by Riley's house"})
+    )));
+</script>
+</body>
+</html>

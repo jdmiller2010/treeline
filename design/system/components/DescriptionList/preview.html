@@ -1,0 +1,15 @@
+<!-- @dsCard group="Containers" height=324 -->
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>DescriptionList — Treeline</title></head>
+<body>
+<div id="root" class="tl-root"></div>
+<script>
+  var T = window.Treeline, h = React.createElement;
+  function render(el) { ReactDOM.createRoot(document.getElementById('root')).render(el); }
+  render(h('div', {className:'tl-demo', style:{gap:'32px', alignItems:'flex-start'}},
+    h('section', {className:'tl-card', style:{width:'440px'}}, h('h3', {className:'tl-card__title', style:{marginBottom:'8px'}}, 'Sam’s phone'), h(T.DescriptionList, {items:[{label:'Phone', value:'Sam’s rotary phone'}, {label:'Last check-in', value:'Today, 4:12 pm'}, {label:'Wi-Fi', value:'Bennett-Home'}, {label:'Software', value:'1.4.2, up to date'}]})),
+    h('section', {className:'tl-card tl-root', style:{width:'300px'}}, h(T.DescriptionList, {items:[{label:'Phone', value:'Sam’s rotary phone'}, {label:'Last check-in', value:'Today, 4:12 pm'}]}))));
+</script>
+</body>
+</html>

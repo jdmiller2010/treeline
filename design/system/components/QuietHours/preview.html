@@ -1,0 +1,16 @@
+<!-- @dsCard group="Patterns" height=192 -->
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>QuietHours — Treeline</title></head>
+<body>
+<div id="root" class="tl-root"></div>
+<script>
+  var T = window.Treeline, h = React.createElement;
+  function render(el) { ReactDOM.createRoot(document.getElementById('root')).render(el); }
+  render(h('div', {className:'tl-demo', style:{alignItems:'flex-start', gap:'24px'}},
+    h(T.QuietHours, {start:'8:00 pm', end:'7:00 am', on:true}),
+    h(T.QuietHours, {title:'Homework time', start:'4:00', end:'5:00 pm', activeDays:[0,1,2,3], on:false})
+  ));
+</script>
+</body>
+</html>

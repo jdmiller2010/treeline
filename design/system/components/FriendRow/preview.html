@@ -1,0 +1,19 @@
+<!-- @dsCard group="Patterns" height=378 -->
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>FriendRow — Treeline</title></head>
+<body>
+<div id="root" class="tl-root"></div>
+<script>
+  var T = window.Treeline, h = React.createElement;
+  function render(el) { ReactDOM.createRoot(document.getElementById('root')).render(el); }
+  render(h('div', {className:'tl-demo tl-demo--col', style:{maxWidth:'520px'}},
+    h('div', {className:'tl-card', style:{padding:'4px'}},
+      h(T.FriendRow, {name:'Alex', household:"Alex's house", speedDial:'1', status:'available', action:h(T.IconButton, {icon:'phone', label:'Call Alex', variant:'primary'})}),
+      h(T.FriendRow, {name:'Grandma Jo', household:'Grandma', speedDial:'2', status:'ringing', action:h(T.IconButton, {icon:'phone', label:'Call Grandma', variant:'secondary'})}),
+      h(T.FriendRow, {name:'Riley Park', household:"Riley's house", speedDial:'3', status:'quiet', action:h(T.IconButton, {icon:'chevron-right', label:'Riley details'})}),
+      h(T.FriendRow, {name:'Maya', household:"Maya's house", speedDial:'4', status:'offline', action:h(T.IconButton, {icon:'chevron-right', label:'Maya details'})})
+    )));
+</script>
+</body>
+</html>

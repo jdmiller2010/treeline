@@ -1,0 +1,15 @@
+<!-- @dsCard group="Nature" height=548 -->
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>EmptyState — Treeline</title></head>
+<body>
+<div id="root" class="tl-root"></div>
+<script>
+  var T = window.Treeline, h = React.createElement;
+  function render(el) { ReactDOM.createRoot(document.getElementById('root')).render(el); }
+  render(h('div', {className:'tl-demo', style:{justifyContent:'center'}},
+    h(T.Card, null, h(T.EmptyState, {title:'Your treehouse is ready', action:h(T.Button, {variant:'primary', icon:'ladder'}, 'Invite a friend')}, 'Add a friend from the park, and Sam can call them once both families say yes.'))
+  ));
+</script>
+</body>
+</html>

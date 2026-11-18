@@ -1,0 +1,23 @@
+<!-- Treeline · Tabs
+     Switch between sections of one page, like a friend's Overview, Calls and Settings.
+     Needs css/tokens.css and css/treeline.css and js/treeline.js.
+     Rules and notes: components/Tabs.md -->
+
+<!-- Friend detail -->
+<div class="tl-tabs" data-tl-tabs="">
+  <div class="tl-tabs__list" role="tablist" aria-label="Alex">
+    <button type="button" role="tab" id="alex-tab-overview" aria-selected="true" aria-controls="alex-panel-overview" tabindex="0" class="tl-tabs__tab">Overview</button>
+    <button type="button" role="tab" id="alex-tab-calls" aria-selected="false" aria-controls="alex-panel-calls" tabindex="-1" class="tl-tabs__tab">Calls<span class="tl-badge tl-badge--quiet">3</span>
+    </button>
+    <button type="button" role="tab" id="alex-tab-settings" aria-selected="false" aria-controls="alex-panel-settings" tabindex="-1" class="tl-tabs__tab">Settings</button>
+  </div>
+  <div role="tabpanel" id="alex-panel-overview" aria-labelledby="alex-tab-overview" tabindex="0" class="tl-tabs__panel">
+    <p class="tl-card__body">Speed dial 1. Approved by both families.</p>
+  </div>
+  <div role="tabpanel" id="alex-panel-calls" aria-labelledby="alex-tab-calls" tabindex="0" class="tl-tabs__panel" hidden="">
+    <p class="tl-card__body">3 calls this week, 42 minutes.</p>
+  </div>
+  <div role="tabpanel" id="alex-panel-settings" aria-labelledby="alex-tab-settings" tabindex="0" class="tl-tabs__panel" hidden="">
+    <p class="tl-card__body">Pause calls or remove Alex.</p>
+  </div>
+</div>

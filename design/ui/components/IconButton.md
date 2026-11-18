@@ -1,0 +1,45 @@
+# IconButton
+
+A round button holding a single icon, for compact repeated actions in rows and toolbars.
+
+**Consumer provides:** `icon`, `label` (required: it becomes the accessible name and tooltip), `variant` (`quiet` default · `secondary` · `primary` · `danger`), `size` (`sm` · `md` · `lg`), native button props.
+
+- Only for actions people already recognize: call, pause, close, more. Anything new gets a labeled Button.
+- Never two primary icon buttons side by side.
+- `lg` (48px) on touch screens; never smaller than `control-sm`.
+
+## HTML
+
+Exact markup for use without React, with `tokens.css` and `components/bundle.css`. Keep the classes and nesting; change text, ids, links and labels.
+
+**Primary, large**
+
+```html
+<button type="button" aria-label="Call Alex" title="Call Alex" class="tl-iconbtn tl-btn--primary tl-iconbtn--lg">
+  <svg class="tl-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 9.2V8.4C3.5 6.2 7.3 4.5 12 4.5s8.5 1.7 8.5 3.9v.8a1 1 0 0 1-1 1H17a1 1 0 0 1-1-1V8H8v1.2a1 1 0 0 1-1 1H4.5a1 1 0 0 1-1-1z"/><path d="M8 10.2h8l3.5 8.3a1 1 0 0 1-.9 1.5H5.4a1 1 0 0 1-.9-1.5z"/><circle cx="12" cy="15.2" r="2.6"/></svg>
+</button>
+```
+
+**Secondary**
+
+```html
+<button type="button" aria-label="Pause Sam&#x27;s phone" title="Pause Sam&#x27;s phone" class="tl-iconbtn tl-btn--secondary tl-iconbtn--md">
+  <svg class="tl-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 5v14M15 5v14"/></svg>
+</button>
+```
+
+**Quiet**
+
+```html
+<button type="button" aria-label="Quiet hours" title="Quiet hours" class="tl-iconbtn tl-btn--quiet tl-iconbtn--md">
+  <svg class="tl-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg>
+</button>
+```
+
+**Danger, large**
+
+```html
+<button type="button" aria-label="End call" title="End call" class="tl-iconbtn tl-btn--danger tl-iconbtn--lg">
+  <svg class="tl-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 9.2V8.4C3.5 6.2 7.3 4.5 12 4.5s8.5 1.7 8.5 3.9v.8a1 1 0 0 1-1 1H17a1 1 0 0 1-1-1V8H8v1.2a1 1 0 0 1-1 1H4.5a1 1 0 0 1-1-1z"/><path d="M8 10.2h8l3.5 8.3a1 1 0 0 1-.9 1.5H5.4a1 1 0 0 1-.9-1.5z"/><circle cx="12" cy="15.2" r="2.6"/><path d="M3 3l18 18"/></svg>
+</button>
+```

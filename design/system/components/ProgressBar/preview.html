@@ -1,0 +1,15 @@
+<!-- @dsCard group="Status" height=160 -->
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>ProgressBar — Treeline</title></head>
+<body>
+<div id="root" class="tl-root"></div>
+<script>
+  var T = window.Treeline, h = React.createElement;
+  function render(el) { ReactDOM.createRoot(document.getElementById('root')).render(el); }
+  render(h('div', {className:'tl-stack tl-stack--group', style:{padding:'24px', maxWidth:'560px'}},
+    h(T.ProgressBar, {label:'Updating the phone', value:64}),
+    h(T.ProgressBar, {label:'Looking for the phone on your Wi-Fi'})));
+</script>
+</body>
+</html>

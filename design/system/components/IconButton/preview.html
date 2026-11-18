@@ -1,0 +1,19 @@
+<!-- @dsCard group="Actions" height=100 -->
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>IconButton — Treeline</title></head>
+<body>
+<div id="root" class="tl-root"></div>
+<script>
+  var T = window.Treeline, h = React.createElement;
+  function render(el) { ReactDOM.createRoot(document.getElementById('root')).render(el); }
+  render(h('div', {className:'tl-demo'},
+    h(T.IconButton, {icon:'phone', label:'Call Alex', variant:'primary', size:'lg'}),
+    h(T.IconButton, {icon:'pause', label:"Pause Sam's phone", variant:'secondary'}),
+    h(T.IconButton, {icon:'moon', label:'Quiet hours'}),
+    h(T.IconButton, {icon:'close', label:'Close', size:'sm'}),
+    h(T.IconButton, {icon:'phone-off', label:'End call', variant:'danger', size:'lg'})
+  ));
+</script>
+</body>
+</html>

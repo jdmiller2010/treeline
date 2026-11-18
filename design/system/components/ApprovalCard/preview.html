@@ -1,0 +1,19 @@
+<!-- @dsCard group="Patterns" height=618 -->
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>ApprovalCard — Treeline</title></head>
+<body>
+<div id="root" class="tl-root"></div>
+<script>
+  var T = window.Treeline, h = React.createElement;
+  function render(el) { ReactDOM.createRoot(document.getElementById('root')).render(el); }
+  render(h('div', {className:'tl-demo', style:{alignItems:'flex-start', gap:'24px'}},
+    h(T.ApprovalCard, {kid:'Sam', friend:'Riley', yourHousehold:'Your house', theirHousehold:"Riley's house", yours:true, theirs:false,
+      actions:h(T.Button, {variant:'quiet', size:'sm', icon:'close'}, 'Withdraw')}),
+    h(T.ApprovalCard, {kid:'Sam', friend:'Alex', yourHousehold:'Your house', theirHousehold:"Alex's house", yours:false, theirs:true,
+      actions:[h(T.Button, {key:'a', variant:'primary', icon:'check'}, 'Approve'), h(T.Button, {key:'b'}, 'Not now')]}),
+    h(T.ApprovalCard, {kid:'Sam', friend:'Grandma Jo', yourHousehold:'Your house', theirHousehold:'Grandma', yours:true, theirs:true})
+  ));
+</script>
+</body>
+</html>

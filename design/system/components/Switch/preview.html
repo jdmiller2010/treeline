@@ -1,0 +1,17 @@
+<!-- @dsCard group="Inputs" height=230 -->
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Switch — Treeline</title></head>
+<body>
+<div id="root" class="tl-root"></div>
+<script>
+  var T = window.Treeline, h = React.createElement;
+  function render(el) { ReactDOM.createRoot(document.getElementById('root')).render(el); }
+  render(h('div', {className:'tl-demo tl-demo--col', style:{gap:'16px'}},
+    h(T.Switch, {label:'Quiet hours', description:'Calls wait until 7:00 am.', defaultChecked:true}),
+    h(T.Switch, {label:"Pause Sam's phone", description:'No calls in or out until you turn this off.'}),
+    h(T.Switch, {label:'Group calls', description:'Coming soon.', disabled:true})
+  ));
+</script>
+</body>
+</html>

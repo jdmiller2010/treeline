@@ -1,0 +1,22 @@
+<!-- @dsCard group="Status" height=120 -->
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Avatar — Treeline</title></head>
+<body>
+<div id="root" class="tl-root"></div>
+<script>
+  var T = window.Treeline, h = React.createElement;
+  function render(el) { ReactDOM.createRoot(document.getElementById('root')).render(el); }
+  render(h('div', {className:'tl-demo'},
+    h(T.Avatar, {name:'Sam Lee', size:'lg', status:'available'}),
+    h(T.Avatar, {name:'Alex', size:'lg', status:'ringing'}),
+    h(T.Avatar, {name:'Riley Park', size:'lg', status:'quiet'}),
+    h(T.Avatar, {name:'Grandma Jo', size:'lg'}),
+    h(T.Avatar, {name:'Maya', status:'paused'}),
+    h(T.Avatar, {name:'Theo'}),
+    h(T.Avatar, {name:'Ivy', size:'sm'}),
+    h(T.Avatar, {name:'Ben', size:'sm'})
+  ));
+</script>
+</body>
+</html>

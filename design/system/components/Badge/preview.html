@@ -1,0 +1,15 @@
+<!-- @dsCard group="Status" height=210 -->
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Badge — Treeline</title></head>
+<body>
+<div id="root" class="tl-root"></div>
+<script>
+  var T = window.Treeline, h = React.createElement;
+  function render(el) { ReactDOM.createRoot(document.getElementById('root')).render(el); }
+  render(h('div', {className:'tl-stack', style:{padding:'24px', gap:'28px'}},
+    h('div', {className:'tl-cluster', style:{gap:'32px'}}, h(T.Badge, {count:2, label:'2 waiting'}), h(T.Badge, {dot:true, label:'New'}), h(T.Badge, {count:12, tone:'quiet'}), h(T.Badge, {count:3, label:'3 waiting'}, h(T.Icon, {name:'users', size:24})), h(T.Badge, {dot:true, label:'New'}, h(T.Avatar, {name:'Sam Lee'}))),
+    h('div', {style:{width:'390px'}}, h(T.NavBar, {items:[{icon:'home', label:'Home', current:true}, {icon:'users', label:'Friends', badge:2, badgeLabel:'2 approvals waiting'}, {icon:'phone', label:'Calls'}, {icon:'clock', label:'Quiet hours'}]}))));
+</script>
+</body>
+</html>

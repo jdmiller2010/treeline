@@ -1,0 +1,17 @@
+<!-- @dsCard group="Inputs" height=276 -->
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>TextField — Treeline</title></head>
+<body>
+<div id="root" class="tl-root"></div>
+<script>
+  var T = window.Treeline, h = React.createElement;
+  function render(el) { ReactDOM.createRoot(document.getElementById('root')).render(el); }
+  render(h('div', {className:'tl-demo', style:{alignItems:'flex-start', gap:'24px'}},
+    h(T.TextField, {label:'Kid’s first name', placeholder:'Sam', hint:'Friends see this on their phone.'}),
+    h(T.TextField, {label:'Find a family', icon:'users', placeholder:'Search by name'}),
+    h(T.TextField, {label:'Quiet hours start', defaultValue:'25:00', error:'Use a time like 7:30 pm.'})
+  ));
+</script>
+</body>
+</html>

@@ -1,0 +1,15 @@
+<!-- @dsCard group="Inputs" height=170 -->
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>CodeInput — Treeline</title></head>
+<body>
+<div id="root" class="tl-root"></div>
+<script>
+  var T = window.Treeline, h = React.createElement;
+  function render(el) { ReactDOM.createRoot(document.getElementById('root')).render(el); }
+  render(h('div', {className:'tl-demo', style:{gap:'48px', alignItems:'flex-start'}},
+    h(T.CodeInput, {label:'Code on the phone’s card', id:'p-pair', defaultValue:'381', hint:'Six digits, printed under the phone.'}),
+    h(T.CodeInput, {label:'Sign-in code', id:'p-sign', defaultValue:'482', error:'That code didn’t match.'})));
+</script>
+</body>
+</html>

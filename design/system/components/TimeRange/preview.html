@@ -1,0 +1,14 @@
+<!-- @dsCard group="Inputs" height=240 -->
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>TimeRange — Treeline</title></head>
+<body>
+<div id="root" class="tl-root"></div>
+<script>
+  var T = window.Treeline, h = React.createElement;
+  function render(el) { ReactDOM.createRoot(document.getElementById('root')).render(el); }
+  render(h('div', {style:{padding:'24px', maxWidth:'440px'}},
+    h(T.TimeRange, {label:'Quiet hours', id:'p-qh', defaultStart:'20:00', defaultEnd:'07:00', hint:'Overnight is fine: 8:00 pm to 7:00 am.'})));
+</script>
+</body>
+</html>

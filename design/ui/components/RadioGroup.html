@@ -1,0 +1,69 @@
+<!-- Treeline · RadioGroup
+     Pick exactly one of a few choices, each of which needs a sentence to explain it.
+     Needs css/tokens.css and css/treeline.css.
+     Rules and notes: components/RadioGroup.md -->
+
+<!-- Plain -->
+<fieldset class="tl-radiogroup">
+  <legend>Who can call Sam</legend>
+  <div class="tl-field-row">
+    <span class="tl-radio">
+      <input id="who-calls-approved" type="radio" name="who-calls" class="tl-radio__input" checked="" value="approved"/>
+      <span class="tl-radio__dot" aria-hidden="true">
+      </span>
+    </span>
+    <label for="who-calls-approved" class="tl-field-row__text">
+      <span class="tl-field-row__label">Approved friends only</span>
+      <span class="tl-field-row__desc">Both families said yes.</span>
+    </label>
+  </div>
+  <div class="tl-field-row">
+    <span class="tl-radio">
+      <input id="who-calls-family" type="radio" name="who-calls" class="tl-radio__input" value="family"/>
+      <span class="tl-radio__dot" aria-hidden="true">
+      </span>
+    </span>
+    <label for="who-calls-family" class="tl-field-row__text">
+      <span class="tl-field-row__label">Approved friends and family</span>
+      <span class="tl-field-row__desc">Grandparents and relatives you add.</span>
+    </label>
+  </div>
+  <div class="tl-field-row">
+    <span class="tl-radio">
+      <input id="who-calls-nobody" type="radio" name="who-calls" class="tl-radio__input" value="nobody"/>
+      <span class="tl-radio__dot" aria-hidden="true">
+      </span>
+    </span>
+    <label for="who-calls-nobody" class="tl-field-row__text">
+      <span class="tl-field-row__label">Nobody right now</span>
+      <span class="tl-field-row__desc">The phone can still call you.</span>
+    </label>
+  </div>
+</fieldset>
+
+<!-- Cards -->
+<fieldset class="tl-radiogroup tl-radiogroup--cards">
+  <legend>Ring style</legend>
+  <div class="tl-field-row">
+    <span class="tl-radio">
+      <input id="ring-style-classic" type="radio" name="ring-style" class="tl-radio__input" checked="" value="classic"/>
+      <span class="tl-radio__dot" aria-hidden="true">
+      </span>
+    </span>
+    <label for="ring-style-classic" class="tl-field-row__text">
+      <span class="tl-field-row__label">Classic bell</span>
+      <span class="tl-field-row__desc">The rotary phone’s own ring.</span>
+    </label>
+  </div>
+  <div class="tl-field-row">
+    <span class="tl-radio">
+      <input id="ring-style-soft" type="radio" name="ring-style" class="tl-radio__input" value="soft"/>
+      <span class="tl-radio__dot" aria-hidden="true">
+      </span>
+    </span>
+    <label for="ring-style-soft" class="tl-field-row__text">
+      <span class="tl-field-row__label">Soft chime</span>
+      <span class="tl-field-row__desc">Gentler, for little sisters asleep.</span>
+    </label>
+  </div>
+</fieldset>

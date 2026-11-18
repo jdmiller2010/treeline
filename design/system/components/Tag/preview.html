@@ -1,0 +1,20 @@
+<!-- @dsCard group="Status" height=80 -->
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Tag — Treeline</title></head>
+<body>
+<div id="root" class="tl-root"></div>
+<script>
+  var T = window.Treeline, h = React.createElement;
+  function render(el) { ReactDOM.createRoot(document.getElementById('root')).render(el); }
+  render(h('div', {className:'tl-demo'},
+    h(T.Tag, null, '3 friends'),
+    h(T.Tag, {tone:'canopy', icon:'shield-check'}, 'Approved'),
+    h(T.Tag, {tone:'bark', icon:'home'}, "Alex's house"),
+    h(T.Tag, {tone:'sky', icon:'moon'}, 'Quiet 8 pm – 7 am'),
+    h(T.Tag, {tone:'sunbeam', icon:'bell'}, 'New'),
+    h(T.Tag, {tone:'berry', icon:'lock'}, 'Blocked')
+  ));
+</script>
+</body>
+</html>

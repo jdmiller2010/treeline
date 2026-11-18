@@ -1,0 +1,85 @@
+# CallLogItem
+
+One line in a parent's call log: who called whom, when, and how it ended.
+
+**Consumer provides:** `kind` (`incoming` · `outgoing` · `missed` · `blocked` · `time-limit`), `from`, `to`, `time`, optional `duration` (completed calls), optional `reason` (blocked and time-limit calls).
+
+- Completed calls show the duration in tabular figures; anything else shows a Tag with its word and icon.
+- Blocked rows are `berry` with `lock` and say why in kid-free language: "Not approved by Riley's house".
+- Keep the log factual and calm. Never shame wording ("Sam tried to…").
+
+## HTML
+
+Exact markup for use without React, with `tokens.css` and `components/bundle.css`. Keep the classes and nesting; change text, ids, links and labels.
+
+**Call log**
+
+```html
+<div class="tl-card tl-card--list">
+  <div class="tl-row tl-log tl-log--canopy">
+    <span class="tl-log__icon" aria-hidden="true">
+      <svg class="tl-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 10.4v-.7C2.5 7.8 5.6 6.3 9.5 6.3s7 1.5 7 3.4v.7a.8.8 0 0 1-.8.8h-2a.8.8 0 0 1-.8-.8V9.3H6.1v1.1a.8.8 0 0 1-.8.8h-2a.8.8 0 0 1-.8-.8z"/><path d="M6.2 11.2h6.6l2.9 7a.8.8 0 0 1-.7 1.1H4a.8.8 0 0 1-.7-1.1z"/><circle cx="9.5" cy="15.5" r="2.1"/><path d="M16.5 7.5l5-5"/><path d="M17.5 2.5h4v4"/></svg>
+    </span>
+    <div class="tl-row__main">
+      <div class="tl-row__title">Sam<span class="tl-log__arrow" aria-hidden="true"> → </span>Alex</div>
+      <div class="tl-row__meta">
+        <span>Today, 4:12 pm</span>
+      </div>
+    </div>
+    <span class="tl-log__dur tl-num">12 min</span>
+  </div>
+  <div class="tl-row tl-log tl-log--canopy">
+    <span class="tl-log__icon" aria-hidden="true">
+      <svg class="tl-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 10.4v-.7C2.5 7.8 5.6 6.3 9.5 6.3s7 1.5 7 3.4v.7a.8.8 0 0 1-.8.8h-2a.8.8 0 0 1-.8-.8V9.3H6.1v1.1a.8.8 0 0 1-.8.8h-2a.8.8 0 0 1-.8-.8z"/><path d="M6.2 11.2h6.6l2.9 7a.8.8 0 0 1-.7 1.1H4a.8.8 0 0 1-.7-1.1z"/><circle cx="9.5" cy="15.5" r="2.1"/><path d="M21.5 2.5l-5 5"/><path d="M16.5 3.5v4h4"/></svg>
+    </span>
+    <div class="tl-row__main">
+      <div class="tl-row__title">Grandma Jo<span class="tl-log__arrow" aria-hidden="true"> → </span>Sam</div>
+      <div class="tl-row__meta">
+        <span>Today, 5:30 pm</span>
+      </div>
+    </div>
+    <span class="tl-log__dur tl-num">24 min</span>
+  </div>
+  <div class="tl-row tl-log tl-log--bark">
+    <span class="tl-log__icon" aria-hidden="true">
+      <svg class="tl-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 9.2V8.4C3.5 6.2 7.3 4.5 12 4.5s8.5 1.7 8.5 3.9v.8a1 1 0 0 1-1 1H17a1 1 0 0 1-1-1V8H8v1.2a1 1 0 0 1-1 1H4.5a1 1 0 0 1-1-1z"/><path d="M8 10.2h8l3.5 8.3a1 1 0 0 1-.9 1.5H5.4a1 1 0 0 1-.9-1.5z"/><circle cx="12" cy="15.2" r="2.6"/><path d="M3 3l18 18"/></svg>
+    </span>
+    <div class="tl-row__main">
+      <div class="tl-row__title">Alex<span class="tl-log__arrow" aria-hidden="true"> → </span>Sam</div>
+      <div class="tl-row__meta">
+        <span>Today, 6:05 pm</span>
+      </div>
+    </div>
+    <span class="tl-tag tl-tag--bark">
+      <svg class="tl-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 9.2V8.4C3.5 6.2 7.3 4.5 12 4.5s8.5 1.7 8.5 3.9v.8a1 1 0 0 1-1 1H17a1 1 0 0 1-1-1V8H8v1.2a1 1 0 0 1-1 1H4.5a1 1 0 0 1-1-1z"/><path d="M8 10.2h8l3.5 8.3a1 1 0 0 1-.9 1.5H5.4a1 1 0 0 1-.9-1.5z"/><circle cx="12" cy="15.2" r="2.6"/><path d="M3 3l18 18"/></svg>Missed</span>
+  </div>
+  <div class="tl-row tl-log tl-log--sky">
+    <span class="tl-log__icon" aria-hidden="true">
+      <svg class="tl-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+    </span>
+    <div class="tl-row__main">
+      <div class="tl-row__title">Sam<span class="tl-log__arrow" aria-hidden="true"> → </span>Alex</div>
+      <div class="tl-row__meta">
+        <span>Yesterday, 3:40 pm</span>
+        <span>Ended at 30 min</span>
+      </div>
+    </div>
+    <span class="tl-tag tl-tag--sky">
+      <svg class="tl-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Time limit</span>
+  </div>
+  <div class="tl-row tl-log tl-log--berry">
+    <span class="tl-log__icon" aria-hidden="true">
+      <svg class="tl-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+    </span>
+    <div class="tl-row__main">
+      <div class="tl-row__title">Sam<span class="tl-log__arrow" aria-hidden="true"> → </span>Riley</div>
+      <div class="tl-row__meta">
+        <span>Yesterday, 8:15 pm</span>
+        <span>Not approved by Riley&#x27;s house</span>
+      </div>
+    </div>
+    <span class="tl-tag tl-tag--berry">
+      <svg class="tl-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>Blocked</span>
+  </div>
+</div>
+```

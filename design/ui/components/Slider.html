@@ -1,0 +1,26 @@
+<!-- Treeline · Slider
+     Pick a value on a range where the exact number matters less than the feel: ringer volume, call length.
+     Needs css/tokens.css and css/treeline.css and js/treeline.js.
+     Rules and notes: components/Slider.md -->
+
+<!-- Ringer volume -->
+<div class="tl-slider">
+  <div class="tl-slider__head">
+    <label for="ringer" class="tl-slider__label">Ringer volume</label>
+    <output for="ringer" class="tl-slider__value" id="ringer-out">6</output>
+  </div>
+  <input id="ringer" type="range" min="0" max="10" step="1" class="tl-slider__input" data-tl-slider="ringer-out" aria-valuetext="6" style="--tl-fill:60%" value="6"/>
+  <div class="tl-slider__ends" aria-hidden="true">
+    <span>Quiet</span>
+    <span>Loud</span>
+  </div>
+</div>
+
+<!-- Call length with unit -->
+<div class="tl-slider">
+  <div class="tl-slider__head">
+    <label for="call-len" class="tl-slider__label">Longest call</label>
+    <output for="call-len" class="tl-slider__value" id="call-len-out">30 min</output>
+  </div>
+  <input id="call-len" type="range" min="5" max="60" step="5" class="tl-slider__input" data-tl-slider="call-len-out" data-tl-unit="min" aria-valuetext="30 min" style="--tl-fill:45.45454545454545%" value="30"/>
+</div>

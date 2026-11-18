@@ -1,0 +1,14 @@
+<!-- @dsCard group="Containers" height=230 -->
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>StatTile — Treeline</title></head>
+<body>
+<div id="root" class="tl-root"></div>
+<script>
+  var T = window.Treeline, h = React.createElement;
+  function render(el) { ReactDOM.createRoot(document.getElementById('root')).render(el); }
+  render(h('div', {style:{padding:'24px', maxWidth:'640px'}}, h('section', {className:'tl-card'}, h('div', {className:'tl-stats'},
+    h(T.StatTile, {label:'Calls', value:'9', note:'This week'}), h(T.StatTile, {label:'Talk time', value:'42', unit:'min', note:'Up from 30', trend:true}), h(T.StatTile, {label:'Friends', value:'5', note:'2 waiting'})))));
+</script>
+</body>
+</html>

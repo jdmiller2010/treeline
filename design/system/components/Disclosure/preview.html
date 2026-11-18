@@ -1,0 +1,16 @@
+<!-- @dsCard group="Containers" height=360 -->
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Disclosure — Treeline</title></head>
+<body>
+<div id="root" class="tl-root"></div>
+<script>
+  var T = window.Treeline, h = React.createElement;
+  function render(el) { ReactDOM.createRoot(document.getElementById('root')).render(el); }
+  render(h('div', {style:{padding:'24px', maxWidth:'600px'}}, h('section', {className:'tl-card'}, h(T.Accordion, null,
+    h(T.Disclosure, {title:'Who can my kid call?', defaultOpen:true}, h('p', null, 'Only friends both families approved, plus family you add. Nobody else can ring the phone.')),
+    h(T.Disclosure, {title:'Can I listen to calls?'}, h('p', null, 'No. Treeline never records calls. You see who called whom, when and for how long.')),
+    h(T.Disclosure, {title:'How do quiet hours work?'}, h('p', null, 'During quiet hours calls wait. The phone won’t ring, and the caller hears a soft “try later” tone.'))))));
+</script>
+</body>
+</html>

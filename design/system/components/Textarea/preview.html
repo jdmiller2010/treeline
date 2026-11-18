@@ -1,0 +1,15 @@
+<!-- @dsCard group="Inputs" height=260 -->
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Textarea — Treeline</title></head>
+<body>
+<div id="root" class="tl-root"></div>
+<script>
+  var T = window.Treeline, h = React.createElement;
+  function render(el) { ReactDOM.createRoot(document.getElementById('root')).render(el); }
+  render(h('div', {className:'tl-demo', style:{gap:'32px', alignItems:'flex-start'}},
+    h(T.Textarea, {label:'Note to the Chen family', id:'p-note', maxLength:200, defaultValue:'Hi! Sam would love to call Maya after school.', hint:'They see this with your request.'}),
+    h(T.Textarea, {label:'What happened?', id:'p-report', error:'Tell us a little so we can help.'})));
+</script>
+</body>
+</html>

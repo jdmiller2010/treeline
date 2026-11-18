@@ -1,0 +1,15 @@
+<!-- @dsCard group="Status" height=330 -->
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Skeleton — Treeline</title></head>
+<body>
+<div id="root" class="tl-root"></div>
+<script>
+  var T = window.Treeline, h = React.createElement;
+  function render(el) { ReactDOM.createRoot(document.getElementById('root')).render(el); }
+  render(h('div', {className:'tl-demo', style:{gap:'32px', alignItems:'flex-start'}},
+    h('div', {className:'tl-card tl-card--list', style:{width:'420px'}, 'aria-busy':'true'}, h(T.Skeleton, {variant:'row'}), h(T.Skeleton, {variant:'row'}), h(T.Skeleton, {variant:'row'})),
+    h('div', {className:'tl-card', style:{width:'300px'}, 'aria-busy':'true'}, h(T.Skeleton, {variant:'text', width:'30%'}), h(T.Skeleton, {variant:'title'}), h(T.Skeleton, {variant:'text', width:'90%'}), h(T.Skeleton, {variant:'text', width:'70%'}))));
+</script>
+</body>
+</html>

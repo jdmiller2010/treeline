@@ -1,0 +1,39 @@
+<!-- @dsCard group="App layout" height=300 -->
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>AppBar — Treeline</title></head>
+<body>
+<div id="root" class="tl-root"></div>
+<script>
+  var T = window.Treeline, h = React.createElement;
+  var ITEMS = [{icon:'home', label:'Home', current:true}, {icon:'users', label:'Friends'}, {icon:'phone', label:'Calls'}, {icon:'clock', label:'Quiet hours'}];
+  function Nav() { return h(T.NavBar, {items: ITEMS, footer: h('div', {className:'tl-split'}, h('div', {className:'tl-stack tl-stack--tight'}, h('span', {className:'tl-nav__house'}, 'Bennett house'), h('span', {className:'tl-nav__meta'}, '2 kids · 2 phones')), h(T.IconButton, {icon:'lock', label:'Settings', size:'sm'}))}); }
+  function Bar() { return h(T.AppBar, {title:'Home', actions: [h(T.Button, {key:'a', icon:'plus', collapse:true, variant:'secondary'}, 'Add friend'), h(T.Avatar, {key:'b', name:'Jordan Bennett', size:'sm'})]}); }
+  function Home() {
+    return h('div', {className:'tl-page'}, h('div', {className:'tl-stack tl-stack--cards'},
+      h('div', {className:'tl-grid tl-grid--2'},
+        h(T.Card, {tone:'breeze', eyebrow:'Good news', title:'Alex is in the treehouse'}, h('p', {className:'tl-card__body'}, 'Both families approved. Speed dial 1.')),
+        h(T.Card, {eyebrow:'Today', title:'3 calls, 42 minutes'}, h('p', {className:'tl-card__body'}, 'Sam talked with Alex and Grandma.'))),
+      h('section', {className:'tl-stack'}, h('h2', {className:'title-lg'}, 'Approved friends'),
+        h('div', {className:'tl-card tl-card--list'},
+          h(T.FriendRow, {name:'Alex Rivera', household:'Rivera house', status:'online'}),
+          h(T.FriendRow, {name:'Maya Chen', household:'Chen house', status:'away'})))));
+  }
+  function Shell(extra) { return h(T.AppShell, {bar: h(Bar), nav: h(Nav), overlay: extra || null}, h(Home)); }
+  var FRAME_CSS = '.frb{display:inline-block;padding:1px;border-radius:15px;background:var(--line-strong);box-shadow:0 12px 32px rgba(92,70,38,.12)}.fr{position:relative;flex:none;border-radius:14px;clip-path:inset(0 round 14px);background:var(--canvas)}.fr .tl-nav,.fr .tl-appbar{position:relative}' +
+    '.fr>.in{transform-origin:0 0;position:absolute;left:0;top:0}.fr>.in>.tl-app{height:100%;min-height:0}.fr>.in>.tl-app .tl-app__main{overflow:hidden}' +
+    '.frl{font:700 11px/14px var(--font-sans);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-muted);margin:0 0 10px}' +
+    '.frrow{display:flex;gap:32px;align-items:flex-start;flex-wrap:wrap}';
+  function Frame(label, w, hgt, scale, child) {
+    return h('div', null, h('p', {className:'frl'}, label + ' · ' + w + 'px'),
+      h('div', {className:'frb'}, h('div', {className:'fr', style:{width: w*scale + 'px', height: hgt*scale + 'px'}},
+        h('div', {className:'in', style:{width: w + 'px', height: hgt + 'px', transform:'scale(' + scale + ')'}}, child))));
+  }
+  var st = document.createElement('style'); st.textContent = FRAME_CSS; document.head.appendChild(st);
+  function render(el) { ReactDOM.createRoot(document.getElementById('root')).render(el); }
+  function BarOnly() { return h(T.AppShell, {bar: h(T.AppBar, {title:'Approved friends', lead: h(T.IconButton, {icon:'chevron-right', label:'Back', className:'tl-iconbtn--back'}), actions:[h(T.Button, {key:'a', icon:'plus', collapse:true}, 'Add friend'), h(T.Avatar, {key:'b', name:'Jordan Bennett', size:'sm'})]})}, h('div', {className:'tl-page'})); }
+  render(h('div', {style:{padding:'24px', display:'flex', flexDirection:'column', gap:'24px'}},
+    Frame('768 and up: Fraunces title, labeled buttons', 900, 96, .9, BarOnly()), Frame('Under 768: Figtree title, icon-only buttons', 390, 72, 1, BarOnly())));
+</script>
+</body>
+</html>

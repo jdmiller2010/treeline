@@ -1,0 +1,17 @@
+<!-- @dsCard group="Nature" height=168 -->
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>LeafDivider — Treeline</title></head>
+<body>
+<div id="root" class="tl-root"></div>
+<script>
+  var T = window.Treeline, h = React.createElement;
+  function render(el) { ReactDOM.createRoot(document.getElementById('root')).render(el); }
+  render(h('div', {className:'tl-demo tl-demo--col', style:{maxWidth:'520px', gap:'24px'}},
+    h('p', {style:{margin:0, color:'var(--ink-muted)'}}, 'Friends'),
+    h(T.LeafDivider),
+    h('p', {style:{margin:0, color:'var(--ink-muted)'}}, 'Schedules')
+  ));
+</script>
+</body>
+</html>

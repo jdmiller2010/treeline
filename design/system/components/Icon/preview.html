@@ -1,0 +1,18 @@
+<!-- @dsCard group="Icons" height=326 -->
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Icon — Treeline</title></head>
+<body>
+<div id="root" class="tl-root"></div>
+<script>
+  var T = window.Treeline, h = React.createElement;
+  function render(el) { ReactDOM.createRoot(document.getElementById('root')).render(el); }
+  var names = T.iconNames;
+  render(h('div', {className:'tl-demo', style:{gap:'20px 28px'}}, names.map(function(n){
+    return h('div', {key:n, style:{display:'flex',flexDirection:'column',alignItems:'center',gap:'6px',width:'72px'}},
+      h(T.Icon, {name:n, size:24}),
+      h('span', {style:{font:'500 11px/14px var(--font-sans)', color:'var(--ink-muted)', textAlign:'center'}}, n));
+  })));
+</script>
+</body>
+</html>

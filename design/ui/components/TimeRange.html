@@ -1,0 +1,27 @@
+<!-- Treeline · TimeRange
+     A start and end time, like quiet hours or homework time.
+     Needs css/tokens.css and css/treeline.css.
+     Rules and notes: components/TimeRange.md -->
+
+<!-- Quiet hours -->
+<fieldset class="tl-timerange">
+  <legend>Quiet hours</legend>
+  <div class="tl-timerange__row">
+    <div class="tl-textfield tl-timefield">
+      <label for="qh-start" class="tl-textfield__label">From</label>
+      <div class="tl-textfield__control">
+        <svg class="tl-icon tl-textfield__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+        <input id="qh-start" class="tl-textfield__input" type="time" value="20:00"/>
+      </div>
+    </div>
+    <span class="tl-timerange__to" aria-hidden="true">to</span>
+    <div class="tl-textfield tl-timefield">
+      <label for="qh-end" class="tl-textfield__label">Until</label>
+      <div class="tl-textfield__control">
+        <svg class="tl-icon tl-textfield__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+        <input id="qh-end" class="tl-textfield__input" type="time" value="07:00"/>
+      </div>
+    </div>
+  </div>
+  <p class="tl-textfield__hint">Overnight is fine: 8:00 pm to 7:00 am.</p>
+</fieldset>

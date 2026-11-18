@@ -1,0 +1,16 @@
+<!-- @dsCard group="App layout" height=260 -->
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Tabs — Treeline</title></head>
+<body>
+<div id="root" class="tl-root"></div>
+<script>
+  var T = window.Treeline, h = React.createElement;
+  function render(el) { ReactDOM.createRoot(document.getElementById('root')).render(el); }
+  render(h('div', {style:{padding:'24px', maxWidth:'600px'}}, h('section', {className:'tl-card'}, h(T.Tabs, {label:'Alex', id:'p-alex', tabs:[
+      {value:'overview', label:'Overview', content:h(T.DescriptionList, {items:[{label:'Speed dial', value:'1'}, {label:'Approved', value:'Both families, Oct 3'}]})},
+      {value:'calls', label:'Calls', badge:3, content:h('p', {className:'tl-card__body'}, '3 calls this week, 42 minutes.')},
+      {value:'settings', label:'Settings', content:h('p', {className:'tl-card__body'}, 'Pause calls or remove Alex.')}]}))));
+</script>
+</body>
+</html>

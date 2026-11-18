@@ -1,0 +1,37 @@
+<!-- Treeline · CodeInput
+     One box per digit, for pairing a phone and for sign-in codes.
+     Needs css/tokens.css and css/treeline.css and js/treeline.js.
+     Rules and notes: components/CodeInput.md -->
+
+<!-- Pairing code -->
+<fieldset class="tl-code" data-tl-code="">
+  <legend>Code on the phone’s card</legend>
+  <div class="tl-code__boxes">
+    <input id="pair-code" class="tl-code__box" inputmode="numeric" pattern="[0-9]*" maxLength="1" autocomplete="one-time-code" aria-label="Digit 1 of 6"/>
+    <input class="tl-code__box" inputmode="numeric" pattern="[0-9]*" maxLength="1" autocomplete="off" aria-label="Digit 2 of 6"/>
+    <input class="tl-code__box" inputmode="numeric" pattern="[0-9]*" maxLength="1" autocomplete="off" aria-label="Digit 3 of 6"/>
+    <span class="tl-code__gap" aria-hidden="true">
+    </span>
+    <input class="tl-code__box" inputmode="numeric" pattern="[0-9]*" maxLength="1" autocomplete="off" aria-label="Digit 4 of 6"/>
+    <input class="tl-code__box" inputmode="numeric" pattern="[0-9]*" maxLength="1" autocomplete="off" aria-label="Digit 5 of 6"/>
+    <input class="tl-code__box" inputmode="numeric" pattern="[0-9]*" maxLength="1" autocomplete="off" aria-label="Digit 6 of 6"/>
+  </div>
+  <p class="tl-textfield__hint">Six digits, printed under the phone.</p>
+</fieldset>
+
+<!-- With error -->
+<fieldset class="tl-code has-error" data-tl-code="">
+  <legend>Sign-in code</legend>
+  <div class="tl-code__boxes">
+    <input id="signin-code" class="tl-code__box" inputmode="numeric" pattern="[0-9]*" maxLength="1" autocomplete="one-time-code" aria-label="Digit 1 of 6" value="4"/>
+    <input class="tl-code__box" inputmode="numeric" pattern="[0-9]*" maxLength="1" autocomplete="off" aria-label="Digit 2 of 6" value="8"/>
+    <input class="tl-code__box" inputmode="numeric" pattern="[0-9]*" maxLength="1" autocomplete="off" aria-label="Digit 3 of 6" value="2"/>
+    <span class="tl-code__gap" aria-hidden="true">
+    </span>
+    <input class="tl-code__box" inputmode="numeric" pattern="[0-9]*" maxLength="1" autocomplete="off" aria-label="Digit 4 of 6"/>
+    <input class="tl-code__box" inputmode="numeric" pattern="[0-9]*" maxLength="1" autocomplete="off" aria-label="Digit 5 of 6"/>
+    <input class="tl-code__box" inputmode="numeric" pattern="[0-9]*" maxLength="1" autocomplete="off" aria-label="Digit 6 of 6"/>
+  </div>
+  <p class="tl-textfield__hint">
+    <svg class="tl-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>That code didn’t match. Check your email and try again.</p>
+</fieldset>

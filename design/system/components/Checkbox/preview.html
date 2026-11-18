@@ -1,0 +1,18 @@
+<!-- @dsCard group="Inputs" height=242 -->
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Checkbox — Treeline</title></head>
+<body>
+<div id="root" class="tl-root"></div>
+<script>
+  var T = window.Treeline, h = React.createElement;
+  function render(el) { ReactDOM.createRoot(document.getElementById('root')).render(el); }
+  render(h('div', {className:'tl-demo tl-demo--col', style:{gap:'14px'}},
+    h(T.Checkbox, {label:'Alex', description:"Alex's house", defaultChecked:true}),
+    h(T.Checkbox, {label:'Grandma Jo', defaultChecked:true}),
+    h(T.Checkbox, {label:'Riley', description:'Waiting for their family to approve'}),
+    h(T.Checkbox, {label:'Theo', disabled:true})
+  ));
+</script>
+</body>
+</html>
