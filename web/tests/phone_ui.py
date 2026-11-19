@@ -1,7 +1,9 @@
 """The tablet softphone's screen, in a headless browser, without Asterisk.
 
-Pairs a tablet through the real API, checks the phone is drawn and the dial
-really turns, and checks that a removed tablet notices. Real calls are tested
+Pairs a tablet through the real API, checks the room is drawn around the phone
+(the guide book opens, the cards can be picked up, the card file holds the
+strings), that the dial really turns and the handset trembles when it rings,
+and that a removed tablet notices. Real calls are tested
 by web/tests/phone_calls.py, which needs the Docker stack.
 """
 
@@ -88,8 +90,13 @@ def main():
         check("911" in tablet.inner_text("body"), "the pairing screen says plainly that 911 isn't available")
         tablet.screenshot(path=f"{SHOTS}/phone-pair.png", full_page=True)
 
-        # ---- a parent claims it
-        h, house = parent_session(api, f"phone-parent-{int(__import__('time').time())}@example.com", "Dial house")
+        # ---- a parent claims it (their treehouse already has one string, for the card file)
+        stamp = int(__import__('time').time())
+        h, house = parent_session(api, f"phone-parent-{stamp}@example.com", "Dial house")
+        fh, friend = parent_session(api, f"phone-friend-{stamp}@example.com", "Maple house")
+        ladder = api.post(f"{BASE}/api/ladder-codes", headers=h).json()["code"]
+        sid = api.post(f"{BASE}/api/strings/redeem", headers=fh, data={"code": ladder}).json()["id"]
+        api.post(f"{BASE}/api/strings/{sid}/approve", headers=h, data={})
         r = api.post(f"{BASE}/api/pair/claim", headers=h, data={"code": code, "name": "Kitchen tablet"})
         check(r.status == 201, "a parent claims the code")
         tablet.wait_for_selector(".tl-rotary", timeout=15000)
@@ -97,11 +104,21 @@ def main():
         tablet.wait_for_function("(n) => document.querySelector('.tl-rotary__number').textContent === n", arg=house["number"], timeout=15000)
         check(tablet.text_content(".tl-rotary__number") == house["number"], "the number card shows the treehouse's number")
 
-        # ---- what's on the screen
-        check(tablet.locator(".tlp-wheel").count() == 1 and tablet.locator(".tlp-handset").count() == 1, "the design system's wheel and handset are there")
-        check("Can’t call 911 or outside numbers" in tablet.inner_text(".tl-rotary__notice"), "the phone's main screen says it can't call 911")
-        check(tablet.locator("text=Can’t call 911").count() + tablet.locator("text=Can't call 911").count() == 1, "and says it once")
-        check("Open-source licenses" in tablet.inner_text("body"), "the footer is there")
+        # ---- what's on the screen: the room, with the phone on its table
+        check(tablet.locator(".tl-desk").count() == 1, "the phone sits in the design system's softphone room")
+        check(tablet.locator(".tl-rotary .tlp-wheel").count() == 1 and tablet.locator(".tl-rotary .tlp-handset").count() == 1 and tablet.locator(".tlp-wheel").count() == 1, "the design system's wheel and handset are there, once")
+        check(tablet.locator(".tl-rotary__notice").count() == 0, "the phone's own notice is off: the room's sticker says it")
+        check(tablet.locator(".tl-desk__scene text", has_text="NO 911").count() >= 1, "the no-911 sticker is on the drawer")
+        sr = tablet.inner_text(".tl-desk__sr")
+        check("can’t call 911" in sr and tablet.locator(".tl-desk__sr").count() == 1, "screen readers hear that it can't call 911, once")
+        tablet.wait_for_function("(n) => [...document.querySelectorAll('.tl-desk__name')].every((t) => t.textContent === n)", arg=house["name"], timeout=15000)
+        check(True, "the kid's drawing has the treehouse's name on it")
+        tablet.wait_for_function("(n) => [...document.querySelectorAll('.tl-desk__cardname')].some((t) => t.textContent === n)", arg=friend["name"], timeout=15000)
+        nums = tablet.evaluate("() => [...document.querySelectorAll('.tl-desk__cardnum')].map((t) => t.textContent)")
+        check(friend["number"] in nums, "the card file has a card for the string, with its number")
+        quiet = tablet.evaluate("() => document.querySelector('.tl-desk__quiettext').textContent")
+        check(bool(re.match(r"^(none|\d{1,2}(:\d\d)? [ap]m – \d{1,2}(:\d\d)? [ap]m)$", quiet)), "the sticky note shows the quiet hours", quiet)
+        check(tablet.inner_text("#status").strip() != "", "what the phone is doing is written on the wall")
         wide = tablet.evaluate("document.documentElement.scrollWidth > document.documentElement.clientWidth + 1")
         check(not wide, "nothing scrolls sideways")
         for theme in ("light", "dark"):
@@ -109,43 +126,54 @@ def main():
             tablet.screenshot(path=f"{SHOTS}/phone-{theme}.png", full_page=True)
         tablet.evaluate("document.documentElement.setAttribute('data-theme','light')")
 
-        # ---- "How do I dial?": a lesson that plays on the phone and dials nothing
-        tablet.evaluate("() => __phone.setTutorialSpeed(8)")
-        help_button = tablet.locator("[data-help]")
-        check(help_button.is_visible(), "an idle phone offers 'How do I dial?'")
-        tablet.screenshot(path=f"{SHOTS}/phone-with-help.png", full_page=True)
-        help_button.click()
-        tablet.wait_for_selector("#tutorial .tl-steps")
-        check(not help_button.is_visible(), "the button steps aside while the lesson plays")
-        lifted = finger = turned = False
-        for _ in range(400):
-            st = tablet.evaluate("""() => ({ hook: document.querySelector('.tl-rotary').dataset.hook,
-                finger: !!document.querySelector('.ph__finger.is-on'),
-                turn: document.querySelector('.tlp-wheel').getAttribute('transform') })""")
-            lifted |= st["hook"] == "off"
-            finger |= st["finger"]
-            turned |= not st["turn"].startswith("rotate(0.00")
-            if tablet.locator("#tutorial").inner_text().strip() == "" and (lifted and turned):
-                break
-            tablet.wait_for_timeout(100)
-        check(lifted, "the lesson lifts the handset")
-        check(finger, "a fingertip drops into a hole")
-        check(turned, "and the wheel winds round and spins back")
+        # ---- every screen size gets the room that fits it, and the phone stays on screen
+        for w, hgt, want in ((360, 740, "tall"), (390, 844, "tall"), (768, 1024, "portrait"), (1024, 768, "wide"), (1280, 800, "wide"), (1440, 900, "wide")):
+            tablet.set_viewport_size({"width": w, "height": hgt})
+            tablet.wait_for_timeout(150)
+            got = tablet.evaluate("() => ['wide','portrait','tall'].find((n) => getComputedStyle(document.querySelector('.tl-desk__scene.tl-desk__l--' + n)).display === 'block')")
+            box = tablet.locator(".tl-rotary__svg").bounding_box()
+            fits = box and box["x"] >= 0 and box["x"] + box["width"] <= w + 1 and box["y"] + box["height"] <= hgt + 1
+            over = tablet.evaluate("document.documentElement.scrollWidth > innerWidth || document.documentElement.scrollHeight > innerHeight")
+            check(got == want and fits and not over, f"at {w}×{hgt} the room is '{want}' and the phone fits", f"{got} {box} overflow={over}")
+            tablet.screenshot(path=f"{SHOTS}/phone-{w}x{hgt}.png")
+        tablet.set_viewport_size({"width": 820, "height": 1100})
+        tablet.wait_for_timeout(150)
+
+        # ---- the guide book: it opens into pictures, turns its pages, closes, and dials nothing
+        tablet.click('[data-desk-open="book"]')
+        tablet.wait_for_function("() => document.querySelector('.tl-book__count').textContent === 'Pages 1–2'", timeout=5000)
+        check(True, "the guide book comes up and opens")
+        check(tablet.locator(".tl-desk__look--book .tl-book__art[aria-label]").count() >= 10, "its pages are pictures, each described for screen readers")
+        tablet.keyboard.press("ArrowRight")
+        tablet.wait_for_function("() => document.querySelector('.tl-book__count').textContent === 'Pages 3–4'", timeout=5000)
+        check(True, "the pages turn")
+        tablet.screenshot(path=f"{SHOTS}/phone-book.png")
+        tablet.keyboard.press("3")
+        tablet.keyboard.press("Escape")
+        tablet.wait_for_function("() => document.querySelector('.tl-desk__look--book').hidden", timeout=5000)
+        check(tablet.evaluate("document.activeElement.getAttribute('data-desk-open')") == "book", "Escape closes it and puts focus back on the book")
         check(tablet.evaluate("document.body.dataset.digits") == "" and tablet.evaluate("document.body.dataset.state") == "idle",
-              "nothing was dialed and the phone is still idle")
-        tablet.wait_for_function("() => document.querySelector('#tutorial').innerText.trim() === ''", timeout=30000)
-        check(tablet.get_attribute(".tl-rotary", "data-hook") == "on", "the handset is back on the hook when it ends")
-        check(tablet.evaluate("document.querySelector('.tlp-wheel').getAttribute('transform')").startswith("rotate(0.00"), "and the wheel is at rest")
-        check(tablet.locator(".ph__finger").count() == 0, "and the fingertip is gone")
-        check(help_button.is_visible(), "the button comes back")
-        # Stop ends it at once, wherever it is.
-        tablet.evaluate("() => __phone.setTutorialSpeed(1)")
-        help_button.click()
-        tablet.wait_for_selector("#tutorial .tl-steps")
-        tablet.click("[data-tutorial-stop]")
-        tablet.wait_for_function("() => document.querySelector('#tutorial').innerText.trim() === ''", timeout=5000)
-        check(tablet.get_attribute(".tl-rotary", "data-hook") == "on", "Stop puts the handset back")
-        tablet.evaluate("() => __phone.setTutorialSpeed(1)")
+              "nothing was dialed while the book was open, and the phone is still idle")
+
+        # ---- the cards you can pick up are the links: support, email, licenses
+        for item, href in (("coffee", "https://buymeacoffee.com/"), ("card", "mailto:"), ("licenses", "/phone/licenses.html")):
+            tablet.click(f'[data-desk-open="{item}"]')
+            tablet.wait_for_selector(f".tl-desk__look--{item}:not([hidden])")
+            got = tablet.get_attribute(f".tl-desk__look--{item} .tl-desk__heldart", "href") or ""
+            check(got.startswith(href), f"picking up the {item} shows it with its link", got)
+            tablet.click(f".tl-desk__look--{item} .tl-desk__putback")
+            tablet.wait_for_function("(k) => document.querySelector('.tl-desk__look--' + k).hidden", arg=item, timeout=5000)
+        check(True, "and each goes back")
+        check("NO 911" not in tablet.inner_text(".tl-desk__look--card"), "the business card is the credit, not a warning")
+
+        # ---- ringing: only the handset trembles, and it stops when the phone stops ringing
+        tablet.evaluate("() => { __phone.S.phase = 'ringing'; __phone.render(); }")
+        moved = tablet.evaluate("""async () => { const h = document.querySelector('.tlp-handset'), b = document.querySelector('.tlp-base'); const seen = new Set(); let body = false;
+          for (let i = 0; i < 12; i++) { seen.add(getComputedStyle(h).transform); body ||= getComputedStyle(b).transform !== 'none'; await new Promise((r) => setTimeout(r, 40)); }
+          return { kinds: seen.size, body }; }""")
+        check(tablet.locator(".tl-rotary.is-ringing").count() == 1 and moved["kinds"] > 2 and not moved["body"], "a ringing phone's handset trembles, and nothing else moves", str(moved))
+        tablet.evaluate("() => { __phone.S.phase = 'idle'; __phone.render(); }")
+        check(tablet.locator(".tl-rotary.is-ringing").count() == 0, "and it stops when the ringing does")
 
         # ---- the dial really turns (pretend we're off the hook, with a dial tone)
         # (no Asterisk here, so lift the handset quietly and set the phase by hand)
@@ -201,6 +229,7 @@ def main():
         tablet.wait_for_selector(".ph-code", timeout=20000)
         check("removed" in tablet.inner_text("body"), "a removed tablet says so and offers to be added again")
         api.delete(f"{BASE}/api/treehouse", headers=h, data={"confirm": house["name"]})     # leave the database as we found it
+        api.delete(f"{BASE}/api/treehouse", headers=fh, data={"confirm": friend["name"]})
         browser.close()
 
     if errors:

@@ -849,7 +849,7 @@ body {
 .tl-desk__hot--coffee { left: 79.660%; top: 14.686%; width: 19.300%; height: 9.164%; }
 .tl-desk__hot--card { left: 79.660%; top: 23.850%; width: 16.990%; height: 7.837%; }
 .tl-desk__hot--cardfile { left: 76.800%; top: 55.897%; width: 18.100%; height: 12.201%; }
-.tl-desk__slot { left: 2%; right: 76%; top: 46%; }
+.tl-desk__slot { left: 2%; right: 79%; top: 46%; }
 }
 @container (aspect-ratio < 0.65) {
 .tl-desk__art > .tl-desk__l--wide, .tl-desk__art > .tl-desk__l--portrait { display: none; }

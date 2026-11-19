@@ -214,8 +214,12 @@ export function toast(message, tone = "neutral", opts = {}) {
 }
 
 /** The line every page ends with. */
+/** Who made Treeline and how to help: the footer's links, and the softphone room's cards. */
+export const CONTACT = "jdmiller2010@gmail.com";
+export const SUPPORT_URL = "https://buymeacoffee.com/REPLACE-ME";
+
 export function footer(licenses = "/parent/licenses.html") {
-  return html`<p class="caption tl-footer" style="color:var(--ink-muted)">© 2026 Jordan Miller · <a href="mailto:jdmiller2010@gmail.com" style="color:inherit">jdmiller2010@gmail.com</a> · <a href="https://buymeacoffee.com/REPLACE-ME" style="color:inherit" target="_blank" rel="noopener">Support Treeline</a> · <a href="${licenses}" style="color:inherit">Open-source licenses</a></p>`;
+  return html`<p class="caption tl-footer" style="color:var(--ink-muted)">© 2026 Jordan Miller · <a href="mailto:${CONTACT}" style="color:inherit">${CONTACT}</a> · <a href="${SUPPORT_URL}" style="color:inherit" target="_blank" rel="noopener">Support Treeline</a> · <a href="${licenses}" style="color:inherit">Open-source licenses</a></p>`;
 }
 
 /** The plain statement the design system requires wherever a phone or the app is used. */

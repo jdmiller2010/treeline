@@ -119,7 +119,7 @@ export interface TabsProps { label: string; tabs: Array<{ value: string; label: 
 export declare function Tabs(props: TabsProps): React.ReactElement;
 export interface RotaryPhoneApi { lift(): void; hangUp(): void; dial(digit: number): void; isOffHook(): boolean; setRinging(on: boolean): void; isRinging(): boolean }
 export interface DeskContact { name: string; number: string; }
-export interface SoftphoneDeskApi { next(): void; prev(): void; setContacts(c: DeskContact[]): void; index(): number; open(item: "book" | "coffee" | "card" | "licenses"): void; close(): void; isOpen(): string | null; }
+export interface SoftphoneDeskApi { next(): void; prev(): void; setContacts(c: DeskContact[]): void; index(): number; open(item: "book" | "coffee" | "card" | "licenses"): void; close(): void; isOpen(): string | null; setName(name: string): void; setQuiet(text: string): void; setLinks(l: { coffee?: string; email?: string; licenses?: string }): void; }
 export interface SoftphoneDeskProps {
   /** The treehouse's own 4 digits, shown in the middle of the dial. */
   number?: string;

@@ -455,6 +455,15 @@ class Pairing(unittest.TestCase):
         self.assertEqual(r.get_json()["state"], "idle")
         self.assertEqual(r.get_json()["number"], parent.house["number"])
         self.assertEqual(client.get("/api/line", headers=basic(got["sip_user"], "wrong")).status_code, 401)
+        # The softphone's room: its own quiet hours, and a card for each live string, none for a pending one.
+        self.assertEqual(r.get_json()["treehouse"], parent.house["name"])
+        self.assertEqual(r.get_json()["strings"], [])
+        self.assertFalse(r.get_json()["quiet"]["enabled"])
+        friend, waiting = make_house(), make_house()
+        string_up(parent, friend)
+        waiting.post("/api/strings/redeem", {"code": parent.post("/api/ladder-codes").get_json()["code"]})
+        cards = client.get("/api/line", headers=basic(got["sip_user"], got["secret"])).get_json()["strings"]
+        self.assertEqual(cards, [{"name": friend.house["name"], "number": friend.house["number"]}])
         # Remove it: the tablet finds out.
         hid = parent.get("/api/handsets").get_json()["handsets"][0]["id"]
         parent.delete(f"/api/handsets/{hid}")

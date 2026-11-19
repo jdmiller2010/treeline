@@ -160,7 +160,18 @@
       }
     });
     show();
+    // Words the app fills in: the name on the kid's drawing, the sticky note, and where the cards' links go.
+    function setName(name) { name = String(name || ""); all(".tl-desk__name", function (n) { n.textContent = name; n.setAttribute("font-size", deskNameSize(name)); }); }
+    function setQuiet(text) { all(".tl-desk__quiettext", function (n) { n.textContent = String(text || ""); }); }
+    function setLinks(l) {
+      l = l || {};
+      var c = root.querySelector(".tl-desk__heldart--coffee"), k = root.querySelector(".tl-desk__heldart--card"), w = root.querySelector(".tl-desk__heldart--licenses");
+      if (c && l.coffee) { c.setAttribute("href", l.coffee); if (l.coffee.charAt(0) !== "#") { c.setAttribute("target", "_blank"); c.setAttribute("rel", "noopener"); } }
+      if (k && l.email) k.setAttribute("href", "mailto:" + l.email);
+      if (w && l.licenses) w.setAttribute("href", l.licenses);
+    }
     var api = { next: function () { go(1); }, prev: function () { go(-1); }, setContacts: function (c) { list = c || []; i = 0; show(); }, index: function () { return i; },
+                setName: setName, setQuiet: setQuiet, setLinks: setLinks,
                 open: function (kind) { var h = root.querySelector('[data-desk-open="' + kind + '"]'); if (h) open(kind, h); }, close: close,
                 isOpen: function () { return opened ? opened.kind : null; } };
     root.__tlDesk = api;

@@ -1065,8 +1065,13 @@ def line_state():
     if th is None:
         raise ApiError("This phone was removed from its treehouse.", 401, "removed")
     conn().execute("UPDATE handset SET last_seen=? WHERE id=?", (db.iso(), h["id"]))
+    # The softphone's room: its card file holds the strings this treehouse can call now (both families
+    # approved, not paused), and its sticky note shows its own quiet hours. Nothing about the other side's rules.
+    live = [string_json(s, th["id"])["other"] for s in my_strings(th["id"]) if s["state"] == "live"]
     return jsonify(state=rules.line_state(conn(), th, now(), h), name=h["name"], number=th["number"],
-                   treehouse=th["name"])
+                   treehouse=th["name"],
+                   strings=sorted(({"name": o["name"], "number": o["number"]} for o in live), key=lambda o: o["name"].lower()),
+                   quiet={"enabled": bool(th["quiet_enabled"]), "start": th["quiet_start"], "end": th["quiet_end"]})
 
 
 # ================================================================ calls

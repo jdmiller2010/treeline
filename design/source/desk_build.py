@@ -151,7 +151,7 @@ css = f"""
 .tl-desk__art > .tl-desk__l--wide {{ display: none; }}
 .tl-desk__art > .tl-desk__l--portrait {{ display: block; }}
 {layout_css("portrait")}
-.tl-desk__slot {{ left: 2%; right: 76%; top: 46%; }}
+.tl-desk__slot {{ left: 2%; right: 79%; top: 46%; }}
 }}
 @container (aspect-ratio < 0.65) {{
 .tl-desk__art > .tl-desk__l--wide, .tl-desk__art > .tl-desk__l--portrait {{ display: none; }}
@@ -215,7 +215,7 @@ d = d.replace("\nexport declare function SoftphoneDesk(props: SoftphoneDeskProps
 if "SoftphoneDeskProps" not in d:
     types = '''
 export interface DeskContact { name: string; number: string; }
-export interface SoftphoneDeskApi { next(): void; prev(): void; setContacts(c: DeskContact[]): void; index(): number; open(item: "book" | "coffee" | "card" | "licenses"): void; close(): void; isOpen(): string | null; }
+export interface SoftphoneDeskApi { next(): void; prev(): void; setContacts(c: DeskContact[]): void; index(): number; open(item: "book" | "coffee" | "card" | "licenses"): void; close(): void; isOpen(): string | null; setName(name: string): void; setQuiet(text: string): void; setLinks(l: { coffee?: string; email?: string; licenses?: string }): void; }
 export interface SoftphoneDeskProps {
   /** The treehouse's own 4 digits, shown in the middle of the dial. */
   number?: string;

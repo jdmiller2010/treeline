@@ -54,6 +54,7 @@ def dial_window(n, svg, cx=150, cy=140, r=116):
 def phone(n, lifted=False, x=40, y=10, w=220, view="0 -70 400 510", extra=""):
     s = rotary.svg(number="4821", lifted=lifted, colors="moss", cls="x")
     s = s.replace('id="tlp-', f'id="tlb-p{n}-').replace("url(#tlp-", f"url(#tlb-p{n}-").replace(' class="x"', "")
+    s = s.replace('class="tlp-', 'class="tlbook-')          # a picture of a phone, not the phone: none of its parts' names
     vb = [float(v) for v in view.split()]
     h = w * vb[3] / vb[2]
     s = re.sub(r'^<svg [^>]*>', f'<svg x="{x}" y="{y}" width="{w}" height="{h:.1f}" viewBox="{view}">', s)
