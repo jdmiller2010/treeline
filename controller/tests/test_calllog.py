@@ -99,6 +99,34 @@ class Copies(World):
         self.assertEqual(self.logged(cid), 1)
 
 
+class Resilience(World):
+    def test_one_familys_damaged_file_does_not_keep_the_other_family_from_its_copy(self):
+        households.forget_all()
+        open(households.path(self.a), "wb").write(b"not a database at all, not even close, " * 50)   # the caller's file is damaged
+        cid = ledger(self.c, self.a, self.b, rules.CONNECTED, talk=5)
+        with self.assertLogs("treeline", "ERROR"), self.assertRaises(Exception):
+            households.record_call(self.c, cid)
+        self.assertEqual(len(self.log(self.b)), 1)                      # the callee still has theirs
+        self.assertEqual(self.logged(cid), 0)                           # and the call is retried later
+
+    def test_reconcile_does_not_bring_back_a_household_deleted_after_it_read_the_rows(self):
+        households.remove(self.b)
+        real = self.c.execute("SELECT 1").connection
+
+        class Stale:                                                    # the delete commits between the two reads
+            def __init__(s):
+                s.n = 0
+
+            def execute(s, sql, *a):
+                cur = real.execute(sql, *a)
+                if sql.startswith("SELECT id, left_at"):
+                    real.execute("UPDATE treehouse SET deleted_at=? WHERE id=?", (db.iso(), self.b))
+                return cur
+        done = households.reconcile(Stale())
+        self.assertEqual(done["recreated"], [])
+        self.assertFalse(households.exists(self.b))
+
+
 class Isolation(World):
     """One family's file must never hold another family's blocked attempts, rules or handsets."""
 

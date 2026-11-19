@@ -116,6 +116,19 @@ class Backups(unittest.TestCase):
         self.assertTrue(os.path.exists(os.path.join(self.dest, "households", str(self.alex))))    # Alex's still got its backup
         self.assertFalse(os.path.exists(os.path.join(self.dest, "households", str(self.sam))))    # and no bad copy was kept
 
+    def test_an_unreadable_or_missing_central_database_is_a_failure_not_a_skip(self):
+        with self.assertLogs("treeline.backup", "ERROR"), self.assertRaises(RuntimeError) as cm:
+            backup.backup(os.path.join(self.dir, "nope.db"), self.dest, 7, households=self.houses)
+        self.assertIn("central", str(cm.exception))
+        os.chmod(self.src, 0)                                                  # exists but cannot be read
+        try:
+            if os.access(self.src, os.R_OK):
+                self.skipTest("running as a user that ignores file permissions")
+            with self.assertLogs("treeline.backup", "ERROR"), self.assertRaises(RuntimeError):
+                self.run_backup()
+        finally:
+            os.chmod(self.src, 0o600)
+
     def test_the_daemon_waits_for_the_next_run_hour(self):
         now = dt.datetime(2026, 11, 18, 2, 0, tzinfo=dt.timezone.utc)
         self.assertEqual(backup.seconds_until(3, now), 3600)

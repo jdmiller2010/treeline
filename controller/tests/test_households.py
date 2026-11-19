@@ -253,6 +253,11 @@ class Migrating(HouseholdTest):
             self.assertEqual(households.conn(3).execute("PRAGMA user_version").fetchone()[0], 2)
             self.assertEqual(sqlite3.connect(households.path(2)).execute("PRAGMA user_version").fetchone()[0], 1)
 
+    def test_a_household_being_made_right_now_is_not_counted_as_behind(self):
+        os.makedirs(self.dir, exist_ok=True)
+        open(households.path(8), "w").close()                                # created, schema not committed yet
+        self.assertEqual(households.behind(), [])
+
     def test_a_household_newer_than_the_code_is_refused(self):
         with mock.patch.object(households, "HOUSEHOLD_MIGRATIONS", [add_column]):
             households.create(1)                                              # a newer release made it: version 2

@@ -304,6 +304,9 @@ def behind():
     target = db.target_version(HOUSEHOLD_MIGRATIONS)
     out = []
     for tid in ids():
+        with contextlib.suppress(OSError):
+            if os.path.getsize(path(tid)) == 0:               # a household being made right now (its schema is not committed yet)
+                continue
         try:
             c = sqlite3.connect("file:" + path(tid) + "?mode=ro", uri=True, timeout=5)
         except sqlite3.Error:
@@ -433,6 +436,7 @@ def record_call(conn, call_id):
     wanted = sorted({int(e["handset_id"]) for e in events if e["handset_id"]})
     owner = {r["id"]: r["treehouse_id"] for r in conn.execute(
         f"SELECT id, treehouse_id FROM handset WHERE id IN ({','.join('?' * len(wanted))})", wanted)} if wanted else {}
+    failed = None
     for side, tid in (("caller", c["caller_treehouse"]), ("callee", c["callee_treehouse"])):
         if tid is None or (side == "callee" and not visible_to_callee(c)):
             continue
@@ -440,6 +444,11 @@ def record_call(conn, call_id):
             _write_copy(tid, _copy_of(c, tid), events, owner)
         except HouseholdGone:
             log.info("call %s: household %s has no file, so it has no copy", call_id, tid)
+        except Exception as err:              # one family's damaged file must not keep the other family from its copy
+            log.exception("call %s: could not write household %s's copy", call_id, tid)
+            failed = failed or err
+    if failed:
+        raise failed                          # `logged` stays 0: reconcile tries again
     conn.execute("UPDATE call SET logged=1 WHERE id=?", (call_id,))
     return True
 
@@ -523,6 +532,9 @@ def reconcile(conn_, now=None):
     # 2. active treehouses with no file (central restored from a backup): an empty household, consent unset
     for tid, r in rows.items():
         if not r["left_at"] and not r["deleted_at"] and not r["system"] and not exists(tid):
+            fresh = conn_.execute("SELECT left_at, deleted_at FROM treehouse WHERE id=?", (tid,)).fetchone()
+            if fresh["left_at"] or fresh["deleted_at"]:       # deleted since we read the rows: not ours to bring back
+                continue
             log.warning("treehouse %s had no household file; made an empty one (consent not recorded)", tid)
             create(tid)
             done["recreated"].append(tid)

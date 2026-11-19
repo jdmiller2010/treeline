@@ -474,6 +474,12 @@ class History(unittest.TestCase):
         self.assertNotIn("Alex's left the Treeline", [n["title"] for n in households.notices(self.bid)])
         self.assertEqual(self.a.get("/api/me").status_code, 200)
 
+    def test_changing_retention_when_the_file_is_missing_is_a_clean_error_and_not_logged(self):
+        households.remove(self.aid)
+        r = self.a.patch("/api/treehouse", {"retention_days": 30})
+        self.assertEqual(r.status_code, 503)
+        self.assertIn("records file", r.get_json()["error"])
+
     def test_an_orphan_file_from_a_crash_during_delete_is_removed_by_reconcile(self):
         self.c.execute("UPDATE treehouse SET deleted_at=?, name='(deleted)' WHERE id=?", (db.iso(), self.aid))   # crashed before the file went
         self.assertTrue(households.exists(self.aid))

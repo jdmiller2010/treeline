@@ -47,7 +47,9 @@ def _online_copy(src_path, out):
         try:
             src = sqlite3.connect(f"file:{src_path}?mode=ro", uri=True)
         except sqlite3.OperationalError as err:
-            raise Vanished(src_path) from err
+            if not os.path.exists(src_path):                 # only "gone" is a skip; unreadable is a failure
+                raise Vanished(src_path) from err
+            raise
         try:
             dst = sqlite3.connect(out)
             try:
@@ -98,7 +100,11 @@ def backup(db=DB, dest=DEST, keep_days=KEEP_DAYS, now=None, households=None):
         try:
             made.append(_online_copy(src, out))
         except Vanished:
-            log.info("%s was deleted while backing up; skipped", label)
+            if label == "central":                           # the central database is never "deleted by a family"
+                log.error("central database %s is missing", db)
+                failures.append(f"central: {db} is missing")
+            else:
+                log.info("%s was deleted while backing up; skipped", label)
         except Exception as err:
             log.error("backup of %s failed: %s", label, err)
             failures.append(f"{label}: {err}")

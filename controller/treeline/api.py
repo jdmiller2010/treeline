@@ -551,8 +551,11 @@ def treehouse_update():
     if keep is not None:
         was = households.retention_days(th["id"])
         if was != keep:
+            try:
+                households.set_retention(th["id"], keep)
+            except households.HouseholdGone:
+                raise ApiError("We couldn't find your records file just now. Try again in a minute.", 503)
             audit("changed_retention_days", None, was, keep)
-            households.set_retention(th["id"], keep)
             households.trim(th["id"])               # a shorter time takes effect now, not at the next hourly purge
     for k, v in changes.items():
         if th[k] != v:
