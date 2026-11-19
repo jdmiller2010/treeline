@@ -81,6 +81,12 @@ def main():
         tablet.on("console", lambda m: errors.append(f"console {m.type}: {m.text}")
                   if m.type in ("error", "warning") and "Failed to load resource" not in m.text and "WebSocket" not in m.text else None)
         tablet.on("pageerror", lambda e: errors.append(f"page error: {e}"))
+        # This test is about the screen, not calls (phone_calls.py has those), and it checks what the phone shows while
+        # it can't connect. Whether a browser can reach Asterisk depends on where the tests run, so send the phone's
+        # WebSocket to a port nobody listens on: it is refused, as if Asterisk were down.
+        tablet.add_init_script("""(() => { const W = window.WebSocket;
+          window.WebSocket = function (url, protocols) { return new W(String(url).replace(/^(wss?:\\/\\/)[^/]+/, '$1127.0.0.1:9'), protocols); };
+          window.WebSocket.prototype = W.prototype; Object.assign(window.WebSocket, W); })();""")
 
         # ---- not paired: a QR code and six digits
         tablet.goto(f"{BASE}/phone/?test=1")
@@ -114,19 +120,38 @@ def main():
         check(tablet.locator(".tl-rotary[data-colorway='berry'], .tl-rotary--berry").count() == 1 or "berry" in (tablet.get_attribute(".tl-rotary", "class") or "") + (tablet.get_attribute(".tl-rotary", "data-colorway") or ""),
               "the phone is the berry one")
         check(tablet.locator(".ph__glow").count() == 1, "it sits on a soft glow")
+        # The dial is what a finger has to hit, so it must be big. (At this 820 px width it was about 157 px.)
+        wheel_w = tablet.evaluate("() => document.querySelector('.tlp-wheel').getBoundingClientRect().width")
+        check(wheel_w >= 220, "the dial is big enough to dial with a finger", str(round(wheel_w)))
+        # An older device that redraws slowly drops the painted texture (the SVG filters) instead of lagging.
+        rule = tablet.evaluate("() => ({ smooth: __phone.isSlow(Array(30).fill(16.7)), slow: __phone.isSlow(Array(30).fill(40)), few: __phone.isSlow([90, 90]), blip: __phone.isSlow([...Array(28).fill(16.7), 300, 300]) })")
+        check(rule == {"smooth": False, "slow": True, "few": False, "blip": False}, "a device that draws 25 frames a second counts as slow, one-off hiccups don't", str(rule))
+        filt = "() => [...document.querySelectorAll('.tl-rotary__svg [filter]')].map((e) => getComputedStyle(e).filter)"
+        full = tablet.evaluate(filt)
+        tablet.evaluate("() => __phone.setLite(true)")
+        lite = tablet.evaluate(filt)
+        tablet.evaluate("() => __phone.setLite(false)")
+        check(len(full) > 5 and all(f != "none" for f in full) and all(f == "none" for f in lite), "in lite mode the painted texture is off and the phone is otherwise the same", f"{len(full)} filtered parts")
+        # Tapping the handset (or double tapping) must not flash a highlight box or select text or the picture.
+        touch = tablet.evaluate("""() => { const s = getComputedStyle(document.querySelector('.ph')); return { sel: s.userSelect, tap: s.webkitTapHighlightColor,
+          kid: getComputedStyle(document.querySelector('.ph__status')).userSelect }; }""")
+        check(touch["sel"] == "none" and touch["kid"] == "none" and touch["tap"] in ("rgba(0, 0, 0, 0)", "transparent"),
+              "tapping the phone never highlights or selects anything", str(touch))
         notice = tablet.locator(".tl-rotary__notice")
         check(notice.count() == 1 and "911" in notice.inner_text() and notice.locator(".tl-icon").count() == 1,
-              "the phone's own notice says under it that it can't call 911")
+              "the phone's own notice says it can't call 911")
         check(tablet.locator(".tl-alert").count() == 0, "and it's the design system's notice, not an alert box")
         check(tablet.locator("h1").count() == 1, "one page title")
         tablet.wait_for_function("(n) => document.querySelector('h1').textContent === n", arg=house["name"], timeout=15000)
         check(True, "the page title is the treehouse's name")
+        box = tablet.locator(".ph__info").bounding_box()          # the wrapper is what is clipped to nothing
+        check(box is not None and box["width"] <= 2 and box["height"] <= 2, "but it isn't drawn on screen: people know whose phone it is", str(box))
         tablet.wait_for_function("(n) => [...document.querySelectorAll('.tl-cardfile__name')].some((t) => t.textContent === n)", arg=friend["name"], timeout=15000)
         check(tablet.text_content(".tl-cardfile__num") == friend["number"], "the card file has a card for the string, with its number")
         quiet = tablet.locator("#quiet")
         qt = quiet.inner_text().strip() if quiet.is_visible() else "none"
         check(qt == "none" or bool(re.match(r"^Quiet time \d{1,2}(:\d\d)? [ap]m – \d{1,2}(:\d\d)? [ap]m$", qt)), "a tag shows the quiet hours, when there are some", qt)
-        check(tablet.locator("#status .tl-presence").count() == 1, "what the phone is doing is a Presence under the name")
+        check(tablet.locator("#status .tl-presence").count() == 1, "what the phone is doing is still a Presence, for screen readers")
         # the little light on the phone is the line: no SIP here, so it pulses orange while it tries, then blinks red
         lamp = lambda: tablet.evaluate("() => getComputedStyle(document.querySelector('.tl-rotary .tlp-lamp')).fill")
         anim = lambda: tablet.evaluate("() => getComputedStyle(document.querySelector('.tl-rotary .tlp-lamp')).animationName")
@@ -136,7 +161,7 @@ def main():
         tablet.wait_for_function("() => document.querySelector('.tl-rotary').getAttribute('data-line') === 'off'", timeout=20000)
         check(anim() == "tl-rotary-lamp-blink" and "Ask a grown-up" in tablet.inner_text("#reg"), "after trying for a while it blinks red: something's wrong", anim())
         st = tablet.inner_text("#status")
-        check("Ask a grown-up" in st or "sleeping" in st.lower() or "Quiet" in st, "and the words under the name say so too", st)
+        check("Ask a grown-up" in st or "sleeping" in st.lower() or "Quiet" in st, "and its words say so too, for screen readers", st)
         tablet.evaluate("() => __phone.rotary().setLine('connecting')")
         check(anim() == "tl-rotary-lamp-pulse", "connecting, it pulses orange", anim())
         # (the phone keeps retrying its line in the background and may set the light back; try a few times)
@@ -160,26 +185,30 @@ def main():
         for href, words, ic in (("https://buymeacoffee.com/jdmiller", "Buy me a coffee", True), ("mailto:jdmiller2010@gmail.com", "Email Jordan", True), ("/phone/licenses.html", "Open-source licenses", False)):
             link = tablet.locator(f'.ph__foot a[href^="{href}"]')
             check(link.count() == 1 and words in link.inner_text() and (link.locator(".tl-icon").count() == 1) == ic, f"the footer has '{words}'")
-        check("Support the project:" in tablet.inner_text(".ph__foot") and "Made by Jordan Miller" in tablet.inner_text(".ph__foot"), "and says who made it and how to support it")
+        check("Buy me a coffee" in tablet.inner_text(".ph__foot") and "Support the project" not in tablet.inner_text(".ph__foot") and "Made by Jordan Miller" in tablet.inner_text(".ph__foot"), "and says who made it and how to support it")
 
         for theme in ("light", "dark"):
             tablet.evaluate(f"document.documentElement.setAttribute('data-theme','{theme}')")
             tablet.screenshot(path=f"{SHOTS}/phone-{theme}.png", full_page=True)
         tablet.evaluate("document.documentElement.setAttribute('data-theme','light')")
 
-        # ---- every screen size: the phone and the card file fit, nothing scrolls sideways
+        # ---- every screen size: the dial is on screen, nothing scrolls sideways, and the card file is where it belongs:
+        #      under the phone in one column, in the left column beside it on a wide landscape screen
         for w, hgt in ((360, 740), (390, 844), (768, 1024), (1024, 768), (1280, 800), (1440, 900)):
             tablet.set_viewport_size({"width": w, "height": hgt})
             tablet.wait_for_timeout(150)
             box = tablet.locator(".tl-rotary__svg").bounding_box()
+            dial = tablet.locator(".tlp-wheel").bounding_box()
             cf = tablet.locator(".tl-cardfile").bounding_box()
-            fits = box and box["x"] >= 0 and box["x"] + box["width"] <= w + 1 and box["y"] >= 0 and box["y"] + box["height"] <= hgt + 1
+            dial_on_screen = dial and dial["x"] >= 0 and dial["x"] + dial["width"] <= w and dial["y"] >= 0 and dial["y"] + dial["height"] <= hgt
             cf_fits = cf and cf["x"] >= 0 and cf["x"] + cf["width"] <= w + 1
             wide = tablet.evaluate("document.documentElement.scrollWidth > innerWidth")
+            landscape = w >= 900 and w >= hgt
             under = cf and box and cf["y"] > box["y"] + box["height"] * .6 and abs((cf["x"] + cf["width"] / 2) - (box["x"] + box["width"] / 2)) < 12
-            beside = cf and box and cf["x"] > box["x"] + box["width"] * .7
-            where = under if w < 600 else beside
-            check(fits and cf_fits and not wide and where, f"at {w}×{hgt} the phone fits, the card file is {'under it, centred' if w < 600 else 'beside it'}", f"{box} {cf} wide={wide}")
+            left = cf and box and cf["x"] + cf["width"] <= box["x"] + box["width"] * .4
+            where = left if landscape else under
+            check(dial_on_screen and cf_fits and not wide and where,
+                  f"at {w}×{hgt} the dial is on screen, the card file is {'on the left' if landscape else 'under the phone'}", f"{dial} {cf} wide={wide}")
             tablet.screenshot(path=f"{SHOTS}/phone-{w}x{hgt}.png", full_page=True)
         tablet.set_viewport_size({"width": 820, "height": 1100})
         tablet.wait_for_timeout(150)

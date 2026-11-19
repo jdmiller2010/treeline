@@ -221,7 +221,7 @@ export const SUPPORT_URL = "https://buymeacoffee.com/jdmiller";
 /** The footer's links: who made it, how to support it, how to reach Jordan, the licenses. */
 export function footerLinks(licenses = "/parent/licenses.html") {
   return html`<span>Made by Jordan Miller · © 2026</span>
-  <span class="tl-footer__item">Support the project: <a class="tl-footer__link" href="${SUPPORT_URL}" target="_blank" rel="noopener">${icon("coffee", 16)}Buy me a coffee</a></span>
+  <a class="tl-footer__link" href="${SUPPORT_URL}" target="_blank" rel="noopener">${icon("coffee", 16)}Buy me a coffee</a>
   <a class="tl-footer__link" href="mailto:${CONTACT}">${icon("mail", 16)}Email Jordan</a>
   <a class="tl-footer__link" href="${licenses}">Open-source licenses</a>`;
 }

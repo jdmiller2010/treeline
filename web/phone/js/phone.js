@@ -71,7 +71,7 @@ function draw() {
     <span id="quiet">${tag("sky", "Quiet time", "moon")}</span>
   </header>
   <main class="ph__main">
-    <section class="ph__info">
+    <section class="ph__info ph__sr">
       <h1 class="ph__name" id="name">Your treehouse</h1>
       <div class="ph__status">
         <p class="ph__statusline" id="status" role="status" aria-live="polite"></p>
@@ -79,10 +79,10 @@ function draw() {
       </div>
     </section>
     <section class="ph__stage" aria-label="The phone">
-      <div class="ph__glow" aria-hidden="true"></div>
-      <div class="ph__phone">${raw(ROTARY)}</div>
-      <div class="ph__cards">${raw(CARDFILE)}</div>
+      <div class="ph__phone"><div class="ph__glow" aria-hidden="true"></div>${raw(ROTARY)}</div>
     </section>
+    <div class="ph__cards">${raw(CARDFILE)}</div>
+    <div class="ph__notice"></div>
     <div class="ph__bottom">
       <div class="ph__actions">${button({ label: "How to dial", icon: "phone", attrs: { "data-tl-open": "guide", id: "guide-open" } })}</div>
     </div>
@@ -97,6 +97,14 @@ ${sheet({ id: "guide", title: "How to call a friend", body: html`<div id="guide-
   <p class="tl-card__body">Your device needs one tap before it can ring.</p>
   <div class="tl-actions"><button type="button" class="tl-btn tl-btn--primary tl-btn--lg" id="wake-btn"><span class="tl-btn__label">Turn on</span></button></div>
 </div></div></div>`);
+  // The no-911 line is part of the phone's own markup, which puts it right under the phone. In the one-column layout it
+  // sits below the card file, just above "How to dial"; on a wide screen it stays under the phone.
+  const notice = root.querySelector(".tl-rotary__notice"), noticeHome = notice && notice.parentNode, noticeSlot = root.querySelector(".ph__notice");
+  const wide = window.matchMedia("(min-width: 900px) and (min-aspect-ratio: 1/1)");
+  setLite(liteSaved() || (navigator.deviceMemory && navigator.deviceMemory <= 2) || false);
+  const placeNotice = () => { if (notice) (wide.matches ? noticeHome : noticeSlot).appendChild(notice); };
+  placeNotice();
+  wide.addEventListener("change", placeNotice);
   const el = root.querySelector("[data-tl-rotary]");
   const cardEl = root.querySelector("[data-tl-cardfile]");
   ui = { status: root.querySelector("#status"), sub: root.querySelector("#sub"), name: root.querySelector("#name"), quiet: root.querySelector("#quiet"),
@@ -116,8 +124,10 @@ ${sheet({ id: "guide", title: "How to call a friend", body: html`<div id="guide-
   root.querySelector("#guide-back").addEventListener("click", () => showStep(ui.step - 1));
   root.querySelector("#guide-next").addEventListener("click", () => { if (ui.step === GUIDE.length - 1) window.TreelineUI.closeSheet(ui.guide); else showStep(ui.step + 1); });
   el.addEventListener("tl-rotary-hook", async (e) => {
+    sampleFrames();                                                          // how smoothly does this device lift the handset?
     if (e.detail.offHook) { await tones.unlock(); ui.wake.hidden = true; lift(); } else hangUp();
   });
+  el.querySelector(".tl-rotary__svg").addEventListener("pointerdown", () => sampleFrames(1200));   // ... and turn the dial?
   el.addEventListener("tl-rotary-pulse", () => tones.pulseClick());        // the dial's contacts, once per number
   // The wheel's own sounds: watch it turn. Forward ticks the ratchet; back whirrs; home thunks.
   new MutationObserver(() => {
@@ -159,6 +169,38 @@ function idleWords() {
   if (S.line === "disconnected") return ["This phone is switched off"];
   if (S.line === "quiet") return ["The phone is sleeping"];
   return [""];
+}
+
+// ------------------------------------------------------------------ older devices
+// The artwork's hand-painted texture (SVG turbulence filters) is the costly part to redraw, and an old tablet that has to
+// redraw it every frame while the handset lifts or the dial turns feels laggy. So the phone times its own animations: if
+// they run slowly twice, it drops the texture (the phone stays the same shape and colors) and remembers that.
+const LITE_KEY = "treeline.lite";
+/** Frame gaps (ms) from an animation: slow if the typical frame took longer than about 26 ms (under ~38 frames a second). */
+export function isSlow(gaps) {
+  if (gaps.length < 8) return false;
+  const sorted = [...gaps].sort((a, b) => a - b);
+  return sorted[Math.floor(sorted.length / 2)] > 26;
+}
+function liteSaved() { try { return localStorage.getItem(LITE_KEY) === "1"; } catch { return false; } }
+function setLite(on, remember) {
+  S.lite = on;
+  root.querySelector(".ph")?.classList.toggle("ph--lite", on);
+  if (remember) { try { localStorage.setItem(LITE_KEY, on ? "1" : "0"); } catch { /* it just starts full again next time */ } }
+}
+let slowSamples = 0, sampling = false;
+function sampleFrames(ms = 900) {
+  if (sampling || S.lite) return;
+  sampling = true;
+  const gaps = []; let last = performance.now(); const end = last + ms; let hidden = false;
+  const tick = (t) => {
+    if (document.hidden) hidden = true;
+    gaps.push(t - last); last = t;
+    if (t < end) { requestAnimationFrame(tick); return; }
+    sampling = false; gaps.shift();
+    if (!hidden && isSlow(gaps) && ++slowSamples >= 2) setLite(true, true);
+  };
+  requestAnimationFrame(tick);
 }
 
 function render() {
@@ -429,7 +471,7 @@ async function boot() {
 // A hook for the browser tests, on this machine only, and without the SIP secret.
 if (location.search.includes("test=1") && ["localhost", "127.0.0.1"].includes(location.hostname)) {
   const view = new Proxy(S, { get: (t, k) => (k === "creds" ? undefined : t[k]), set: (t, k, v) => { t[k] = v; return true; } });
-  window.__phone = { S: view, render: () => render(), cards: () => ui.cards, tonesLevel: () => tones.effectiveLevel(), lift: () => (ui.api.isOffHook() ? ui.api.hangUp() : ui.api.lift()), dial: (d) => S.dial?.(d), rotary: () => ui.api, tones,
+  window.__phone = { isSlow, setLite, S: view, render: () => render(), cards: () => ui.cards, tonesLevel: () => tones.effectiveLevel(), lift: () => (ui.api.isOffHook() ? ui.api.hangUp() : ui.api.lift()), dial: (d) => S.dial?.(d), rotary: () => ui.api, tones,
     async stats() { const pc = S.session?.connection; if (!pc) return null; const r = await pc.getStats(); let rx = 0, tx = 0; r.forEach((x) => { if (x.type === "inbound-rtp" && x.kind === "audio") rx += x.bytesReceived; if (x.type === "outbound-rtp" && x.kind === "audio") tx += x.bytesSent; }); return { rx, tx }; } };
 }
 

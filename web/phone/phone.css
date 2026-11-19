@@ -4,48 +4,63 @@
    Daylight and Lantern; the phone and the card file are objects and keep their own colors. */
 .ph { min-height: 100dvh; box-sizing: border-box; max-width: 1200px; margin: 0 auto; display: flex; flex-direction: column; gap: var(--space-4);
   padding: max(var(--space-5), env(safe-area-inset-top)) var(--gutter-md) max(var(--space-4), env(safe-area-inset-bottom)); }
+/* Touch: lifting and hanging up are taps, and a tap must never flash the browser's highlight box or start selecting
+   text or the picture (a double tap does). Only on this screen; the pairing screen's code can still be selected. */
+.ph, .ph * { -webkit-tap-highlight-color: transparent; }
+.ph { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; touch-action: manipulation; overflow-x: clip; }
+@media (pointer: coarse) { .ph .tl-rotary__svg:focus, .ph .tl-rotary__svg:focus-visible { outline: none; } }
 .ph__head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
 
+/* One column (phones and upright tablets): the phone first, as big as the screen allows, then the treehouse's name and what
+   it is doing, the card file and How to dial. The picture has an empty top (room for the handset to rise when it is
+   lifted) and the phone itself fills only about three quarters of its width, so the phone slides up under the header and
+   may be wider than the screen: no blank band, and the dial is what a finger has to hit. */
 .ph__main { flex: 1; display: flex; flex-direction: column; gap: var(--space-4); }
-.ph__info { display: flex; flex-direction: column; gap: var(--space-3); }
+.ph__stage { order: 1; display: flex; flex-direction: column; align-items: center; }
+.ph__info { order: 2; display: flex; flex-direction: column; gap: var(--space-3); }
+.ph__cards { order: 3; align-self: center; position: relative; width: min(52vw, 220px); }
+.ph__notice { order: 4; align-self: center; }
+.ph__notice:empty { display: none; }
+.ph__bottom { order: 5; display: flex; flex-direction: column; gap: var(--space-3); }
 .ph__name { margin: 0; font: 420 32px/40px var(--font-display); font-variation-settings: "SOFT" 100; letter-spacing: -.01em; color: var(--ink); text-wrap: balance; }
 .ph__status { display: flex; flex-direction: column; gap: var(--space-1); }
 .ph__status .tl-presence { font-size: 16px; }
 .ph__sub { margin: 0; font: 400 14px/22px var(--font-sans); color: var(--ink-muted); }
 .ph__sub:empty { display: none; }
 .ph__sub--dots { font-size: 18px; letter-spacing: .2em; color: var(--ink); }
+/* The treehouse's name and what the phone is doing are not shown: people know whose phone it is, and the phone's own light,
+   handset and sounds say what it is doing. They stay in the page for screen readers (the one h1, and a live status line). */
 .ph__actions { display: flex; }
-.ph__bottom { display: flex; flex-direction: column; gap: var(--space-3); }
 .ph__bottom .ph__actions .tl-btn { width: 100%; }
 
-/* The stage: the phone on a soft pool of light, the card file beside it on the same surface. */
-.ph__stage { position: relative; flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0; }
-.ph__glow { position: absolute; left: 0; right: 0; bottom: 0; height: 64px; border-radius: 50%; background: radial-gradient(ellipse at center, var(--wash-sun) 0%, transparent 70%); pointer-events: none; }
-.ph__phone { position: relative; width: min(84vw, 330px, 42vh); }
-.ph__cards { position: relative; width: min(46vw, 180px); margin-top: calc(-1 * var(--space-3)); }
+.ph__phone { --ph-w: min(118vw, 700px, 72vh); position: relative; width: var(--ph-w); margin-top: calc(var(--ph-w) * -.2); }
+.ph__phone .tl-rotary { max-width: none; }
+.ph__glow { position: absolute; left: 8%; right: 8%; bottom: 4%; height: 12%; border-radius: 50%; background: radial-gradient(ellipse at center, var(--wash-sun) 0%, transparent 70%); pointer-events: none; }
 
 .ph__foot { padding-top: var(--space-3); border-top: var(--border-hair) solid var(--line); }
 
-/* Upright tablets: the phone and the card file side by side, their bases lined up under one glow. */
+/* Upright tablets: the same column, the phone bigger, the buttons side by side. */
 @media (min-width: 600px) {
   .ph { gap: var(--space-5); }
   .ph__name { font-size: 38px; line-height: 46px; }
-  .ph__stage { flex-direction: row; align-items: flex-end; gap: var(--space-1); padding-bottom: var(--space-4); }
-  .ph__glow { bottom: var(--space-2); height: 96px; }
-  .ph__phone { width: min(56vw, 440px, 44vh); }
-  .ph__cards { width: min(28vw, 210px); margin: 0 0 6.5%; }
+  .ph__phone { --ph-w: min(94vw, 760px, 64vh); }
+  .ph__cards { width: min(40vw, 260px); }
   .ph__foot { justify-content: space-between; font-size: 13px; }
-  .ph__bottom { flex-direction: row; align-items: center; justify-content: space-between; gap: var(--space-4); }
+  .ph__bottom { flex-direction: row; align-items: center; justify-content: center; gap: var(--space-4); }
   .ph__bottom .ph__actions .tl-btn { width: auto; }
 }
-/* Landscape tablets and computers: the words in a column on the left, the phone and card file on the right. */
+/* Landscape tablets and computers: the words, How to dial and the card file in a column on the left, so the phone has the
+   whole right side to itself. */
 @media (min-width: 900px) and (min-aspect-ratio: 1/1) {
-  .ph__main { display: grid; grid-template-columns: minmax(260px, 320px) 1fr; grid-template-areas: "info stage" "bottom stage"; column-gap: var(--space-8); row-gap: var(--space-5); }
-  .ph__info { grid-area: info; align-self: end; gap: var(--space-4); }
-  .ph__stage { grid-area: stage; }
-  .ph__bottom { grid-area: bottom; align-self: start; flex-direction: column; align-items: flex-start; }
-  .ph__phone { width: min(42vw, 460px, 58vh); }
-  .ph__cards { width: min(20vw, 220px); }
+  .ph__main { display: grid; grid-template-columns: minmax(240px, 320px) 1fr; grid-template-rows: 1fr auto auto auto 1fr;
+    column-gap: var(--space-8); row-gap: var(--space-5); }
+  .ph__info { grid-column: 1; grid-row: 2; gap: var(--space-4); }
+  .ph__bottom { grid-column: 1; grid-row: 3; flex-direction: column; align-items: flex-start; }
+  .ph__cards { grid-column: 1; grid-row: 4; align-self: start; justify-self: start; width: min(22vw, 260px); }
+  .ph__stage { grid-column: 2; grid-row: 1 / 6; align-self: start; }
+  /* As wide as the width allows, but never so tall that the dial drops below the bottom of the screen
+     (about 1.15 times the width, plus the header and the footer). */
+  .ph__phone { --ph-w: min(56vw, 860px, calc((100dvh - 150px) / 1.15)); margin-top: calc(var(--ph-w) * -.12); }
 }
 
 /* The how-to-dial sheet: one picture and one line at a time. Nine steps is too many labels for a sheet, so the
@@ -73,3 +88,6 @@
 .ph-wake[hidden] { display: none; }
 .ph__sr { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .ph__statusline { margin: 0; min-height: 24px; }
+
+/* Older devices (see isSlow in phone.js): no painted texture, so the handset and dial redraw cheaply. Same shape and colors. */
+.ph--lite .tl-rotary__svg [filter] { filter: none; }
