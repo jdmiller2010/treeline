@@ -178,7 +178,7 @@ web/parent/               the parent app    web/phone/   the rotary softphone
 web/shared/               API client and UI builders    web/tests/   browser tests
 design/                   the design system (tokens, components, logo)
 deploy/                   production compose, Caddy, Asterisk overlay, backups, fail2ban
-docs/                     PLAN, DEPLOY, ADAPTER, HARDWARE, PILOT
+docs/                     PLAN, DEPLOY, SECURITY, ADAPTER, HARDWARE, PILOT
 scripts/                  build_web_assets.py, build_licenses.py, build_static.py
 ```
 
