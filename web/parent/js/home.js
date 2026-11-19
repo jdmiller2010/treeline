@@ -3,7 +3,7 @@ import { get, patch } from "/shared/api.js";
 import { alert, art, button, emptyState, html, icon, join, presence, raw, toast, NO_911, nextId } from "/shared/ui.js";
 import { dateText, minutesText, plural, time12 } from "/shared/format.js";
 import { bindTreehouse, treehouseSections } from "./house.js";
-import { approvalCard, bindStringActions, showLadderCode } from "./strings.js";
+import { approvalCard, bindStringActions, showStringCode } from "./strings.js";
 
 const NOTICE_TONE = { string_request: "info", string_live: "success", string_ended: "info", number_changed: "info",
   handset_offline: "warning", not_strung_attempt: "warning", unstrung_dials: "warning", no_911: "danger" };
@@ -47,8 +47,8 @@ export async function home(ctx) {
   // (No "add your first phone" card: the Phones section below says it when there are none. And no picture on these cards:
   // the treehouse at the top is this screen's one illustration.)
   if (d.handsets.length && !d.strings.live && !d.strings.waiting_on_me.length && !d.strings.waiting_on_them.length) setupCards.push(emptyState({
-    art: null, title: "Invite a friend's family", body: "Share a ladder code with a parent you know. Once you both say yes, the kids can call.",
-    action: parent ? button({ label: "Make a ladder code", variant: "primary", icon: "plus", attrs: "data-make-code" }) : null }));
+    art: null, title: "Invite a friend's family", body: "Share a string code with a parent you know. Once you both say yes, the kids can call.",
+    action: parent ? button({ label: "Make a string code", variant: "primary", icon: "plus", attrs: "data-make-code" }) : null }));
 
   const waiting = [...d.strings.waiting_on_me, ...d.strings.waiting_on_them];
   const content = html`
@@ -69,29 +69,17 @@ export async function home(ctx) {
   ${setupCards}
   ${alert({ tone: "info", title: "Treeline can't call 911", body: NO_911 })}`;
 
-  const pauseLabel = th.paused ? "Turn calls back on" : "Pause calls";
-  const actions = button({ label: pauseLabel, variant: "secondary", collapse: true, icon: th.paused ? "phone" : "pause", attrs: "data-pause" });
   return {
-    title: th.name, nav: "home", content, actions,
+    title: "Home", lockup: true, nav: "home", content,
     mount(root) {
       bindStringActions(root, ctx);
-      root.querySelector("[data-pause]").addEventListener("click", async () => {
-        try {
-          const r = await patch("/api/treehouse", { paused: !th.paused });
-          ctx.me.treehouse = r;
-          toast(r.paused ? "Calls are paused" : "Calls are back on", r.paused ? "neutral" : "success");
-          ctx.render();
-        } catch (e) { toast(e.message, "warning"); }
-      });
       bindTreehouse(root, ctx, () => ctx.render());
-      // The name is shown big under the picture. Once that has scrolled up under the title bar, the title bar shows it instead.
-      const title = document.querySelector("#app-title"), big = root.querySelector("#home-name");
-      if (title && big && "IntersectionObserver" in window) {
-        title.classList.add("tl-appbar__title--quiet");
-        new IntersectionObserver(([e]) => title.classList.toggle("tl-appbar__title--quiet", e.isIntersecting),
-          { rootMargin: "-64px 0px 0px 0px" }).observe(big);
-      }
-      root.querySelectorAll("[data-make-code]").forEach((b) => b.addEventListener("click", async () => { await showLadderCode(ctx); ctx.render(); }));
+      // The name is shown big under the picture. Once that has scrolled up under the title bar, the bar's "Treeline" gives way to it.
+      const bar = document.querySelector(".tl-appbar"), big = root.querySelector("#home-name");
+      if (bar && big && "IntersectionObserver" in window) {
+        new IntersectionObserver(([e]) => bar.classList.toggle("is-title", !e.isIntersecting), { rootMargin: "-64px 0px 0px 0px" }).observe(big);
+      } else bar?.classList.add("is-title");
+      root.querySelectorAll("[data-make-code]").forEach((b) => b.addEventListener("click", async () => { await showStringCode(ctx); ctx.render(); }));
     },
   };
 }

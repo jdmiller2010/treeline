@@ -24,7 +24,7 @@ Say plainly, to the parents and to the kids:
 
 1. A parent signs in, makes the treehouse, and ticks both boxes.
 2. A parent adds the softphone by QR code. Lift the handset, listen for the dial tone, ring another family.
-3. Make a ladder code, send it, and approve the other family's request.
+3. Make a string code, send it, and approve the other family's request.
 4. Set quiet hours and call limits together with the kids, so the rules aren't a surprise.
 5. Show how to pause the line (one tap on Home) and where the call log is.
 

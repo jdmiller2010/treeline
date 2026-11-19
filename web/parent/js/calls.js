@@ -67,6 +67,7 @@ export async function calls(ctx, params) {
   const content = html`
   ${tries911.length ? alert({ tone: "danger", title: tries911.length === 1 ? "Someone tried to call 911" : `Someone tried to call 911 ${tries911.length} times`,
     body: "Treeline can't call 911, so those calls went nowhere. If anyone needs emergency help, call 911 from another phone. They're marked in red below." }) : ""}
+  <div class="tl-split"><h2 class="title-lg">Call log</h2>${ctx.isParent() ? button({ label: "Export CSV", variant: "secondary", size: "sm", attrs: "data-export" }) : ""}</div>
   ${segmented({ name: "calls-range", label: "Show calls from", value: range, options: [["today", "Today"], ["week", "This week"], ["all", "All"]] })}
   ${list.length ? html`<div class="tl-listdetail${selected ? " is-detail" : ""}">
     <section class="tl-listdetail__list tl-stack"><div class="tl-card tl-card--list">${list.map((c) => logRow(c, ctx, selected && selected.id === c.id))}</div></section>
@@ -75,7 +76,6 @@ export async function calls(ctx, params) {
 
   return {
     title: "Calls", nav: "calls", content,
-    actions: ctx.isParent() ? button({ label: "Export CSV", attrs: "data-export" }) : "",
     mount(root) {
       root.querySelectorAll("input[name=calls-range]").forEach((r) => r.addEventListener("change", (e) => { range = e.target.value; ctx.go("#/calls"); }));
       root.querySelector("[data-back-list]")?.addEventListener("click", () => ctx.go("#/calls"));

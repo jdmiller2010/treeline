@@ -96,8 +96,22 @@ def main():
         no_sideways_scroll(page, "sign-in 390")
         check(page.locator("#step-email").is_visible() and not page.locator("#step-code").is_visible(),
               "sign-in shows the email step only: the code step stays hidden until a code is sent")
+        # The design guide: a main (canopy) button once per view, and the button beside it is secondary, not quiet.
+        page.fill("#email", f"variant-{__import__('time').time_ns()}@example.com"); page.click("#step-email button[type=submit]"); page.wait_for_selector("#step-code:not([hidden])")
+        cls = lambda sel: page.locator(sel).get_attribute("class") or ""
+        check("tl-btn--secondary" in cls("[data-back-to-email]") and "tl-btn--primary" in cls("#step-code button[type=submit]"),
+              "on the sign-in code step, Use a different email is a secondary button beside the one main button")
+        page.click("[data-back-to-email]"); page.wait_for_selector("#step-email:not([hidden])")
         check(page.locator("form#step-email").count() == 1 and page.locator("section.tl-card:has(h1):has(.tl-art):has(#email)").count() == 1,
               "the picture, the title and the email box are all in one card")
+        for w, h in ((768, 1024), (1024, 768), (1440, 900)):
+            page.set_viewport_size({"width": w, "height": h}); page.wait_for_timeout(250)
+            card = page.locator("section.tl-card:has(#email)").bounding_box()
+            check(abs((card["x"] + card["width"] / 2) - w / 2) < 6 and card["width"] > 300, f"on a {w}px screen the sign-in card is centered on the page, not pushed left ({card['x']:.0f}, {card['width']:.0f})")
+            check(abs(page.locator(".tl-footer").first.bounding_box()["x"] + page.locator(".tl-footer").first.bounding_box()["width"] / 2 - w / 2) < 6, f"and so is the footer at {w}px")
+            logo = page.locator("img[alt='Treeline']").bounding_box()
+            check(abs(logo["x"] - card["x"]) < 4, f"the Treeline logo and tagline stay left-aligned, level with the card's left edge, at {w}px ({logo['x']:.0f} vs {card['x']:.0f})")
+        page.set_viewport_size({"width": 390, "height": 844}); page.wait_for_timeout(200)
         shoot(page, "signin-390")
         # The green fill is a design token (--tl-canopy-fill). A stray character in treeline.css once made the
         # browser drop the whole block of --tl-* variables, and every green button, switch and checkbox became
@@ -115,6 +129,11 @@ def main():
         a_ctx, a = make_family(browser, "alex@example.com", "Alex's house")
         check(a.locator("[aria-label='Kinds of phone'] .tl-row").count() == 3 and a.locator("section.tl-card:has([data-add])").count() == 0,
               "the add-a-phone step lists the three kinds of phone, and its buttons aren't in a card of their own")
+        check("tl-btn--secondary" in (a.locator("[data-skip]").get_attribute("class") or "") and "tl-btn--quiet" not in (a.locator("[data-skip]").get_attribute("class") or ""),
+              "setup step 3: Skip for now is a secondary button beside the main one")
+        gap3 = a.evaluate("() => Math.round(document.querySelector('#setup-body .tl-actions').getBoundingClientRect().top - document.querySelector('[aria-label=\"Kinds of phone\"]').getBoundingClientRect().bottom)")
+        check(gap3 < 64, f"setup step 3: the buttons sit right under the list they act on, not floating far below it ({gap3}px)")
+        check(a.locator("#setup-body .tl-btn--primary").count() == 1, "setup step 3: one main (canopy) button")
         shoot(a, "setup-step3-390")
         a.click("[data-add]")
         a.wait_for_selector(".tl-sheet-scrim:not([hidden])")
@@ -126,11 +145,24 @@ def main():
         check("Password" in a.inner_text(".tl-sheet-scrim:not([hidden])"), "adapter settings dialog shows the password once")
         a.click(".tl-sheet-scrim:not([hidden]) button[type=submit]")
         a.wait_for_selector("[data-code]")
+        st4 = a.evaluate("""() => { const r = (e) => e.getBoundingClientRect(); const art = r(document.querySelector('.tl-setup-art')), body = r(document.querySelector('#setup-body')), act = r(document.querySelector('#setup-body .tl-actions'));
+          return { artMid: Math.round(art.left + art.width / 2), bodyMid: Math.round(body.left + body.width / 2), artW: Math.round(art.width), gap: Math.round(act.top - art.bottom),
+                   arts: document.querySelectorAll('#setup-body .tl-art').length, primaries: document.querySelectorAll('#setup-body .tl-btn--primary').length }; }""")
+        check(abs(st4["artMid"] - st4["bodyMid"]) < 4 and 160 <= st4["artW"] <= 280 and st4["arts"] == 1 and st4["primaries"] == 1 and st4["gap"] < 64,
+              f"setup step 4: one picture, 160-280px wide and centered, the buttons right under it, one main button ({st4})")
         a.click("[data-code]")
-        a.wait_for_selector("[data-copy]")
+        copy_btn = a.locator(".tl-sheet-scrim:not([hidden]) button[type=submit]:has-text('Copy message')")
+        done_btn = a.locator(".tl-sheet-scrim:not([hidden]) button[data-tl-close]:has-text('Done')")
+        copy_btn.wait_for()
         code = re.search(r"[A-Z2-9]{4}-[A-Z2-9]{4}", a.inner_text(".tl-sheet-scrim:not([hidden])")).group(0)
-        shoot(a, "ladder-code-390")
-        a.click(".tl-sheet-scrim:not([hidden]) button[type=submit]")
+        check("string code" in a.inner_text(".tl-sheet-scrim:not([hidden])").lower() and "ladder" not in a.inner_text(".tl-sheet-scrim:not([hidden])").lower(), "the new code is called a string code")
+        cb, db_ = copy_btn.bounding_box(), done_btn.bounding_box()
+        check(a.locator(".tl-sheet-scrim:not([hidden]) .tl-actions").count() == 1 and abs(cb["y"] - db_["y"]) < 4 and cb["x"] < db_["x"],
+              f"the string code dialog has one row of buttons, Copy message first with Done beside it ({cb['x']:.0f},{cb['y']:.0f} / {db_['x']:.0f},{db_['y']:.0f})")
+        a.wait_for_timeout(600); shoot(a, "string-code-390")
+        copy_btn.click(); a.wait_for_timeout(300)
+        check(a.locator(".tl-sheet-scrim:not([hidden])").count() == 1, "copying leaves the dialog open")
+        done_btn.click()
         a.wait_for_selector("#app-title")
         check(a.inner_text("#app-title") == "Alex's house" and a.locator(".tl-home-hero").count() == 1, "setup ends on Home, titled with the treehouse")
 
@@ -146,7 +178,7 @@ def main():
         s.goto(f"{BASE}/parent/#/strings")
         s.wait_for_selector("text=No strings yet")
         s.click("main [data-redeem]")
-        s.fill("#ladder", code)
+        s.fill("#string-code", code)
         s.click(".tl-sheet-scrim:not([hidden]) button[type=submit]")
         s.wait_for_selector("text=Waiting on them")
         check("Waiting on them" in s.inner_text("main"), "Sam's request waits on Alex")
@@ -185,17 +217,18 @@ def main():
         meta = a.inner_text(".tl-home-hero__meta")
         check(meta.startswith("Joined ") and "Number " in meta and bool(re.search(r"\d{4}$", meta)), f"with when it joined and its number ({meta})")
         check(a.evaluate("() => getComputedStyle(document.querySelector('.tl-home-hero')).textAlign") == "center", "all centered")
-        check(a.inner_text("#app-title") == "Alex's house" and a.locator("h1").count() == 1 and a.inner_text("h1") != "Home", "the page title is the treehouse's name, not Home (the nav says Home)")
-        check(a.evaluate("() => getComputedStyle(document.querySelector('#app-title')).opacity") == "0", "at the top the title bar doesn't repeat the name")
+        check(a.inner_text("#app-title") == "Alex's house" and a.locator("h1").count() == 1 and a.inner_text("h1") == "Home", "the bar shows the treehouse's name; the page's own title, Home, is a hidden h1")
+        op = lambda sel: a.evaluate(f"() => getComputedStyle(document.querySelector('{sel}')).opacity")
+        check(op("#app-title") == "0" and op(".tl-appbar__lockup") == "1", "at the top the title bar says Treeline, not the name (the big name is right there under the picture)")
         a.evaluate("() => window.scrollTo(0, 99999)"); a.wait_for_timeout(600)
-        check(a.evaluate("() => getComputedStyle(document.querySelector('#app-title')).opacity") == "1" and a.evaluate("() => document.querySelector('.tl-home-hero').getBoundingClientRect().bottom < 64"),
-              "scrolled down, the picture is gone and the name is in the title bar")
+        check(op("#app-title") == "1" and op(".tl-appbar__lockup") == "0" and a.evaluate("() => document.querySelector('.tl-home-hero').getBoundingClientRect().bottom < 64"),
+              "scrolled down, the picture is gone and the name has taken the place of the word Treeline")
         bar = a.evaluate("""() => { const r = (s) => document.querySelector(s).getBoundingClientRect(); const b = r('.tl-appbar__brand'), t = r('#app-title'), bar = r('.tl-appbar');
-          return { barTop: Math.round(bar.top), brandRight: Math.round(b.right), titleLeft: Math.round(t.left), brandW: Math.round(b.width), brandOpacity: getComputedStyle(document.querySelector('.tl-appbar__brand')).opacity }; }""")
-        check(bar["barTop"] == 0 and bar["brandW"] > 20 and bar["brandOpacity"] == "1" and 0 <= bar["titleLeft"] - bar["brandRight"] <= 24,
-              f"scrolled down on a phone, the small logo is pinned in the title bar with the treehouse's name next to it ({bar})")
+          return { barTop: Math.round(bar.top), brandRight: Math.round(b.right), titleLeft: Math.round(t.left), brandW: Math.round(b.width) }; }""")
+        check(bar["barTop"] == 0 and bar["brandW"] > 20 and 0 <= bar["titleLeft"] - bar["brandRight"] <= 24,
+              f"the bar stays pinned, with the logo kept and the name next to it ({bar})")
         a.evaluate("() => window.scrollTo(0, 0)"); a.wait_for_timeout(500)
-        check(a.evaluate("() => document.querySelector('.tl-appbar__brand').getBoundingClientRect().width") < 2, "and at the top the big logo and tagline are shown instead, with no second logo in the bar")
+        check(op("#app-title") == "0" and op(".tl-appbar__lockup") == "1", "and back at the top it says Treeline again")
         # Home is where the treehouse is managed: the number, the phones, the other grown-ups. No separate page.
         a.goto(f"{BASE}/parent/#/home"); a.wait_for_selector("[aria-label='Grown-ups']")
         check(all(a.locator(f"[aria-label='{n}']").count() == 1 for n in ("Your number", "Phones", "Grown-ups")),
@@ -226,8 +259,27 @@ def main():
         a.wait_for_selector("text=My laptop is ready")
         saved = a.evaluate("() => JSON.parse(localStorage.getItem('treeline.phone'))")
         check(bool(saved and saved.get("handset_id") and saved.get("sip_user") and saved.get("secret")), "the browser keeps the new phone's sign-in")
-        check(a.locator(".tl-sheet-scrim:not([hidden]) a[href='/phone/']").count() == 1, "there's a link to open the phone")
-        a.click(".tl-sheet-scrim:not([hidden]) button[type=submit]")
+        sheet = ".tl-sheet-scrim:not([hidden])"
+        not_now, open_phone = a.locator(f"{sheet} button[data-tl-close]:has-text('Not now')"), a.locator(f"{sheet} a[href='/phone/']:has-text('Open the phone')")
+        check(not_now.count() == 1 and open_phone.count() == 1 and "tl-btn--primary" in (open_phone.get_attribute("class") or "")
+              and "tl-btn--primary" not in (not_now.get_attribute("class") or ""), "Open the phone is the main action and Not now the secondary one")
+        # The design system's rule: actions are one row, left-aligned as a group, the primary first, at every width.
+        sheet_box = a.locator(f"{sheet} .tl-sheet").bounding_box()
+        for width, label in ((390, "on a phone"), (1024, "on a tablet or computer")):
+            a.set_viewport_size({"width": width, "height": 800}); a.wait_for_timeout(300)
+            nb, ob, sb = not_now.bounding_box(), open_phone.bounding_box(), a.locator(f"{sheet} .tl-sheet").bounding_box()
+            check(abs(nb["y"] - ob["y"]) < 4 and ob["x"] < nb["x"], f"{label} the two buttons sit side by side, the main one first ({ob['x']:.0f}/{nb['x']:.0f}, {ob['y']:.0f}/{nb['y']:.0f})")
+            check(ob["x"] - sb["x"] < 64 and nb["x"] + nb["width"] < sb["x"] + sb["width"] - 24, f"{label} they are left-aligned as a group, not pushed to the right edge or full width")
+        a.set_viewport_size({"width": 390, "height": 844}); a.wait_for_timeout(200)
+        # The main action is a real link, and it opens the phone just made (not the pairing QR code page).
+        with a.context.expect_page(timeout=8000) as opened:
+            open_phone.click()
+        phone_tab = opened.value
+        phone_tab.wait_for_load_state(); phone_tab.wait_for_timeout(800)
+        check(phone_tab.locator(".tl-rotary").count() == 1 and phone_tab.locator(".ph-code").count() == 0,
+              "Open the phone opens the phone just made, not the pairing QR code page")
+        phone_tab.close()
+        check(a.locator(f"{sheet}").count() == 0, "and the dialog closes behind it")
         a.wait_for_selector("text=(this device)")
         check(a.locator("a:has-text('Open the phone on this device')").count() == 1, "it now offers to open the phone instead")
         p2 = a.context.new_page()
@@ -254,7 +306,7 @@ def main():
         e.goto(f"{BASE}/parent/#/strings")
         e.wait_for_selector("main [data-redeem]")
         e.click("main [data-redeem]")
-        e.fill("#ladder", r)
+        e.fill("#string-code", r)
         e.click(".tl-sheet-scrim:not([hidden]) button[type=submit]")
         e.wait_for_selector("text=Waiting on them")
         a.reload()
@@ -277,14 +329,37 @@ def main():
                     a.wait_for_selector("#app-title")
                     a.evaluate(f"document.documentElement.setAttribute('data-theme','{theme}')")
                     no_sideways_scroll(a, f"{name} {width} {theme}")
-                    # The logo and tagline: at the top on a phone (the side rail has them from 768 up).
-                    brand_on = a.locator(".tl-app__brandline").is_visible()
+                    if theme == "light" and width in (390, 1280):
+                        hb = a.evaluate("""() => ({ name: document.querySelector('#app-title').textContent, pause: document.querySelectorAll('.tl-appbar [data-pause]').length,
+                          avatar: document.querySelectorAll('.tl-appbar .tl-avatar-btn').length, avatarH: Math.round(document.querySelector('.tl-appbar .tl-avatar-btn .tl-avatar').getBoundingClientRect().height), pauseH: Math.round(document.querySelector('.tl-appbar [data-pause]').getBoundingClientRect().height), h1s: document.querySelectorAll('h1').length, h1w: document.querySelector('h1').getBoundingClientRect().width,
+                          h2: [...document.querySelectorAll('main h2')].filter((h) => h.getBoundingClientRect().width > 2).length,
+                          buttonsInBar: [...document.querySelectorAll('.tl-appbar__actions .tl-btn')].map((b) => b.getAttribute('data-pause') !== null ? '' : b.textContent.trim()).filter(Boolean) })""")
+                        check(hb["name"] == "Alex's house" and hb["pause"] == 1 and hb["avatar"] == 1 and hb["avatarH"] == hb["pauseH"] and hb["h1s"] == 1 and hb["h1w"] <= 2 and hb["h2"] >= 1 and not hb["buttonsInBar"],
+                              f"{name} {width}: the header bar is the same on every page (name, pause, account, the account circle as tall as the pause button); the page's title is hidden and it has its own section titles; no page buttons up in the bar ({hb})")
+                    # The logo: in the title bar from the very top on a phone (with the pause button and the avatar on the same row);
+                    # the side rail has it from 768 up.
                     if theme == "light" and name in ("home", "quiet"):
-                        check(brand_on == (width < 768) and (width >= 768 or "Safe calls for neighborhood kids" in a.inner_text(".tl-app__brandline")),
-                              f"{name} {width}: the logo and tagline are at the top on a phone, in the rail from 768 up")
+                        logo = a.evaluate("""() => { const q = (s) => document.querySelector(s); const r = (e) => e.getBoundingClientRect(); const b = r(q('.tl-appbar__brand')), av = r(q('.tl-appbar .tl-avatar-btn'));
+                          const lock = q('.tl-appbar__lockup'); return { brandW: Math.round(b.width), brandMid: Math.round(b.top + b.height / 2), avatarMid: Math.round(av.top + av.height / 2), avatarTop: Math.round(av.top),
+                          lockup: lock ? getComputedStyle(lock).display : null, lockupText: lock ? lock.textContent : "" }; }""")
+                        if width < 768:
+                            check(logo["brandW"] > 20 and logo["avatarTop"] < 40 and abs(logo["brandMid"] - logo["avatarMid"]) < 6,
+                                  f"{name} {width}: the logo is in the title bar from the very top, on the same row as the avatar ({logo})")
+                            if name == "home":
+                                check(logo["lockup"] == "flex" and "Treeline" in logo["lockupText"],
+                                      f"home {width}: the bar says Treeline until the name scrolls up to it")
+                                # the tagline is whole or left out, never cut off
+                                tag = a.evaluate("""() => { const t = document.querySelector('.tl-appbar__lockup .tl-tagline'); const c = getComputedStyle(t); return c.display === 'none' ? 'hidden' : (t.scrollWidth <= t.clientWidth + 1 && t.getBoundingClientRect().right <= document.querySelector('.tl-appbar__text').getBoundingClientRect().right + 1 ? 'whole' : 'cut off'); }""")
+                                check(tag in ("whole", "hidden"), f"home {width}: the tagline in the bar is whole or left out, never cut off ({tag})")
+                        else:
+                            check(logo["brandW"] == 0 and logo["lockup"] != "flex", f"{name} {width}: no logo in the bar (the side rail has it)")
                     if width in (390, 1280) or (name in ("home", "strings") and width in (360, 768, 1024, 1440)):
                         shoot(a, f"{name}-{width}-{theme}")
                 # the AppBar title lines up with the first card at wide widths
+        # A released number is free to claim again at once, so nothing should talk about it resting.
+        a.goto(f"{BASE}/parent/#/settings"); a.wait_for_selector("text=Leave Treeline")
+        txt = a.inner_text("main").lower()
+        check("year of rest" not in txt and "frees your number" not in txt and "ladder" not in txt, "the Leave Treeline card doesn't talk about a number resting (or ladder codes)")
         # One h1 per screen
         a.set_viewport_size({"width": 1280, "height": 900})
         for name, hash_ in screens.items():

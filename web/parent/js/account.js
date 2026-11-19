@@ -35,7 +35,7 @@ export async function account(ctx) {
       <div class="tl-dl__row"><dt>Role</dt><dd>${me.grown_up.role === "parent" ? "Parent" : "Sitter"}</dd></div>
       <div class="tl-dl__row"><dt>Treehouse</dt><dd>${th.name}, number <span class="tl-num">${th.number}</span></dd></div>
     </dl>
-    <div class="tl-actions tl-actions--stack">${button({ label: "Sign out", attrs: "data-sign-out-btn" })}</div>
+    <div class="tl-actions">${button({ label: "Sign out", attrs: "data-sign-out-btn" })}</div>
   </div></section>
 
   ${parent ? html`<form class="tl-card" id="house-form" novalidate><div class="tl-stack tl-stack--group">
@@ -43,25 +43,25 @@ export async function account(ctx) {
     ${textField({ id: "set-name", label: "Name", value: th.name, hint: "Families you're strung with see this." })}
     ${selectField({ id: "set-tz", label: "Time zone", options: zones, value: th.timezone, hint: "Quiet hours and daily minutes follow it." })}
     ${selectField({ id: "set-keep", label: "Keep call records for", options: keep, value: th.retention_days, hint: "Older records are deleted. Treeline never keeps audio." })}
-    <div class="tl-actions tl-actions--stack">${button({ label: "Save", variant: "primary", type: "submit" })}</div>
+    <div class="tl-actions">${button({ label: "Save", variant: "primary", type: "submit" })}</div>
   </div></form>` : ""}
 
   <section class="tl-card"><div class="tl-stack tl-stack--group">
     <h2 class="tl-card__title">Notifications</h2>
     <p class="tl-card__body">We email you when a string needs an answer, a phone goes offline, or someone dials numbers that aren't strung. ${PUSH_TEXT[push]}</p>
-    ${push === "on" || push === "off" ? html`<div class="tl-actions tl-actions--stack">${push === "on" ? button({ label: "Turn off on this device", attrs: "data-push-off" }) : button({ label: "Turn on for this device", attrs: "data-push-on" })}</div>` : ""}
+    ${push === "on" || push === "off" ? html`<div class="tl-actions">${push === "on" ? button({ label: "Turn off on this device", attrs: "data-push-off" }) : button({ label: "Turn on for this device", attrs: "data-push-on" })}</div>` : ""}
   </div></section>
 
   <section class="tl-card"><div class="tl-stack tl-stack--group">
     <h2 class="tl-card__title">Records</h2>
     <p class="tl-card__body">Every change a grown-up makes is written to the action log, so you can see who changed what.</p>
-    <div class="tl-actions tl-actions--stack">${button({ label: "Action log", attrs: 'data-href="#/actions"' })}</div>
+    <div class="tl-actions">${button({ label: "Action log", attrs: 'data-href="#/actions"' })}</div>
   </div></section>
 
   ${parent ? html`<section class="tl-card"><div class="tl-stack tl-stack--group">
     <h2 class="tl-card__title">Leave Treeline</h2>
-    <p class="tl-card__body">Leaving ends all your strings, tells those families, and frees your number after a year of rest. Deleting also erases your call records and everything else we hold. Neither can be undone.</p>
-    <div class="tl-actions tl-actions--stack">
+    <p class="tl-card__body">Leaving ends all your strings and tells those families. Deleting also erases your call records and everything else we hold. Neither can be undone.</p>
+    <div class="tl-actions">
       ${button({ label: "Leave the Treeline", variant: "danger", attrs: "data-leave" })}
       ${button({ label: "Delete everything", variant: "danger", attrs: "data-delete" })}
     </div>
@@ -122,7 +122,7 @@ export async function about(ctx) {
       <div class="tl-dl__row"><dt>Code license</dt><dd>PolyForm Noncommercial 1.0.0</dd></div>
       <div class="tl-dl__row"><dt>Design license</dt><dd>CC BY-NC 4.0, "Treeline by Jordan Miller"</dd></div>
     </dl>
-    <div class="tl-actions tl-actions--stack">
+    <div class="tl-actions">
       ${button({ label: "Open-source licenses", attrs: "data-licenses" })}
       <a class="tl-btn tl-btn--primary tl-btn--md" href="https://buymeacoffee.com/REPLACE-ME" target="_blank" rel="noopener"><span class="tl-btn__label">Support Treeline</span></a>
     </div>
@@ -133,6 +133,7 @@ export async function about(ctx) {
 
 const ACTIONS = {
   treehouse_created: () => "Created the treehouse",
+  ladder_code_created: () => "Made a string code",
   changed_name: (a) => `Renamed the treehouse from ${a.before} to ${a.after}`,
   changed_timezone: (a) => `Changed the time zone to ${a.after}`,
   changed_paused: (a) => (a.after === "1" ? "Paused calls" : "Turned calls back on"),
@@ -164,10 +165,10 @@ const ACTIONS = {
 export async function actionLog(ctx) {
   const { actions } = await get("/api/actions");
   const tz = ctx.me.treehouse.timezone;
-  const content = actions.length ? html`<div class="tl-card tl-card--list">${actions.map((a) => html`<div class="tl-row">
+  const content = html`<h2 class="title-lg">Action log</h2>${actions.length ? html`<div class="tl-card tl-card--list">${actions.map((a) => html`<div class="tl-row">
     <div class="tl-row__main"><div class="tl-row__title">${(ACTIONS[a.action] || (() => a.action.replaceAll("_", " ")))(a)}</div>
     <div class="tl-row__meta"><span>${a.email || "Treeline"}</span><span>${when(a.at, tz)}</span></div></div></div>`)}</div>`
-    : emptyState({ art: "sprig", title: "Nothing yet", body: "Changes you make, like approving a string or setting quiet hours, show up here." });
+    : emptyState({ art: "sprig", title: "Nothing yet", body: "Changes you make, like approving a string or setting quiet hours, show up here." })}`;
   return { title: "Action log", back: "#/settings", nav: null, content };
 }
 
@@ -178,7 +179,7 @@ export async function pairClaim(ctx, params) {
     <div class="tl-stack tl-stack--tight"><h2 class="tl-card__title">Add this softphone?</h2><p class="tl-card__body">The softphone is showing the code <strong class="tl-num">${code}</strong>. Check it matches, then add it to ${ctx.me.treehouse.name}.</p></div>
     ${textField({ id: "pair-name", name: "name", label: "Name for this softphone", placeholder: "Living room softphone", value: "" })}
     <div data-error></div>
-    <div class="tl-actions tl-actions--stack">${button({ label: "Not now", variant: "quiet", attrs: 'data-href="#/home"' })}${button({ label: "Add softphone", variant: "primary", type: "submit" })}</div>
+    <div class="tl-actions">${button({ label: "Not now", attrs: 'data-href="#/home"' })}${button({ label: "Add softphone", variant: "primary", type: "submit" })}</div>
   </div></form>`;
   return {
     title: "Add a softphone", back: "#/home", nav: null, template: "settings", content,
@@ -194,8 +195,8 @@ export async function pairClaim(ctx, params) {
   };
 }
 
-/** Arrive from a shared ladder link: show Strings with the code filled in. */
-export async function ladderLink(ctx, params) {
+/** Arrive from a shared string-code link: show Strings with the code filled in. */
+export async function stringLink(ctx, params) {
   const v = await strings(ctx, []);
   const mount = v.mount;
   v.mount = (root) => { mount(root); redeemDialog(ctx, params[0] || "").then(() => ctx.go("#/strings")); };

@@ -15,17 +15,30 @@
 <style>
   /* Empty message slots take no room, so they don't add a gap in a form. */
   [data-error]:empty, [id$="-error"]:empty, #dev-note:empty { display: none; }
-  /* On a phone there is no side rail (it carries the logo), so the logo and tagline sit at the very top, above the title bar. */
-  .tl-app__brandline { padding: max(var(--space-4), env(safe-area-inset-top)) var(--gutter-sm) var(--space-1); }
-  @container tl-app (min-width: 768px) { .tl-app__brandline { display: none; } }
-  /* The small logo that joins the title bar on a phone once the big one has scrolled away (the side rail carries it from 768 up). */
+  /* On a phone the logo is in the title bar from the very top, on the same row as the pause button and the avatar. On Home the bar says
+     "Treeline" (with the tagline) until the big treehouse name has scrolled up to it; then the name takes that place and the logo stays.
+     From 768 up the side rail carries the logo, so none of this shows. */
   .tl-appbar__brand { display: none; }
   .tl-appbar__brand .tl-brand__word { display: none; }
-  .tl-appbar__brand .tl-brand__mark { width: 34px; height: auto; }
+  .tl-appbar__brand .tl-brand__mark { width: 36px; height: auto; }
+  .tl-appbar__text { flex: 1; min-width: 0; display: grid; align-items: center; container: bartext / inline-size; }
+  .tl-appbar__text > * { grid-area: 1 / 1; min-width: 0; }
+  .tl-appbar__title { transition: opacity 150ms; }
+  .tl-appbar__lockup { display: none; flex-direction: column; justify-content: center; overflow: hidden; white-space: nowrap; transition: opacity 150ms; }
+  .tl-appbar__word { font: 500 21px/24px var(--font-display); font-variation-settings: "SOFT" 100; color: var(--ink); }
+  .tl-appbar__lockup .tl-tagline { font-size: 12px; line-height: 16px; margin: 0; }
+  /* The tagline never gets cut off: when the bar is too narrow for all of it (with the buttons beside it), it is left out. */
+  @container bartext (max-width: 186px) { .tl-appbar__lockup .tl-tagline { display: none; } }
+  .tl-appbar--lockup .tl-appbar__title { opacity: 0; }
+  .tl-appbar--lockup.is-title .tl-appbar__title { opacity: 1; }
+  .tl-appbar--lockup.is-title .tl-appbar__lockup { opacity: 0; }
   @container tl-app (max-width: 767px) {
-    .tl-appbar__brand { display: inline-flex; align-items: center; max-width: 0; opacity: 0; overflow: hidden; transition: max-width 200ms, opacity 150ms; }
-    .tl-appbar__brand.is-shown { max-width: 48px; opacity: 1; }
+    .tl-appbar__brand { display: inline-flex; align-items: center; }
+    .tl-appbar--lockup .tl-appbar__lockup { display: flex; }
   }
+  /* Sign-in and setup have no title bar to line up under, so their one column is centered on the page (the app's narrow pages are
+     left-aligned under the title bar). */
+  .tl-page--bare > * { margin-inline: auto; }
   /* A hidden step must really be hidden: the stack layout's display would otherwise override the hidden attribute. */
   .tl-stack[hidden] { display: none; }
   /* Home opens with the treehouse; it scrolls away with the page and the treehouse's name stays pinned in the title bar. */
@@ -34,15 +47,13 @@
   .tl-home-hero .tl-art { width: min(240px, 100%); height: auto; margin-bottom: var(--space-6); }
   .tl-home-hero__name { margin: 0 0 var(--space-3); max-width: 420px; font: 420 36px/44px var(--font-display); font-variation-settings: "SOFT" 100; letter-spacing: -.01em; color: var(--ink); text-wrap: balance; overflow-wrap: anywhere; }
   .tl-home-hero__meta { margin: 0; max-width: 420px; font: 400 16px/24px var(--font-sans); color: var(--ink-muted); }
-  .tl-appbar__title { transition: opacity 150ms; }
-  .tl-appbar__title--quiet { opacity: 0; }
   /* A call to 911 is the one entry in the log about safety: a red edge, a soft red wash and bold text. */
   .tl-log--urgent { background: var(--berry-soft); box-shadow: inset 4px 0 0 var(--berry); }
   .tl-log--urgent .tl-row__title { font-weight: 700; }
   .tl-log--urgent .tl-tag { background: var(--berry); color: var(--canvas); }
   /* Printing the phone book: only the card. */
   @media print {
-    .tl-appbar, .tl-nav, .tl-toasts, .tl-footer, .tl-noprint, .tl-app__brandline { display: none !important; }
+    .tl-appbar, .tl-nav, .tl-toasts, .tl-footer, .tl-noprint { display: none !important; }
     .tl-app__layout { display: block !important; }
   }
 </style>

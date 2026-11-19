@@ -2,7 +2,7 @@
 import { get, post } from "/shared/api.js";
 import { alert, art, button, checkRow, html, raw, selectField, setBusy, steps, textField, NO_911, str, icon } from "/shared/ui.js";
 import { KIND, addHandsetDialog } from "./house.js";
-import { showLadderCode } from "./strings.js";
+import { showStringCode } from "./strings.js";
 import { privacyAccordion } from "./privacy-content.js";
 
 const NAMES = ["Your treehouse", "No 911", "Add a phone", "Invite a friend"];
@@ -43,7 +43,7 @@ export async function setup(ctx) {
           ${textField({ id: "th-you", label: "Your first name", value: state.yourName, placeholder: "Jordan" })}
           ${selectField({ id: "th-tz", label: "Time zone", options: opts, value: state.tz, hint: "Quiet hours follow this time zone, daylight saving included." })}
           <div data-error></div>
-          <div class="tl-actions tl-actions--stack">${button({ label: "Continue", variant: "primary", type: "submit" })}</div>
+          <div class="tl-actions">${button({ label: "Continue", variant: "primary", type: "submit" })}</div>
         </form></section>`);
         body.querySelector("#th-name").focus();
         body.querySelector("form").addEventListener("submit", (e) => {
@@ -69,8 +69,8 @@ export async function setup(ctx) {
           ${privacyAccordion()}
           ${checkRow({ id: "consent", label: "I'm a parent or guardian, and I've read how Treeline handles our information", desc: "You need to tick both boxes to continue." })}
           <div data-error></div>
-          <div class="tl-actions tl-actions--stack">
-            ${button({ label: "Back", variant: "quiet", attrs: "data-back" })}
+          <div class="tl-actions">
+            ${button({ label: "Back", attrs: "data-back" })}
             ${button({ label: "Create my treehouse", variant: "primary", type: "submit", disabled: true })}
           </div>
         </form></section>`);
@@ -99,17 +99,19 @@ export async function setup(ctx) {
           <h1 class="display-md">Add your first phone</h1>
           <p class="body tl-measure" style="color:var(--ink-muted)">Pick what you'll connect first. You can add more later, and they all ring together.</p>
         </section>
-        <section class="tl-card tl-card--list" aria-label="Kinds of phone">
-          ${["softphone", "ata", "rotary"].map((k) => html`<div class="tl-row tl-log tl-log--bark">
-            <span class="tl-log__icon" aria-hidden="true">${icon("phone")}</span>
-            <div class="tl-row__main"><div class="tl-row__title">${KIND[k][0]}</div><p class="tl-card__body" style="margin:0;color:var(--ink-muted)">${KIND[k][1]}</p></div>
-          </div>`)}
-        </section>
-        <div data-error></div>
-        <div class="tl-actions tl-actions--stack">
-          ${button({ label: "Skip for now", variant: "quiet", attrs: "data-skip" })}
-          ${button({ label: "Add a phone", variant: "primary", icon: "plus", attrs: "data-add" })}
-        </div>`);
+        <section class="tl-stack">
+          <div class="tl-card tl-card--list" aria-label="Kinds of phone">
+            ${["softphone", "ata", "rotary"].map((k) => html`<div class="tl-row tl-log tl-log--bark">
+              <span class="tl-log__icon" aria-hidden="true">${icon("phone")}</span>
+              <div class="tl-row__main"><div class="tl-row__title">${KIND[k][0]}</div><p class="tl-card__body" style="margin:0;color:var(--ink-muted)">${KIND[k][1]}</p></div>
+            </div>`)}
+          </div>
+          <div data-error></div>
+          <div class="tl-actions">
+            ${button({ label: "Skip for now", attrs: "data-skip" })}
+            ${button({ label: "Add a phone", variant: "primary", icon: "plus", attrs: "data-add" })}
+          </div>
+        </section>`);
         body.querySelector("[data-skip]").addEventListener("click", () => { state.step = 4; step4(); });
         body.querySelector("[data-add]").addEventListener("click", async () => { if (await addHandsetDialog(ctx)) { state.step = 4; step4(); } });
       }
@@ -117,18 +119,20 @@ export async function setup(ctx) {
       function step4() {
         body.innerHTML = str(html`${stepper()}
         <section class="tl-stack">
-          <div style="max-width:240px">${art("connection")}</div>
           <h1 class="display-md">Invite a friend's family</h1>
-          <p class="body tl-measure" style="color:var(--ink-muted)">Make a ladder code and send it to a parent you know. When they enter it, you both say yes, and the kids can call each other.</p>
+          <p class="body tl-measure" style="color:var(--ink-muted)">Make a string code and send it to a parent you know. When they enter it, you both say yes, and the kids can call each other.</p>
         </section>
-        <div data-error></div>
-        <div class="tl-actions tl-actions--stack">
-          ${button({ label: "I'll do this later", variant: "quiet", attrs: "data-later" })}
-          ${button({ label: "Make a ladder code", variant: "primary", icon: "plus", attrs: "data-code" })}
-        </div>`);
+        <section class="tl-stack">
+          <div class="tl-setup-art" style="width:min(240px,100%);margin-inline:auto;padding-block:var(--space-4)">${art("connection")}</div>
+          <div data-error></div>
+          <div class="tl-actions">
+            ${button({ label: "I'll do this later", attrs: "data-later" })}
+            ${button({ label: "Make a string code", variant: "primary", icon: "plus", attrs: "data-code" })}
+          </div>
+        </section>`);
         const finish = () => ctx.go("#/home");
         body.querySelector("[data-later]").addEventListener("click", finish);
-        body.querySelector("[data-code]").addEventListener("click", async () => { await showLadderCode(ctx); finish(); });
+        body.querySelector("[data-code]").addEventListener("click", async () => { await showStringCode(ctx); finish(); });
       }
 
       step1();

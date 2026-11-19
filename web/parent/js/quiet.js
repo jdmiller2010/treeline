@@ -33,6 +33,7 @@ export async function quiet(ctx) {
 
   const content = html`
   ${!parent ? alert({ tone: "info", title: "You can pause the line", body: "Only a parent can change quiet hours and limits." }) : ""}
+  <h2 class="title-lg">Quiet hours</h2>
   <div id="qh-banner">${banner(th)}</div>
   ${quietPreview(q)}
   <form class="tl-stack tl-stack--cards" id="quiet-form" novalidate>

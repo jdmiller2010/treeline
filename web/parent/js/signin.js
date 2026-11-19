@@ -4,7 +4,7 @@ import { alert, art, button, card, codeInput, codeValue, html, icon, raw, setBus
 /** Sign in with an emailed six-digit code. */
 export async function signIn(ctx) {
   const content = html`
-  <div class="tl-stack tl-stack--related" style="align-items:center;text-align:center">
+  <div class="tl-stack tl-stack--related">
     <img src="/ui/logo/treeline-lockup.svg" width="220" height="auto" alt="Treeline" style="max-width:100%;height:auto">
     <p class="tl-tagline">Safe calls for neighborhood kids</p>
   </div>
@@ -18,15 +18,15 @@ export async function signIn(ctx) {
       <form class="tl-stack tl-stack--group" id="step-email" novalidate>
         ${textField({ id: "email", label: "Your email", type: "email", placeholder: "you@example.com", autocomplete: "email", iconName: "users" })}
         <div id="email-error"></div>
-        <div class="tl-actions tl-actions--stack">${button({ label: "Send code", variant: "primary", type: "submit", full: false })}</div>
+        <div class="tl-actions">${button({ label: "Send code", variant: "primary", type: "submit", full: false })}</div>
       </form>
       <form class="tl-stack tl-stack--group" id="step-code" novalidate hidden>
         <p class="tl-card__body" id="sent-note"></p>
         <div id="dev-note"></div>
         ${codeInput({ legend: "Sign-in code", hint: "Six digits from the email." })}
         <div id="code-error"></div>
-        <div class="tl-actions tl-actions--stack">
-          ${button({ label: "Use a different email", variant: "quiet", attrs: "data-back-to-email" })}
+        <div class="tl-actions">
+          ${button({ label: "Use a different email", attrs: "data-back-to-email" })}
           ${button({ label: "Sign in", variant: "primary", type: "submit" })}
         </div>
       </form>

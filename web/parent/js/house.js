@@ -81,11 +81,12 @@ export async function useThisDevice(ctx) {
   try {
     localStorage.setItem(PHONE_KEY, JSON.stringify({ sip_user: c.sip_user, secret: c.secret, server: c.server, ws_url: c.ws_url, realm: c.realm, handset_id: made.handset.id }));
   } catch { toast("This browser wouldn't save the phone's sign-in, so it can't be used as a phone.", "warning"); return false; }
-  await infoDialog({
+  // Opening the phone is the main action ("Not now" the secondary one), a real link just like "Open the phone on this device" on Home.
+  await formDialog({
     title: `${made.handset.name} is ready`,
-    close: "Not now",
-    body: html`<p class="tl-sheet__body">Open the phone to lift the handset. Keep that tab open to receive calls. The browser will ask to use the microphone the first time.</p>
-      <div class="tl-actions"><a class="tl-btn tl-btn--primary tl-btn--md" href="/phone/" target="_blank" rel="noopener"><span class="tl-btn__label">Open the phone</span></a></div>`,
+    intro: "Open the phone to lift the handset. Keep that tab open to receive calls. The browser will ask to use the microphone the first time.",
+    submit: "Open the phone", submitHref: "/phone/", cancel: "Not now",
+    onSubmit: async () => true,
   });
   return true;
 }
@@ -202,7 +203,7 @@ export function bindPhoneSwitches(root, refresh) {
 async function changeNumber(ctx) {
   const r = await formDialog({
     title: "Change your number",
-    intro: "Families you're strung with get a note with your new number. Your old number goes back to be used again. Calls only connect between families who've approved each other, so nobody can reach you just by dialing a number.",
+    intro: "Families you're strung with get a note with your new number.",
     submit: "Change number", danger: false,
     body: html`${radioGroup({ name: "how", legend: "New number", value: "random", options: [["random", "Pick one for me", "A random four-digit number."], ["own", "I'll choose", "Four digits, not starting with 0."]] })}
       <div data-for="own" hidden>${textField({ id: "newnum", name: "number", label: "Number", attrs: 'inputmode="numeric" maxlength="4"' })}</div>`,

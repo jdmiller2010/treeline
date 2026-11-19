@@ -7,7 +7,7 @@ import { alert, html, iconButton, nextId, str, button, setBusy } from "/shared/u
  * pressed; throw an ApiError (or any Error) to show its message inside the
  * sheet. Resolves with onSubmit's value, or null if the sheet was closed.
  */
-export function formDialog({ title, intro, body, submit = "Save", cancel = "Cancel", danger = false, onSubmit, onOpen }) {
+export function formDialog({ title, intro, body, submit = "Save", submitHref = null, cancel = "Cancel", danger = false, keepOpen = false, onSubmit, onOpen }) {
   return new Promise((resolve) => {
     const id = nextId("dlg");
     const scrim = document.createElement("div");
@@ -23,7 +23,10 @@ export function formDialog({ title, intro, body, submit = "Save", cancel = "Canc
     <div data-error></div>
     <div class="tl-actions">
       ${cancel ? button({ label: cancel, variant: "secondary", attrs: "data-tl-close" }) : ""}
-      ${submit ? button({ label: submit, variant: danger ? "danger" : "primary", type: "submit" }) : ""}
+      ${!submit ? "" : submitHref
+        /* The main action is a real link, opened by the browser as a new tab (a script-opened window can get its own storage in some browsers). */
+        ? html`<a class="tl-btn tl-btn--primary tl-btn--md" href="${submitHref}" target="_blank" rel="noopener" data-tl-close><span class="tl-btn__label">${submit}</span></a>`
+        : button({ label: submit, variant: danger ? "danger" : "primary", type: "submit" })}
     </div>
   </form>
 </div>`);
@@ -40,6 +43,7 @@ export function formDialog({ title, intro, body, submit = "Save", cancel = "Canc
       setBusy(btn, true, "Working");
       try {
         result = (await onSubmit(form)) ?? true;
+        if (keepOpen) { setBusy(btn, false); return; }          // e.g. "Copy message": do it, and leave the dialog up
         scrim.hidden = true;
       } catch (err) {
         scrim.querySelector("[data-error]").innerHTML = str(alert({ tone: "danger", title: err instanceof ApiError || err instanceof Error ? err.message : "That didn't work." }));

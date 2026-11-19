@@ -17,7 +17,7 @@ This plan turns the decisions on the Treeline planning whiteboard into phases. E
 | **Treeline number** | The 4 digits that ring a treehouse's line. One per treehouse, not per kid. |
 | **Handset** | Anything that rings for a treehouse's line: a real rotary phone, or a softphone. A line can have several. |
 | **String** | An approved connection between two treehouses. Both sets of parents say yes; after that, the kids call freely. |
-| **Ladder code** | A one-time invite one parent shares with another family to start a string. |
+| **String code** (`ladder_code` in the database and API) | A one-time invite one parent shares with another family to start a string. |
 | **Quiet hours / Pause** | Times a treehouse's line won't ring or call out, set by its own parents. |
 | **The Treeline** | Everyone on the network. |
 
@@ -62,7 +62,7 @@ This plan turns the decisions on the Treeline planning whiteboard into phases. E
 6. **Safe defaults** for a new treehouse: quiet hours 8:00 pm to 7:00 am, 30-minute calls, pause one tap away.
 7. **Time zones:** quiet hours follow each treehouse's own time zone and daylight saving.
 8. **Sounds and recordings:** set Asterisk's indications to the US tones, add the SIT (three rising tones) and record the short operator-style messages (see [Sounds](#sounds)).
-9. **Control API** for the parent app (a small REST service next to the control app): treehouses, strings, ladder codes, rules, handsets, calls and parent actions. Every change writes a `parent_action` row.
+9. **Control API** for the parent app (a small REST service next to the control app): treehouses, strings, string codes, rules, handsets, calls and parent actions. Every change writes a `parent_action` row.
 10. **Tests:** extend the scripted scenarios: dial by number, unknown number, not strung, quiet on either side, paused, busy, offline, ring timeout, time limit, repeat limit, 911.
 
 **Done when:** all the scenarios pass, a softphone on your cell phone can dial another by 4-digit number, and every attempt shows up in the call audit with the right result.
@@ -76,9 +76,9 @@ This plan turns the decisions on the Treeline planning whiteboard into phases. E
 **Build** (from `design/ui`, following `design/CLAUDE.md`; a web app that can be added to the home screen):
 
 1. **Sign in** with an email code. Several grown-ups per treehouse; sitters get limited rights (can pause, can't approve or cut strings).
-2. **Setup** (Steps): make your treehouse and get its number → read and accept "Treeline can't call 911" (a required checkbox) → pair the first handset → send a ladder code to a friend's family.
+2. **Setup** (Steps): make your treehouse and get its number → read and accept "Treeline can't call 911" (a required checkbox) → pair the first handset → send a string code to a friend's family.
 3. **Home** (Overview): the breeze or night card, alerts (strings waiting, a handset offline), this week's calls and minutes, and the no-911 reminder.
-4. **Strings** (List and detail; the "Friends" tab becomes "Strings"): every strung treehouse and its number; approve, pause or cut; strings waiting on the other family; send a ladder code.
+4. **Strings** (List and detail; the "Friends" tab becomes "Strings"): every strung treehouse and its number; approve, pause or cut; strings waiting on the other family; send a string code.
 5. **Calls** (List and detail): the call audit with Today · This week · All, blocked attempts and why, missed calls, and a CSV export.
 6. **Quiet hours and rules** (Settings form): quiet hours, call length, daily minutes, and pause now.
 7. **Our treehouse:** the number, who lives here, handsets (rename, ring test, remove instantly), grown-ups and sitters.
@@ -87,7 +87,7 @@ This plan turns the decisions on the Treeline planning whiteboard into phases. E
 10. **Alerts:** email first (strings waiting, a handset offline, repeated blocked attempts, an optional evening summary); push notifications in Phase 4.
 11. **Footer and about:** "© 2026 Jordan Miller · jdmiller2010@gmail.com · Support Treeline · Open-source licenses" at the bottom of every page. The licenses page is built from `THIRD_PARTY_NOTICES.md`.
 
-**Done when:** two test families can set up from nothing, string their treehouses with a ladder code, change rules, and see the same call in both their logs, all without touching the server.
+**Done when:** two test families can set up from nothing, string their treehouses with a string code, change rules, and see the same call in both their logs, all without touching the server.
 
 ---
 

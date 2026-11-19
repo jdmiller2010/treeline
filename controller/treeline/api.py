@@ -708,12 +708,12 @@ def string_redeem():
     code = str(body().get("code", "")).replace("-", "").replace(" ", "").upper()
     row = conn().execute("SELECT * FROM ladder_code WHERE code=?", (code,)).fetchone()
     if not row or row["used_at"] or row["expires_at"] < db.iso():
-        raise ApiError("That ladder code didn't work. It may have been used or expired. "
+        raise ApiError("That string code didn't work. It may have been used or expired. "
                        "Ask for a new one.", 400, "bad_ladder")
     them = db.get_treehouse(conn(), row["treehouse_id"])
     me = g.th
     if them is None or them["id"] == me["id"]:
-        raise ApiError("That ladder code didn't work. Ask for a new one.", 400, "bad_ladder")
+        raise ApiError("That string code didn't work. Ask for a new one.", 400, "bad_ladder")
     if db.get_string(conn(), me["id"], them["id"]):
         raise ApiError(f"You and {them['name']} already have a string.", 409)
     a, b = db.ordered(me["id"], them["id"])
