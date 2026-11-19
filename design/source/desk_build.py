@@ -30,7 +30,7 @@ book_look = ('<div class="tl-desk__look tl-desk__look--book" hidden role="dialog
              '<button type="button" class="tl-book__turn tl-book__next" aria-label="Turn the page">›</button></div>'
              '<button type="button" class="tl-desk__putback" data-desk-close>Close the book</button></div>')
 looks = (book_look
-         + look("coffee", "The gift certificate", "{{COFFEE}}", "{{COFFEEATTR}}", "Redeem the gift certificate: buy the person who built Treeline a coffee, on Buy Me a Coffee", "Tap it to redeem it")
+         + look("coffee", "The Buy Me a Coffee certificate", "{{COFFEE}}", "{{COFFEEATTR}}", "Say thanks to the creator of Treeline: support the project on Buy Me a Coffee", "Tap it to say thanks")
          + look("card", "The business card", "mailto:{{EMAIL}}", "", "Email Jordan Miller, who made Treeline: {{EMAIL}}", "Tap it to send Jordan an email")
          + look("licenses", "The owner’s warranty", "{{LICENSES}}", "", "Read the open-source licenses", "Tap it to read every license"))
 
@@ -50,7 +50,7 @@ component = r'''
     return art + w;
   }
   function deskLooks(prefix, p) {
-    var coffee = p.coffeeHref || "#support";
+    var coffee = p.coffeeHref || "https://buymeacoffee.com/jdmiller";
     return DESK_LOOKS.replace(/id="tl([stvkb])-/g, 'id="' + prefix + '-$1-').replace(/url\(#tl([stvkb])-/g, "url(#" + prefix + "-$1-")
       .split("{{COFFEE}}").join(deskEsc(coffee)).split("{{COFFEEATTR}}").join(coffee.charAt(0) === "#" ? "" : ' target="_blank" rel="noopener"')
       .split("{{EMAIL}}").join(deskEsc(p.email || "jdmiller2010@gmail.com")).split("{{LICENSES}}").join(deskEsc(p.licensesHref || "#licenses"));
@@ -160,6 +160,14 @@ css = f"""
 .tl-desk__slot {{ left: 32%; right: 42%; top: 2%; }}
 }}
 .tl-desk__card, .tl-desk__card--falling {{ transform-box: fill-box; transform-origin: 50% 100%; }}
+/* The clock radio: red seven-segment digits; unlit segments show faintly through the smoked glass. */
+.tl-clk__seg {{ fill: rgba(255, 58, 36, .07); }}
+.tl-clk__seg.is-on {{ fill: #ff3b26; filter: drop-shadow(0 0 1.2px rgba(255, 50, 30, .85)); }}
+.tl-clk__led {{ fill: #3fd06a; filter: drop-shadow(0 0 1.4px rgba(63, 208, 106, .9)); }}
+.tl-desk__clock.is-offline .tl-clk__led {{ fill: #3a302a; filter: none; }}
+.tl-desk__clock.is-offline .tl-clk__digits {{ animation: tl-clk-blink 1s steps(1, end) infinite; }}
+@keyframes tl-clk-blink {{ 50% {{ opacity: .12; }} }}
+@media (prefers-reduced-motion: reduce) {{ .tl-desk__clock.is-offline .tl-clk__digits {{ animation: none; opacity: .45; }} }}
 /* Picking things up. Everything here is laid over the whole room. */
 .tl-desk__layers {{ position: absolute; inset: 0; pointer-events: none; z-index: 20; }}
 .tl-desk__look {{ position: absolute; inset: 0; pointer-events: auto; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-4); padding: var(--space-6) var(--space-4); }}
@@ -215,7 +223,7 @@ d = d.replace("\nexport declare function SoftphoneDesk(props: SoftphoneDeskProps
 if "SoftphoneDeskProps" not in d:
     types = '''
 export interface DeskContact { name: string; number: string; }
-export interface SoftphoneDeskApi { next(): void; prev(): void; setContacts(c: DeskContact[]): void; index(): number; open(item: "book" | "coffee" | "card" | "licenses"): void; close(): void; isOpen(): string | null; setName(name: string): void; setQuiet(text: string): void; setLinks(l: { coffee?: string; email?: string; licenses?: string }): void; }
+export interface SoftphoneDeskApi { setOnline(on: boolean): void; isOnline(): boolean; next(): void; prev(): void; setContacts(c: DeskContact[]): void; index(): number; open(item: "book" | "coffee" | "card" | "licenses"): void; close(): void; isOpen(): string | null; setName(name: string): void; setQuiet(text: string): void; setLinks(l: { coffee?: string; email?: string; licenses?: string }): void; }
 export interface SoftphoneDeskProps {
   /** The treehouse's own 4 digits, shown in the middle of the dial. */
   number?: string;

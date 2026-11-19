@@ -468,6 +468,31 @@
       }
     });
     show();
+    // ---- the clock radio: the real time in red seven-segment digits; it blinks when the line is down,
+    // like a clock after a power cut. setOnline(true|false) from the app; the kit's demo assumes it's connected.
+    var SEG = { "0": "abcdef", "1": "bc", "2": "abged", "3": "abgcd", "4": "fgbc", "5": "afgcd", "6": "afgedc", "7": "abc", "8": "abcdefg", "9": "abcdfg" };
+    var online = true;
+    function tick() {
+      var d = new Date(), h = d.getHours(), m = d.getMinutes(), pm = h >= 12, h12 = ((h + 11) % 12) + 1;
+      var cells = { h1: h12 >= 10 ? "1" : "", h2: String(h12 % 10), m1: String(Math.floor(m / 10)), m2: String(m % 10) };
+      var label = h12 + ":" + (m < 10 ? "0" : "") + m + " " + (pm ? "PM" : "AM");
+      all(".tl-desk__clock", function (c) {
+        if (c.getAttribute("data-time") === label + online) return;
+        c.setAttribute("data-time", label + online);
+        Array.prototype.forEach.call(c.querySelectorAll("[data-seg]"), function (sg) {
+          var k = sg.getAttribute("data-seg"), cell = k.slice(0, 2), seg = k.slice(2);
+          sg.classList.toggle("is-on", (SEG[cells[cell]] || "").indexOf(seg) >= 0);
+        });
+        c.querySelector(".tl-clk__am").classList.toggle("is-on", !pm);
+        c.querySelector(".tl-clk__pm").classList.toggle("is-on", pm);
+        c.classList.toggle("is-offline", !online);
+      });
+      root.setAttribute("data-clock", label);
+    }
+    function setOnline(on) { online = !!on; all(".tl-desk__clock", function (c) { c.setAttribute("data-time", ""); }); tick(); }
+    tick();
+    var clockTimer = setInterval(function () { if (!root.isConnected) return clearInterval(clockTimer); tick(); }, 1000);
+
     // Words the app fills in: the name on the kid's drawing, the sticky note, and where the cards' links go.
     function setName(name) { name = String(name || ""); all(".tl-desk__name", function (n) { n.textContent = name; n.setAttribute("font-size", deskNameSize(name)); }); }
     function setQuiet(text) { all(".tl-desk__quiettext", function (n) { n.textContent = String(text || ""); }); }
@@ -479,7 +504,7 @@
       if (w && l.licenses) w.setAttribute("href", l.licenses);
     }
     var api = { next: function () { go(1); }, prev: function () { go(-1); }, setContacts: function (c) { list = c || []; i = 0; show(); }, index: function () { return i; },
-                setName: setName, setQuiet: setQuiet, setLinks: setLinks,
+                setName: setName, setQuiet: setQuiet, setLinks: setLinks, setOnline: setOnline, isOnline: function () { return online; },
                 open: function (kind) { var h = root.querySelector('[data-desk-open="' + kind + '"]'); if (h) open(kind, h); }, close: close,
                 isOpen: function () { return opened ? opened.kind : null; } };
     root.__tlDesk = api;

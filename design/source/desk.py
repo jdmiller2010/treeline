@@ -138,9 +138,9 @@ def certificate(turn=3):
         g.append(f'<path transform="translate({cx_} {cy_}) rotate({rot})" d="M0 -7 C5 -3 5 3 0 7 C-5 3 -5 -3 0 -7Z" fill="{CANOPY}" opacity=".8"/>')
     g += [f'<text x="{x+w/2}" y="{y+40}" text-anchor="middle" {SERIF} font-size="19" font-weight="600" letter-spacing="2.5" fill="{INK}">BUY ME A COFFEE</text>',
           f'<path d="M{x+56} {y+50} L{x+w-56} {y+50}" stroke="{CANOPY}" stroke-width="1"/>',
-          f'<text x="{x+w/2}" y="{y+75}" text-anchor="middle" {SERIF} font-size="17" font-style="italic" fill="{INK}">Good for one cup of coffee</text>',
-          f'<text x="{x+w/2}" y="{y+94}" text-anchor="middle" {SANS} font-size="11.5" fill="#5e5546">for the person who built Treeline</text>',
-          f'<text x="{x+w/2}" y="{y+120}" text-anchor="middle" {SANS} font-size="11.5" font-weight="700" letter-spacing="2" fill="{CANOPY}">A GIFT CERTIFICATE</text>',
+          f'<text x="{x+w/2}" y="{y+74}" text-anchor="middle" {SERIF} font-size="17" font-style="italic" fill="{INK}">Say thanks to the</text>',
+          f'<text x="{x+w/2}" y="{y+95}" text-anchor="middle" {SERIF} font-size="17" font-style="italic" fill="{INK}">creator of Treeline</text>',
+          f'<text x="{x+w/2}" y="{y+120}" text-anchor="middle" {SANS} font-size="11.5" font-weight="700" letter-spacing="2" fill="{CANOPY}">SUPPORT THE PROJECT</text>',
                     pin(x+w/2, y+10), '</g>']
     return "".join(g)
 
@@ -307,7 +307,7 @@ def table(t):
 
 def wear(t, TOP, F, cb, cx):
     """A well-loved table: varnish worn off the edges, scratches, cup rings, a chipped corner, dents,
-    a knot, scuffed legs, a worn patch round the knob, and a kid's crayon doodle on the apron."""
+    a knot, scuffed legs and a worn patch round the knob."""
     import random
     rnd = random.Random(int(t["x1"] * 7 + t["ty"]))
     x0, x1, ty, inset = t["x0"], t["x1"], t["ty"], t["inset"]
@@ -343,10 +343,6 @@ def wear(t, TOP, F, cb, cx):
     # worn round the knob
     kx2, ky2 = t["knob"]
     g.append(f'<ellipse cx="{kx2}" cy="{ky2}" rx="26" ry="18" fill="#e9c99c" opacity=".35" filter="url(#tls-edge)"/>')
-    # a kid's crayon doodle on the apron: a little star and a squiggle
-    dx_, dy_ = x1 - 150, F + 30
-    star = " ".join(f"{'M' if i == 0 else 'L'}{dx_ + (9 if i % 2 == 0 else 4) * math.cos(math.radians(i * 36 - 90)):.1f} {dy_ + (9 if i % 2 == 0 else 4) * math.sin(math.radians(i * 36 - 90)):.1f}" for i in range(11))
-    g.append(crayon(star, "#c94a3c", 1.6, .7) + crayon(f"M{dx_+16} {dy_+4} q6 -8 12 0 t12 0 t12 0", "#2a6488", 1.5, .6))
     return "".join(g)
 
 # ---------------------------------------------------------------- the two layouts
@@ -377,7 +373,8 @@ def book_spine(x0, by, w=BOOK_W, t=BOOK_T, depth=60):
          # the front cover, seen from above: the same design as the book's real cover (desk_pages), lying with
          # its spine edge toward you, so its top points left. Plain shapes only: no ids, since the room is drawn three ways.
          f'<clipPath id="tls-bookface{int(x0)}{int(by)}"><path d="{face}"/></clipPath>',
-         f'<g clip-path="url(#tls-bookface{int(x0)}{int(by)})"><g transform="translate({x0} {top+depth}) scale({w/356:.4f} {depth/300:.4f}) rotate(-90)">{cover_top()}</g></g>',
+         f'<g clip-path="url(#tls-bookface{int(x0)}{int(by)})"><g transform="translate({x0} {top+depth}) scale({w/356:.4f} {depth/300:.4f}) rotate(-90)">'
+         f'<image href="{COVER_IMAGE}" width="300" height="356" preserveAspectRatio="none"/></g></g>',
          f'<g {WOB}><path d="{face}" {LN}/></g>',
          shape(spine, SKY, edge="#0f2c40"),
          f'<path d="M{x0+4} {top+depth+7} L{x1-4} {top+depth+7}" stroke="#fff" stroke-opacity=".3" stroke-width="3" stroke-linecap="round"/>',
@@ -389,18 +386,112 @@ def book_spine(x0, by, w=BOOK_W, t=BOOK_T, depth=60):
          f'<g opacity=".14" filter="url(#tls-grain)"><path d="{spine}" fill="#000"/></g>']
     return "".join(g)
 
+# The book's real cover, exactly as it is when you pick the book up (desk_pages page 0, with its fonts),
+# as a picture: laid on the book on the table, turned and squashed to the table's angle.
+import base64, os
+_here = os.path.dirname(os.path.abspath(__file__))
+_cov = next((f for f in (os.path.join(_here, "cover.jpg"), os.path.join(_here, "out", "cover.jpg")) if os.path.exists(f)), "")
+COVER_IMAGE = "data:image/jpeg;base64," + base64.b64encode(open(_cov, "rb").read()).decode() if _cov else ""
+
 def cover_top():
-    """The guide's front cover (300 x 356), simplified for the top of the book on the table."""
+    """The guide's front cover (300 x 356): the same design as the cover in the book (desk_pages), drawn
+    here with plain shapes, for the top of the book on the table."""
+    burst = " ".join(f"{'M' if i == 0 else 'L'}{(31 if i % 2 == 0 else 24) * math.cos(math.radians(i * 15 - 90)):.1f} {(31 if i % 2 == 0 else 24) * math.sin(math.radians(i * 15 - 90)):.1f}" for i in range(24)) + " Z"
+    holes = "".join(f'<circle cx="{216 + 17 * math.cos(math.radians(a)):.1f}" cy="{276 + 15 * math.sin(math.radians(a)):.1f}" r="3.4" fill="#fbf6ea" stroke="#3a4d36" stroke-width="1"/>' for a in range(-150, 150, 30))
+    phone = (f'<ellipse cx="216" cy="312" rx="56" ry="7" fill="{INK}" opacity=".18"/>'
+             f'<path d="M168 306 C166 270 172 250 192 246 L240 246 C260 250 266 270 264 306 C264 312 260 314 254 314 L178 314 C172 314 168 312 168 306 Z" fill="#7f9e74" stroke="{INK}" stroke-width="1.6"/>'
+             f'<path d="M160 236 C158 226 164 220 174 220 C196 214 236 214 258 220 C268 220 274 226 272 236 C266 246 254 246 250 238 C236 232 196 232 182 238 C178 246 166 246 160 236 Z" fill="#55704f" stroke="{INK}" stroke-width="1.6"/>'
+             f'<ellipse cx="216" cy="276" rx="25" ry="22" fill="#f3ead6" stroke="{INK}" stroke-width="1.4"/>' + holes
+             + f'<ellipse cx="216" cy="276" rx="8" ry="7" fill="#fbf6ea" stroke="#3a4d36" stroke-width="1"/>'
+             f'<path d="M166 262 c-8 4 -8 12 0 14 c-8 4 -8 12 0 14 c-8 4 -8 12 0 14" fill="none" stroke="#55704f" stroke-width="2.4"/>')
     return (f'<rect width="300" height="356" fill="#fbf3df"/><rect width="300" height="122" fill="{SKY}"/><rect y="122" width="300" height="5" fill="{SUN}"/>'
             f'<text x="26" y="56" {SERIF} font-size="36" font-weight="700" letter-spacing="3" fill="#fff">ROTARY</text>'
             f'<text x="26" y="98" {SERIF} font-size="36" font-weight="700" letter-spacing="3" fill="#fff">PHONES</text>'
             f'<text x="26" y="166" {SERIF} font-size="30" font-style="italic" fill="{INK}">the easy way</text>'
-            f'<path d="M26 182 L138 182" stroke="{SKY}" stroke-width="2"/>'
-            f'<path d="M170 300 C168 262 176 246 200 242 L240 242 C262 246 270 262 268 300 Z" fill="#7f9e74"/>'
-            f'<circle cx="219" cy="276" r="18" fill="#f3ead6" stroke="#3a4d36" stroke-width="2"/>'
-            f'<g transform="translate(246 122) rotate(14)"><circle r="28" fill="{BERRY}"/></g>'
-            f'<path d="M26 326 L274 326" stroke="{SKY}" stroke-width="2"/>'
-            f'<text x="26" y="346" {SANS} font-size="12" font-weight="700" letter-spacing="1.6" fill="{SKY}">TREELINE PRESS</text>')
+            f'<path d="M26 182 L138 182" stroke="{SKY}" stroke-width="1.6"/>'
+            f'<text x="26" y="204" {SANS} font-size="12" fill="#5e5546">How to call a friend</text>'
+            f'<text x="26" y="220" {SANS} font-size="12" fill="#5e5546">from your treehouse</text>'
+            f'<text x="26" y="286" {SANS} font-size="11" font-weight="700" letter-spacing="1.2" fill="{INK}">FOR KIDS</text>'
+            f'<text x="26" y="302" {SANS} font-size="11" font-weight="700" letter-spacing="1.2" fill="{INK}">&amp; GROWN-UPS</text>'
+            + phone +
+            f'<g transform="translate(246 122) rotate(14)"><path d="{burst}" fill="{BERRY}"/>'
+            f'<text x="0" y="-3" text-anchor="middle" {SANS} font-size="10" font-weight="800" fill="#fff">4-DIGIT</text>'
+            f'<text x="0" y="9" text-anchor="middle" {SANS} font-size="10" font-weight="800" fill="#fff">DIALING!</text></g>'
+            f'<path d="M26 326 L274 326" stroke="{SKY}" stroke-width="1.4"/>'
+            f'<text x="26" y="344" {SANS} font-size="10" font-weight="700" letter-spacing="1.6" fill="{SKY}">TREELINE PRESS</text>'
+            f'<text x="274" y="344" text-anchor="end" {SANS} font-size="10" font-weight="700" letter-spacing="1.6" fill="{SKY}">2ND EDITION</text>'
+            f'<rect width="300" height="356" fill="none" stroke="{INK}" stroke-width="2" opacity=".5"/>')
+
+# ---------------------------------------------------------------- the clock radio
+# A late-80s/90s digital clock radio: dark plastic, a woodgrain grille on top, a row of little buttons and the
+# alarm slide switch, a long snooze bar, red seven-segment digits behind smoked glass, and the AM/FM scale.
+# Local drawing: 200 x 80, the bottom edge on the surface. The digits and the line light are in the words layer.
+CLOCK_W, CLOCK_H = 200, 80
+SEG = {"0": "abcdef", "1": "bc", "2": "abged", "3": "abgcd", "4": "fgbc", "5": "afgcd", "6": "afgedc", "7": "abc", "8": "abcdefg", "9": "abcdfg"}
+CELLS = (("h1", 30), ("h2", 52), ("m1", 82), ("m2", 104))    # x of each digit in the window
+def seg_paths(x, y, w=18, h=26, t=3.2):
+    """The seven segments of one digit, as polygons (a top, b top-right, c bottom-right, d bottom, e bottom-left, f top-left, g middle)."""
+    def hz(yy):
+        return f"{x+1:.1f},{yy+t/2:.1f} {x+1+t/2:.1f},{yy:.1f} {x+w-1-t/2:.1f},{yy:.1f} {x+w-1:.1f},{yy+t/2:.1f} {x+w-1-t/2:.1f},{yy+t:.1f} {x+1+t/2:.1f},{yy+t:.1f}"
+    def vt(xx, y0, y1):
+        return f"{xx+t/2:.1f},{y0:.1f} {xx+t:.1f},{y0+t/2:.1f} {xx+t:.1f},{y1-t/2:.1f} {xx+t/2:.1f},{y1:.1f} {xx:.1f},{y1-t/2:.1f} {xx:.1f},{y0+t/2:.1f}"
+    m = y + h / 2
+    return {"a": hz(y), "g": hz(m - t / 2), "d": hz(y + h - t), "f": vt(x, y + 1, m - .6), "b": vt(x + w - t, y + 1, m - .6),
+            "e": vt(x, m + .6, y + h - 1), "c": vt(x + w - t, m + .6, y + h - 1)}
+
+def clock_radio():
+    """The clock radio's body, at 0,0 (200 x 80)."""
+    W_, H_ = CLOCK_W, CLOCK_H
+    top = "M10 2 L190 2 C195 2 198 4 198 8 L200 22 L0 22 L2 8 C2 4 5 2 10 2 Z"
+    slope = "M0 22 L200 22 L200 34 L0 34 Z"
+    front = "M0 34 L200 34 L200 74 C200 78 197 80 192 80 L8 80 C3 80 0 78 0 74 Z"
+    g = [f'<ellipse cx="100" cy="80" rx="108" ry="6" fill="{INK}" opacity=".25" filter="url(#tls-edge)"/>',
+         f'<path d="{front}" fill="#2a221d"/><path d="{slope}" fill="#3a302a"/><path d="{top}" fill="#3b2f28"/>',
+         # the woodgrain grille on top
+         f'<path d="M12 5 L132 5 L134 19 L8 19 Z" fill="#7a4326"/>']
+    for i in range(7):
+        yy = 6.5 + i * 1.9
+        g.append(f'<path d="M{11 - i*.35:.1f} {yy:.1f} L{132 + i*.3:.1f} {yy:.1f}" stroke="#2a1a10" stroke-width=".9" opacity=".85"/>')
+    g += [f'<path d="M14 7 C50 6 90 8 128 7" stroke="#a5653d" stroke-width=".6" fill="none" opacity=".6"/>',
+          # the snooze bar
+          f'<path d="M144 9 C144 7 146 6 149 6 L188 6 C191 6 193 7 193 9 L194 14 C194 16 192 17 189 17 L148 17 C145 17 143 16 143 14 Z" fill="#171310"/>',
+          f'<path d="M147 8 L189 8" stroke="#fff" stroke-opacity=".25" stroke-width="1.2" stroke-linecap="round"/>',
+          f'<text x="168" y="31" text-anchor="middle" {SANS} font-size="3.6" letter-spacing=".6" fill="#b9ab98" transform="rotate(180 168 30)">SNOOZE</text>',
+          f'<path d="M0 33.6 L200 33.6" stroke="#9a3a2a" stroke-width=".7" opacity=".9"/>']
+    for i, lab in enumerate(("SLEEP", "WAKE", "HOUR", "MINUTE")):              # the little buttons
+        bx = 10 + i * 16
+        g.append(f'<path d="M{bx} 24 L{bx+10} 24 L{bx+11} 28 L{bx-1} 28 Z" fill="#1c1714"/><path d="M{bx} 24 L{bx+10} 24" stroke="#fff" stroke-opacity=".22" stroke-width=".6"/>')
+        g.append(f'<text x="{bx+5}" y="32" text-anchor="middle" {SANS} font-size="2.6" fill="#b9ab98">{lab}</text>')
+    g += [f'<rect x="78" y="24.5" width="16" height="4" rx="1" fill="#14100d"/><rect x="80" y="23.6" width="5" height="5.6" rx="1" fill="#5b4f47"/>',
+          f'<text x="98" y="27" {SANS} font-size="2.4" fill="#b9ab98">ON · OFF · MUSIC · ALARM</text>',
+          f'<text x="10" y="44" {SANS} font-size="3.4" font-weight="700" letter-spacing=".3" fill="#b9ab98" opacity="0"></text>',
+          # the smoked display window
+          f'<rect x="7" y="38" width="122" height="36" rx="3" fill="#0c0807"/>',
+          f'<rect x="7" y="38" width="122" height="36" rx="3" fill="none" stroke="#5b4f47" stroke-width=".8"/>',
+          f'<path d="M10 40 L60 40" stroke="#fff" stroke-opacity=".08" stroke-width="2" stroke-linecap="round"/>',
+          f'<text x="12" y="49.5" {SANS} font-size="4" fill="#b9ab98">AM</text><text x="12" y="67" {SANS} font-size="4" fill="#b9ab98">PM</text>',
+          f'<text x="68" y="78" text-anchor="middle" {SANS} font-size="2.6" letter-spacing=".5" fill="#8d8173">DIGITAL CLOCK RADIO</text>',
+          # the tuning scale
+          f'<rect x="134" y="38" width="60" height="36" rx="2" fill="#120e0c"/>',
+          f'<rect x="136" y="56" width="56" height="3" fill="#b0372f" opacity=".45"/>',
+          f'<text x="137" y="53" {SANS} font-size="4.2" fill="#d8ccbb">FM 88 92 96 100 108</text>',
+          f'<text x="137" y="68" {SANS} font-size="4.2" fill="#d8ccbb">AM 55 65 80 100 160</text>',
+          f'<path d="M168 55 L168 60" stroke="#ff5a3c" stroke-width="1.2"/>',
+          f'<text x="181" y="44.6" {SANS} font-size="3.2" letter-spacing=".4" fill="#b9ab98">LINE</text>',
+          f'<g {WOB}><path d="{front} {top}" fill="none" stroke="{INK}" stroke-width="1.6"/></g>',
+          f'<g opacity=".1" filter="url(#tls-grain)"><path d="{front} {top} {slope}" fill="#fff"/></g>']
+    return "".join(g)
+
+def clock_words():
+    """The clock's live parts: the seven-segment digits, the colon, AM/PM and the line light. At 0,0 like the body."""
+    g = ['<g class="tl-desk__clock" data-time="">', '<g class="tl-clk__digits">']
+    for cell, x in CELLS:
+        for k, pts in seg_paths(x, 42).items():
+            g.append(f'<polygon class="tl-clk__seg" data-seg="{cell}{k}" points="{pts}"/>')
+    g.append('<rect class="tl-clk__seg is-on" x="75.6" y="49" width="3.2" height="3.2"/><rect class="tl-clk__seg is-on" x="75.6" y="58" width="3.2" height="3.2"/>')
+    g.append('<circle class="tl-clk__seg tl-clk__am" cx="23" cy="48" r="1.6"/><circle class="tl-clk__seg tl-clk__pm" cx="23" cy="65.6" r="1.6"/>')
+    g.append('</g><circle class="tl-clk__led" cx="177.6" cy="43.6" r="1.8"/></g>')
+    return "".join(g)
 
 def book_box(x0, by, w=BOOK_W, t=BOOK_T, depth=60):
     return (x0 - 8, by - t - depth - 6, w + 16, t + depth + 14)
@@ -431,7 +522,8 @@ LAYOUTS = {
         "sticker": (510, 820, .78, .78, -3),
         "bookspine": (78, 690, 200), "peek": (668, 768),
         "place": {"sticky": (72, 150, 34, 40, 1), "sketch": (92, 360, 46, 252, .92), "cork": (676, 64, 800, 40, 1),
-                  "cardfile": (684, 674, 790, 672, .85)},
+                  "cardfile": (684, 674, 770, 650, .8)},
+        "clock": (878, 700, 176),
         "shelf": [], "table_items": ["cardfile"], "sketch": True},
     # Tablets held upright: the same side table, the phone much bigger, the corkboard down beside it.
     "portrait": {"W": 1000, "H": 1304,
@@ -442,6 +534,7 @@ LAYOUTS = {
         "bookspine": (66, 898, 186), "peek": (624, 978),
         "place": {"sticky": (72, 150, 20, 60, 1), "sketch": (92, 360, 30, 290, .9), "cork": (676, 64, 788, 180, .72),
                   "cardfile": (684, 674, 768, 888, .78), "spines": (0, 0, 120, 440, .8), "plant": (0, 0, 172, 453, .8)},
+        "clock": (474, 1240, 176),
         "shelf": ["spines", "plant"], "table_items": ["cardfile"], "sketch": True},
     # Phones: a narrow nightstand, the phone across nearly the whole width, the wall things above it,
     # the book and the card file on the shelf.
@@ -450,11 +543,18 @@ LAYOUTS = {
                   "drawer": (70, 990, 460, 118), "knob": (108, 1049)},
         "phone": {"x": 28, "y": 245, "w": 544},
         "sticker": (290, 1050, .85, .85, -3),
-        "bookspine": (52, 1290, 176), "peek": (452, 990),
+        "bookspine": (82, 1290, 150), "peek": (452, 990),
         "place": {"sticky": (72, 150, 12, 28, .96), "sketch": (92, 360, 14, 214, .85), "cork": (676, 64, 350, 12, .82),
-                  "cardfile": (684, 674, 300, 1286, .68)},
+                  "cardfile": (684, 674, 238, 1286, .6)},
+        "clock": (384, 1288, 136),
         "shelf": ["cardfile"], "table_items": [], "sketch": True},
 }
+
+def clock_place(L):
+    cx, by, w = L["clock"]; sc = w / CLOCK_W
+    return f'translate({cx} {by - CLOCK_H * sc:.1f}) scale({sc:.4f})'
+def clock_on_shelf(L): return L["clock"][1] > L["table"]["sy"]
+def clock_at(L): return f'<g transform="{clock_place(L)}">{clock_radio()}</g>'
 
 def scene(name):
     L = LAYOUTS[name]; W_, H_ = L["W"], L["H"]; pl = L["place"]
@@ -465,8 +565,9 @@ def scene(name):
     book_here = book_spine(bx, by, bw)
     on_shelf = by > L["table"]["sy"]
     body = (wall(W_, H_) + placed(sticky_note(), pl["sticky"]) + (placed(kid_drawing(), pl["sketch"]) if L["sketch"] else "")
-            + placed(corkboard(), pl["cork"]) + back + "".join(item(k) for k in L["shelf"]) + (book_here if on_shelf else "") + sfront + front
-            + drawer_peek(px, py, dx, dx + dw, "") + sticker(*L["sticker"]) + (book_here if not on_shelf else "") + "".join(item(k) for k in L["table_items"]))
+            + placed(corkboard(), pl["cork"]) + back + "".join(item(k) for k in L["shelf"]) + (book_here if on_shelf else "") + (clock_at(L) if clock_on_shelf(L) else "") + sfront + front
+            + drawer_peek(px, py, dx, dx + dw, "") + sticker(*L["sticker"]) + (book_here if not on_shelf else "") + "".join(item(k) for k in L["table_items"])
+            + ("" if clock_on_shelf(L) else clock_at(L)))
     return (f'<svg xmlns="http://www.w3.org/2000/svg" class="tl-desk__scene tl-desk__l tl-desk__l--{name}" viewBox="0 0 {W_} {H_}" '
             f'preserveAspectRatio="xMidYMax meet" aria-hidden="true" focusable="false">{defs()}{body}</svg>')
 
@@ -490,7 +591,8 @@ def words(name, nm="Sam’s treehouse", quiet="8 pm – 7 am", contact=("The Par
     return (f'<svg xmlns="http://www.w3.org/2000/svg" class="tl-desk__words tl-desk__l tl-desk__l--{name}" viewBox="0 0 {L["W"]} {L["H"]}" preserveAspectRatio="xMidYMax meet" aria-hidden="true" focusable="false">'
             f'<defs><filter id="tls-wwob" x="-5%" y="-5%" width="110%" height="110%"><feTurbulence type="fractalNoise" baseFrequency="0.03" numOctaves="2" seed="7"/><feDisplacementMap in="SourceGraphic" scale="1.8"/></filter>'
             f'<linearGradient id="tls-wpaper" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fffdf7"/><stop offset="1" stop-color="#f1e6cf"/></linearGradient></defs>'
-            + placed(nmg, pl["sketch"]) + placed(q, pl["sticky"]) + placed(c, pl["cardfile"]) + '</svg>')
+            + placed(nmg, pl["sketch"]) + placed(q, pl["sticky"]) + placed(c, pl["cardfile"])
+            + f'<g transform="{clock_place(L)}">{clock_words()}</g>' + '</svg>')
 
 def words_template(name):
     return words(name, nm="{{NAME}}", quiet="{{QUIET}}", contact=("{{CNAME}}", "{{CNUM}}"), count="{{CCOUNT}}", size="{{NAMESIZE}}")

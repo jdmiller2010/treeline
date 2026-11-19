@@ -841,7 +841,7 @@ body {
 .tl-desk__hot--licenses { left: 57.636%; top: 76.854%; width: 10.182%; height: 10.337%; }
 .tl-desk__hot--coffee { left: 73.818%; top: 6.292%; width: 24.364%; height: 18.652%; }
 .tl-desk__hot--card { left: 73.818%; top: 24.944%; width: 21.455%; height: 15.955%; }
-.tl-desk__hot--cardfile { left: 71.818%; top: 56.022%; width: 17.927%; height: 19.483%; }
+.tl-desk__hot--cardfile { left: 70.000%; top: 54.697%; width: 16.873%; height: 18.337%; }
 /* The slot: the wall above the phone. For the app's few words (what the phone is doing, the connection
    light, a sleeping card). Keep it short: two lines. */
 .tl-desk__slot { position: absolute; left: 2.5%; right: 77%; top: 50%; display: flex; flex-direction: column; align-items: center; gap: var(--space-2); text-align: center; color: var(--ink); }
@@ -862,14 +862,22 @@ body {
 .tl-desk__art > .tl-desk__l--tall { display: block; }
 .tl-desk__stage { width: min(100cqw, 44.776cqh); aspect-ratio: 600 / 1340; }
 .tl-desk__phone { left: 4.667%; top: 18.284%; width: 90.667%; }
-.tl-desk__hot--guide { left: 7.333%; top: 87.910%; width: 32.000%; height: 8.955%; }
+.tl-desk__hot--guide { left: 12.333%; top: 87.910%; width: 27.667%; height: 8.955%; }
 .tl-desk__hot--licenses { left: 69.667%; top: 67.612%; width: 18.667%; height: 6.866%; }
 .tl-desk__hot--coffee { left: 59.967%; top: 1.873%; width: 36.633%; height: 10.157%; }
 .tl-desk__hot--card { left: 59.967%; top: 12.030%; width: 32.250%; height: 8.687%; }
-.tl-desk__hot--cardfile { left: 50.000%; top: 85.619%; width: 26.300%; height: 10.351%; }
+.tl-desk__hot--cardfile { left: 39.667%; top: 86.836%; width: 23.200%; height: 9.134%; }
 .tl-desk__slot { left: 32%; right: 42%; top: 2%; }
 }
 .tl-desk__card, .tl-desk__card--falling { transform-box: fill-box; transform-origin: 50% 100%; }
+/* The clock radio: red seven-segment digits; unlit segments show faintly through the smoked glass. */
+.tl-clk__seg { fill: rgba(255, 58, 36, .07); }
+.tl-clk__seg.is-on { fill: #ff3b26; filter: drop-shadow(0 0 1.2px rgba(255, 50, 30, .85)); }
+.tl-clk__led { fill: #3fd06a; filter: drop-shadow(0 0 1.4px rgba(63, 208, 106, .9)); }
+.tl-desk__clock.is-offline .tl-clk__led { fill: #3a302a; filter: none; }
+.tl-desk__clock.is-offline .tl-clk__digits { animation: tl-clk-blink 1s steps(1, end) infinite; }
+@keyframes tl-clk-blink { 50% { opacity: .12; } }
+@media (prefers-reduced-motion: reduce) { .tl-desk__clock.is-offline .tl-clk__digits { animation: none; opacity: .45; } }
 /* Picking things up. Everything here is laid over the whole room. */
 .tl-desk__layers { position: absolute; inset: 0; pointer-events: none; z-index: 20; }
 .tl-desk__look { position: absolute; inset: 0; pointer-events: auto; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-4); padding: var(--space-6) var(--space-4); }

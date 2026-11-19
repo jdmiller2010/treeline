@@ -3,7 +3,7 @@
 // guide book, the card file of strings, the no-911 sticker and the cards for credit, support and licenses around it.
 import { api } from "/shared/api.js";
 import { DESK } from "/shared/assets.js";
-import { CONTACT, SUPPORT_URL, html, presence, raw, str } from "/shared/ui.js";
+import { CONTACT, SUPPORT_URL, html, raw, str } from "/shared/ui.js";
 import { forgetPhone, pairScreen, savedPhone } from "./pair.js";
 import * as tones from "./tones.js";
 
@@ -13,8 +13,8 @@ const JOIN = "0001";                      // dial this to join the call your lin
 const HOWL_AFTER = 30000;                 // seconds off the hook, doing nothing, before the howler
 const INTERDIGIT = 6000;                  // wait this long for another digit, then send what was dialed
 
-// Four digits make a number. Say so, and show how far along the dialing is. (The guide book shows how to dial.)
-const HOW_TO_DIAL = "Four numbers call a friend.";
+// The wall says only what's happening (ringing, talking, asleep): how to dial is the guide book's job.
+// While dialing it shows how far along the four numbers are.
 const progress = (digits) => "● ".repeat(digits.length) + "○ ".repeat(Math.max(0, 4 - digits.length));
 
 const dark = window.matchMedia("(prefers-color-scheme: dark)");
@@ -31,6 +31,7 @@ let ui = null;
 let life = new AbortController();
 
 const say = (main, sub = "") => { if (ui) { ui.status.textContent = main; ui.sub.textContent = sub; } document.body.dataset.state = S.phase; };
+const hush = () => say("");
 /** "20:00" → "8 pm", "19:30" → "7:30 pm": the sticky note is in a kid's words. */
 const clock = (hm) => { const [h, m] = String(hm || "0:0").split(":").map(Number); const h12 = ((h + 11) % 12) + 1; return `${h12}${m ? ":" + String(m).padStart(2, "0") : ""} ${h < 12 ? "am" : "pm"}`; };
 const later = (name, ms, fn) => { clearTimeout(S.timers[name]); S.timers[name] = setTimeout(fn, ms); };
@@ -48,9 +49,10 @@ function draw() {
     <div class="tl-actions"><button type="button" class="tl-btn tl-btn--primary tl-btn--lg" id="wake-btn"><span class="tl-btn__label">Turn on</span></button></div>
   </div></div></div>`);
   const deskEl = root.querySelector("[data-tl-desk]");
-  // What the phone is doing goes on the wall, in the room's slot: two short lines and the connection light.
+  // What the phone is doing goes on the wall, in the room's slot. The connection is the clock radio's light
+  // (its digits blink when the line is down); screen readers get it in words.
   deskEl.querySelector(".tl-desk__stage").insertAdjacentHTML("beforeend", str(html`<div class="tl-desk__slot ph__slot">
-    <span id="reg"></span>
+    <span class="ph__sr" id="reg" role="status"></span>
     <p class="ph__status" id="status" role="status" aria-live="polite"></p>
     <p class="ph__sub" id="sub"></p>
   </div>`));
@@ -83,9 +85,9 @@ function draw() {
 
 /** The words for a hung-up, idle phone: they follow the line's state. */
 function idleWords() {
-  if (S.line === "disconnected") return ["This phone is switched off", "A parent turned it off for now."];
-  if (S.line === "quiet") return ["The phone is sleeping", "Calls wait until morning."];
-  return ["Lift the handset to make a call", ""];
+  if (S.line === "disconnected") return ["This phone is switched off"];
+  if (S.line === "quiet") return ["The phone is sleeping"];
+  return [""];
 }
 
 function render() {
@@ -110,7 +112,8 @@ function fillRoom(r) {
 
 function setRegistration() {
   if (!ui) return;
-  ui.reg.innerHTML = str(S.registered ? presence("canopy", "Connected") : presence("bark", "Reconnecting"));
+  ui.reg.textContent = S.registered ? "The phone is connected." : "The phone is reconnecting.";
+  ui.desk.setOnline(S.registered);
 }
 
 // ------------------------------------------------------------------ line state
@@ -159,16 +162,16 @@ async function lift() {
 function decideLift(state) {
   cancel("howl", "inter", "after");
   if (S.insecure) { S.phase = "busy"; tones.play("fastbusy"); say("This device can't use its microphone", "Open the phone from a secure (https) address."); render(); return; }
-  if (!S.registered) { S.phase = "busy"; tones.play("fastbusy"); say("Can't connect right now", "The phone is still getting online."); render(); return; }
-  if (state === "disconnected") { S.phase = "off"; tones.play("fastbusy"); say("This phone is switched off", "A parent turned it off for now."); render(); return; }
-  if (state === "quiet") { S.phase = "sleep"; tones.play("fastbusy"); say("The phone is sleeping", "Try again later."); render(); return; }
+  if (!S.registered) { S.phase = "busy"; tones.play("fastbusy"); say("Can't connect right now"); render(); return; }
+  if (state === "disconnected") { S.phase = "off"; tones.play("fastbusy"); say("This phone is switched off"); render(); return; }
+  if (state === "quiet") { S.phase = "sleep"; tones.play("fastbusy"); say("The phone is sleeping"); render(); return; }
   if (state === "in_call" && Date.now() >= S.noJoinUntil) { joinCall(); return; }
-  S.phase = "dialtone"; tones.play("dial"); say("Dial a number", HOW_TO_DIAL); render();
+  S.phase = "dialtone"; tones.play("dial"); hush(); render();
   later("howl", HOWL_AFTER, howl);
 }
 
 function howl() {
-  if (S.hook === "off" && S.phase === "dialtone") { S.phase = "howl"; tones.play("howler"); say("Put the handset back", "Or dial a number."); render(); }
+  if (S.hook === "off" && S.phase === "dialtone") { S.phase = "howl"; tones.play("howler"); hush(); render(); }
 }
 
 function hangUp() {
@@ -178,7 +181,7 @@ function hangUp() {
   tones.click();
   S.phase = S.incoming ? "ringing" : "idle";
   S.digits = "";
-  if (S.phase === "ringing") { tones.play("bell"); say("Ringing", "Lift the handset to answer."); }
+  if (S.phase === "ringing") { tones.play("bell"); say("Ringing"); }
   else say(...idleWords());
   render();
   refreshLine();
@@ -191,7 +194,7 @@ function onDigit(d) {
   if (S.phase === "dialtone" || S.phase === "howl") { tones.stop(); cancel("howl"); S.phase = "dialing"; }
   if (S.phase !== "dialing") return;
   S.digits += String(d);
-  say("Dial a number", progress(S.digits));
+  say(progress(S.digits).trim());
   render();
   cancel("inter");
   if (S.digits.length >= 4 || S.digits === "911") return place(S.digits);
@@ -211,7 +214,7 @@ function callOptions(extra = {}) {
 
 function place(number) {
   cancel("inter");
-  if (!S.ua || !S.registered) { S.phase = "busy"; tones.play("fastbusy"); say("Can't connect right now", ""); render(); return; }
+  if (!S.ua || !S.registered) { S.phase = "busy"; tones.play("fastbusy"); say("Can't connect right now"); render(); return; }
   S.phase = "calling"; say("Ringing", ""); render();
   let session = null;
   const mine = (fn) => (...args) => { if (session && S.session === session) fn(...args); };
@@ -280,7 +283,7 @@ function onIncoming(session) {
   session.on("ended", over);
   session.on("confirmed", () => { if (S.session === session) { S.phase = "talking"; say("Talking", ""); render(); } });
   if (S.hook === "off") { answer(); return; }
-  S.phase = "ringing"; tones.play("bell"); say("Ringing", "Lift the handset to answer."); render();
+  S.phase = "ringing"; tones.play("bell"); say("Ringing"); render();
 }
 
 function answer() {
@@ -316,7 +319,7 @@ async function start(creds) {
   try { const cfg = await api("GET", "/api/phone/config", undefined, { auth: "none" }); S.iceServers = cfg.ice_servers || []; } catch { /* a LAN needs none */ }
   draw();
   say(...idleWords());
-  if (S.insecure) say("This device can't use its microphone", "Open the phone from a secure (https) address. See docs/DEPLOY.md.");
+  if (S.insecure) say("This device can't use its microphone", "Open the phone from a secure (https) address. See docs/DEPLOY.md.");   // for the grown-up setting it up
   stopUa(); startUa();
   refreshLine();
   S.timers.refresh = setInterval(() => { if (S.hook === "on") refreshLine(); }, 15000);

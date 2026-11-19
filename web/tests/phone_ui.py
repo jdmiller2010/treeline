@@ -118,7 +118,16 @@ def main():
         check(friend["number"] in nums, "the card file has a card for the string, with its number")
         quiet = tablet.evaluate("() => document.querySelector('.tl-desk__quiettext').textContent")
         check(bool(re.match(r"^(none|\d{1,2}(:\d\d)? [ap]m – \d{1,2}(:\d\d)? [ap]m)$", quiet)), "the sticky note shows the quiet hours", quiet)
-        check(tablet.inner_text("#status").strip() != "", "what the phone is doing is written on the wall")
+        check(tablet.inner_text("#status").strip() == "" and tablet.inner_text("#sub").strip() == "", "an idle phone's wall has no how-to words: the guide book teaches")
+        # the clock radio on the desk shows the real time, and the line: no SIP here, so its digits blink
+        now = tablet.evaluate("() => { const d = new Date(), h = d.getHours(); return ((h + 11) % 12 + 1) + ':' + String(d.getMinutes()).padStart(2, '0') + ' ' + (h >= 12 ? 'PM' : 'AM'); }")
+        shown = tablet.get_attribute("[data-tl-desk]", "data-clock")
+        check(shown == now, "the clock radio shows the real time", f"{shown} vs {now}")
+        check(tablet.locator(".tl-desk__clock.is-offline").count() == 3 and "reconnecting" in tablet.inner_text("#reg"),
+              "while the phone isn't connected the clock blinks and says so to screen readers")
+        tablet.evaluate("() => __phone.desk().setOnline(true)")
+        check(tablet.locator(".tl-desk__clock.is-offline").count() == 0, "and stops blinking when it's connected")
+        tablet.evaluate("() => __phone.desk().setOnline(false)")
         wide = tablet.evaluate("document.documentElement.scrollWidth > document.documentElement.clientWidth + 1")
         check(not wide, "nothing scrolls sideways")
         for theme in ("light", "dark"):
@@ -156,7 +165,7 @@ def main():
               "nothing was dialed while the book was open, and the phone is still idle")
 
         # ---- the cards you can pick up are the links: support, email, licenses
-        for item, href in (("coffee", "https://buymeacoffee.com/"), ("card", "mailto:"), ("licenses", "/phone/licenses.html")):
+        for item, href in (("coffee", "https://buymeacoffee.com/jdmiller"), ("card", "mailto:jdmiller2010@gmail.com"), ("licenses", "/phone/licenses.html")):
             tablet.click(f'[data-desk-open="{item}"]')
             tablet.wait_for_selector(f".tl-desk__look--{item}:not([hidden])")
             got = tablet.get_attribute(f".tl-desk__look--{item} .tl-desk__heldart", "href") or ""

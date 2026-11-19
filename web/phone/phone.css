@@ -14,3 +14,4 @@
 .ph-code { font: 420 42px/50px var(--font-display); font-variation-settings: "SOFT" 100; font-variant-numeric: tabular-nums; letter-spacing: .08em; margin: 0; color: var(--ink); }
 .ph-wake { position: fixed; inset: 0; z-index: var(--z-overlay); display: grid; place-items: center; background: var(--scrim); padding: var(--space-6); }
 .ph-wake[hidden] { display: none; }
+.ph__sr { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
