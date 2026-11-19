@@ -1,0 +1,29 @@
+# Dev HTTPS, so a phone on your network can use the softphone (browsers only allow the
+# microphone on https or localhost). Caddy makes its own certificate authority; a phone must
+# trust that once (see docs/LOCAL_HTTPS.md). Nothing here is for production: use deploy/Caddyfile.
+#
+# https://<TREELINE_LAN_IP>:8443/  parent app, /phone/ softphone and /api
+# https://<TREELINE_LAN_IP>:8443/ws secure WebSocket to Asterisk (ARI is never forwarded)
+# https://<TREELINE_LAN_IP>:8443/ca.crt  the certificate authority, to install on a phone
+{
+	admin off
+	auto_https disable_redirects
+}
+
+https://{$TREELINE_LAN_IP:localhost}:8443, https://localhost:8443 {
+	tls internal
+	encode gzip
+
+	@ca path /ca.crt
+	handle @ca {
+		rewrite * /pki/authorities/local/root.crt
+		root * /data/caddy
+		header Content-Type application/x-x509-ca-cert
+		file_server
+	}
+
+	@asterisk_ws path /ws
+	reverse_proxy @asterisk_ws 127.0.0.1:8088
+
+	reverse_proxy 127.0.0.1:8080
+}

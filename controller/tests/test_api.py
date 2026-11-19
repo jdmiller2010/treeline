@@ -615,6 +615,24 @@ class CallLogs(unittest.TestCase):
                 self.assertIn(d["tone"], ("canopy", "bark", "sky", "berry"))
 
 
+class PairingOrigin(unittest.TestCase):
+    """The QR code on a softphone must send a parent to the secure address, not to whatever port the tablet loaded."""
+    def test_a_configured_address_wins(self):
+        os.environ["TREELINE_PUBLIC_ORIGIN"] = "https://192.168.1.20:8443/"
+        try:
+            self.assertEqual(Person().post("/api/pair/start").get_json()["origin"], "https://192.168.1.20:8443")
+        finally:
+            del os.environ["TREELINE_PUBLIC_ORIGIN"]
+
+    def test_behind_the_secure_proxy_it_is_the_address_the_request_came_in_on(self):
+        with api.app.test_request_context("/", base_url="https://192.168.1.20:8443", headers={"X-Forwarded-Proto": "https"}):
+            self.assertEqual(api.public_origin(), "https://192.168.1.20:8443")
+
+    def test_otherwise_the_browser_uses_its_own_address(self):
+        with api.app.test_request_context("/", base_url="http://192.168.1.20:8080"):
+            self.assertIsNone(api.public_origin())
+
+
 class Alerts(unittest.TestCase):
     def test_dismiss_only_your_own_notices(self):
         a, b = make_house(), make_house()
@@ -737,6 +755,25 @@ class ClientAddress(unittest.TestCase):
                 self.assertEqual(api.client_ip(), "6.6.6.6")
             finally:
                 api.TRUST_PROXY = False
+
+
+class WebSocketUrl(unittest.TestCase):
+    def test_plain_page_uses_ws_on_the_asterisk_port(self):
+        with api.app.test_request_context("/", base_url="http://192.168.1.5:8080"):
+            self.assertEqual(api.ws_url(), "ws://192.168.1.5:8088/ws")
+
+    def test_https_page_gets_wss_on_its_own_host_and_port(self):
+        with api.app.test_request_context("/", base_url="https://192.168.1.5:8443",
+                                          headers={"X-Forwarded-Proto": "https"}):
+            self.assertEqual(api.ws_url(), "wss://192.168.1.5:8443/ws")
+
+    def test_a_configured_url_wins(self):
+        os.environ["TREELINE_PUBLIC_WS_URL"] = "wss://phone.example.com/ws"
+        try:
+            with api.app.test_request_context("/", headers={"X-Forwarded-Proto": "http"}):
+                self.assertEqual(api.ws_url(), "wss://phone.example.com/ws")
+        finally:
+            del os.environ["TREELINE_PUBLIC_WS_URL"]
 
 
 class Hardening(unittest.TestCase):

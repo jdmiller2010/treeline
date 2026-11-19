@@ -44,7 +44,7 @@ export function pairScreen(root, notice) {
     }
 
     function show(start, error) {
-      const url = start ? `${location.origin}/parent/#/pair/${start.code}` : "";
+      const url = start ? `${start.origin || location.origin}/parent/#/pair/${start.code}` : "";   // the server knows the secure address
       root.innerHTML = str(html`<main class="ph-pair"><div class="tl-stack tl-stack--sections" style="max-width:var(--sheet-max);width:100%">
         <div class="tl-stack tl-stack--related"><img src="/ui/logo/treeline-lockup.svg" width="200" alt="Treeline" style="max-width:100%;height:auto"></div>
         <section class="tl-stack">

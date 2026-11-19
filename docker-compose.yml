@@ -77,4 +77,4 @@ services:
     profiles: [test]
     depends_on: [api, controller]
     environment:
-      BASE: http://127.0.0.1:8080
+      BASE: ${TREELINE_TEST_BASE:-http://127.0.0.1:8080}

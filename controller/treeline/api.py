@@ -806,8 +806,29 @@ def public_host():
     return host or request.host.split(":")[0]
 
 
+def public_origin():
+    """The address parents should open (the one in the pairing QR code): the configured one, else the secure address this
+    request came in on, else None and the browser uses the address it was loaded from. Without this, a tablet opened on
+    the plain-HTTP port prints a QR code that sends a parent's phone to that port, not the secure one."""
+    fixed = os.environ.get("TREELINE_PUBLIC_ORIGIN", "").rstrip("/")
+    if fixed:
+        return fixed
+    if request.headers.get("X-Forwarded-Proto", "").split(",")[0].strip() == "https":
+        return f"https://{request.host}"
+    return None
+
+
 def ws_url():
-    return os.environ.get("TREELINE_PUBLIC_WS_URL") or f"ws://{public_host()}:8088/ws"
+    """Where a browser softphone opens its WebSocket. A page served over HTTPS (through our proxy,
+    which passes the original Host and X-Forwarded-Proto) must use wss on the same host and port:
+    browsers refuse plain ws from a secure page. Believing the header only changes the URL handed
+    back to whoever sent it, so it needs no trust check."""
+    fixed = os.environ.get("TREELINE_PUBLIC_WS_URL")
+    if fixed:
+        return fixed
+    if request.headers.get("X-Forwarded-Proto", "").split(",")[0].strip() == "https":
+        return f"wss://{request.host}/ws"
+    return f"ws://{public_host()}:8088/ws"
 
 
 def handset_for(hid):
@@ -977,7 +998,7 @@ def pair_start():
     exp = db.iso(now() + dt.timedelta(minutes=10))
     conn().execute("INSERT INTO pairing(code,token_hash,created_at,expires_at) VALUES(?,?,?,?)",
                    (code, db.hash_token(token), db.iso(), exp))
-    return jsonify(code=code, token=token, expires_at=exp), 201
+    return jsonify(code=code, token=token, expires_at=exp, origin=public_origin()), 201
 
 
 FACTORY_KEY = os.environ.get("TREELINE_FACTORY_KEY", "")
