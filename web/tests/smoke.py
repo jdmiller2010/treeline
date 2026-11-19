@@ -95,6 +95,12 @@ def main():
         check("Treeline can't call 911" in page.inner_text("body") or "can't call 911" in page.inner_text("body"), "sign-in says plainly that 911 isn't available")
         no_sideways_scroll(page, "sign-in 390")
         shoot(page, "signin-390")
+        # The green fill is a design token (--tl-canopy-fill). A stray character in treeline.css once made the
+        # browser drop the whole block of --tl-* variables, and every green button, switch and checkbox became
+        # transparent: an outline that only turned green while pressed.
+        fill = page.evaluate("() => getComputedStyle(document.documentElement).getPropertyValue('--tl-canopy-fill').trim()")
+        bg = page.evaluate("() => getComputedStyle(document.querySelector('button.tl-btn--primary')).backgroundImage")
+        check(bool(fill) and "gradient" in bg, "the primary button is filled green (the design tokens loaded)")
         page.fill("#email", "nope")
         page.click("#step-email button[type=submit]")
         page.wait_for_selector("#email-error .tl-alert")
