@@ -199,10 +199,14 @@ CARD = (722, 506, 156, 100)        # the front card in the card file: x, y, w, h
 CF_TURN = ""
 def cf_turn_pt(x, y): return (x, y)
 CF_ROD = 610
+CF_DX, CF_DY = .52, -.12            # how depth shows: a little to the right (we see its right end) and only a little up, like the table top
+def cf_proj(x, y, z):
+    """A point of the card file (x along the rod, y down, z toward the back) on the page."""
+    return (x + CF_DX * z, y + CF_DY * z)
 def _cf_card(theta, R=100):
     """One card on the rod, tipped back by theta degrees: (bottom-left, bottom-right, top-right, top-left)."""
     t = math.radians(theta); z = R * math.sin(t)
-    dx, dy = .78 * z, -.3 * z
+    dx, dy = CF_DX * z, CF_DY * z
     top = CF_ROD - R * math.cos(t) + dy
     x0, x1 = CARD[0], CARD[0] + CARD[2]
     return [(x0, CF_ROD), (x1, CF_ROD), (x1 + dx, top), (x0 + dx, top)]
@@ -221,46 +225,65 @@ def _cf_cards(thetas, R=100, tabs={}):
             g.append(f'<path d="M{tx-30:.1f} {ty_:.1f} L{tx-28:.1f} {ty_+up:.1f} L{tx-10:.1f} {ty_+up:.1f} L{tx-8:.1f} {ty_:.1f} Z" fill="{tabs[th]}" stroke="{INK}" stroke-width=".9"/>')
     return "".join(g)
 
+def _loop(x0, x1, y, z0, z1, rr):
+    """A rounded rectangle lying flat on the surface (in x-z), in the card file's projection."""
+    pts = []
+    for cx_, cz_, a0 in ((x1 - rr, z0 + rr, -90), (x1 - rr, z1 - rr, 0), (x0 + rr, z1 - rr, 90), (x0 + rr, z0 + rr, 180)):
+        for i in range(7):
+            a = math.radians(a0 + i * 15)
+            pts.append(cf_proj(cx_ + rr * math.cos(a), y, cz_ + rr * math.sin(a)))
+    return "M" + " L".join("%.1f %.1f" % p for p in pts) + " Z"
+
 def _tube(d):
     """A bent metal tube: ink line, a pale steel wash, and one soft lighter line along it."""
     return (f'<g {WOB}><path d="{d}" fill="none" stroke="{INK}" stroke-width="12" stroke-linecap="round"/></g>'
             f'<path d="{d}" fill="none" stroke="#cfcac0" stroke-width="8.4" stroke-linecap="round"/>'
             f'<path d="{d}" fill="none" stroke="#ece8df" stroke-width="2" stroke-linecap="round" transform="translate(-1.2 -1.6)" opacity=".9"/>')
 
-def _knob(cx, cy, rx, ry, turns=False):
-    """A tall black drum knob on the end of the rod, a few grip lines across its face."""
+def _ring(cx, cy, r, n=40):
+    """A circle of radius r square to the rod (in the y-z plane), centred on the rod at x = cx: a slanted ellipse."""
+    return "M" + " L".join("%.1f %.1f" % cf_proj(cx, cy - r * math.cos(t), r * math.sin(t)) for t in [i / n * math.tau for i in range(n)]) + " Z"
+
+def _knob(cx, cy, r, turns=False, side=1):
+    """A black drum knob on the end of the rod, its face square to the rod; grip lines run across the face."""
     k = f"tls-knob{int(cx)}"
-    lines = "".join(f'<path d="M{cx-rx-4} {cy+yy} L{cx+rx+4} {cy+yy}" stroke="#8d867b" stroke-width="1.4"/>' for yy in range(-ry - 14, ry + 15, 7))
-    return (f'<ellipse cx="{cx+5}" cy="{cy+2}" rx="{rx}" ry="{ry}" fill="#3e3933"/>'                     # the drum's depth
-            f'<g {WOB}><ellipse cx="{cx+5}" cy="{cy+2}" rx="{rx}" ry="{ry}" {LN}/></g>'
-            f'<g {WASH}><ellipse cx="{cx}" cy="{cy}" rx="{rx}" ry="{ry}" fill="#57514a"/></g>'
-            f'<clipPath id="{k}"><ellipse cx="{cx}" cy="{cy}" rx="{rx-3}" ry="{ry-3}"/></clipPath>'
+    face, back = _ring(cx, cy, r), _ring(cx - 9 * side, cy, r)          # the drum is 9 deep along the rod
+    ax, ay = cf_proj(0, 0, 1)                                            # the face's depth direction on the page
+    lines = "".join(f'<path d="M{cx - (r+8)*ax:.1f} {cy + yy - (r+8)*ay:.1f} L{cx + (r+8)*ax:.1f} {cy + yy + (r+8)*ay:.1f}" stroke="#8d867b" stroke-width="1.4"/>'
+                    for yy in range(-r - 14, r + 15, 7))
+    return (f'<g {WASH}><path d="{back}" fill="#3e3933"/></g><g {WOB}><path d="{back}" {LN}/></g>'
+            f'<path d="M{cx - 9*side} {cy - r} L{cx} {cy - r} M{cx - 9*side} {cy + r} L{cx} {cy + r}" stroke="{INK}" stroke-width="1.8"/>'
+            f'<g {WASH}><path d="{face}" fill="#57514a"/></g>'
+            f'<clipPath id="{k}"><path d="{_ring(cx, cy, r - 3)}"/></clipPath>'
             f'<g clip-path="url(#{k})"><g{" class=" + chr(34) + "tl-cf-knob" + chr(34) if turns else ""}>{lines}</g></g>'
-            f'<ellipse cx="{cx}" cy="{cy}" rx="{rx*.28:.1f}" ry="{ry*.22:.1f}" fill="#d9d2c4"/>'
-            f'<g {WOB}><ellipse cx="{cx}" cy="{cy}" rx="{rx}" ry="{ry}" {LN}/></g>')
+            f'<path d="{_ring(cx, cy, r * .26)}" fill="#d9d2c4"/>'
+            f'<g {WOB}><path d="{face}" {LN}/></g>')
 
 def card_file():
     """A rotary card file on a bent metal-tube stand, after the classic desk ones: the cards fan all the way round
     the rod and down underneath, tabbed; a tall black knob on each end; the tube loops down to rest on the surface.
     The front card's words go in the overlay."""
     x, y, w, h = CARD
-    g = [f'<ellipse cx="808" cy="{CF_FOOT}" rx="126" ry="12" fill="{WOOD_S}" opacity=".3" filter="url(#tls-soft)"/>']
-    # the stand's loop on the surface (it runs behind the lowest cards)
-    g.append(_tube(f"M704 {CF_FOOT-4} C730 {CF_FOOT+6} 880 {CF_FOOT+6} 906 {CF_FOOT-4}"))
+    loop = _loop(704, 904, CF_FOOT, -46, 46, 22)
+    g = [f'<ellipse cx="{810 + CF_DX * 10:.0f}" cy="{CF_FOOT - 2}" rx="122" ry="10" fill="{WOOD_S}" opacity=".28" filter="url(#tls-soft)"/>']
+    # the stand's loop, lying flat on the surface (it runs under and behind the lowest cards)
+    g.append(_tube(loop))
+    # the far knob: we only see a sliver of its plain back, the cards and the front card hide the rest
+    far = _ring(712, CF_ROD, 28)
+    g.append(f'<g {WASH}><path d="{far}" fill="#3e3933"/></g><g {WOB}><path d="{far}" {LN}/></g>')
     # behind: the cards fanned back round the rod and on down under it
     g.append('<g class="tl-cf-fan">' + _cf_cards(range(110, 0, -10), tabs={30: "#c9a24a", 60: "#6f8f5a", 90: "#b0372f"}) + '</g>')
     g.append(_cf_cards(range(160, 110, -10), R=94, tabs={140: "#2a6488"}))
     # the arms: from each end of the rod, down and out to the loop
-    g.append(_tube(f"M704 {CF_ROD+8} C692 {CF_ROD+44} 688 {CF_FOOT-40} 704 {CF_FOOT-4}"))
-    g.append(_tube(f"M902 {CF_ROD+8} C918 {CF_ROD+44} 922 {CF_FOOT-40} 906 {CF_FOOT-4}"))
-    g.append(f'<g {WOB}><path d="M708 {CF_ROD} L898 {CF_ROD}" {LN}/></g>')
+    for ax_ in (704, 904):                                   # the arms: straight down from each end of the rod to the loop
+        g.append(_tube(f"M{ax_} {CF_ROD + 6} L{ax_} {CF_FOOT}"))
+    g.append(f'<g {WOB}><path d="M708 {CF_ROD} L900 {CF_ROD}" {LN}/></g>')
     # in front, below the rod: the cards hanging down toward you
     g.append(_cf_cards(range(-150, -100, 10), R=74, tabs={-130: "#c9a24a"}))
     # the front card's shadow on the cards behind it
     g.append(f'<path d="{rrect(x, y, w, h, 4)}" fill="{INK}" opacity=".14" transform="translate(3 3)" filter="url(#tls-edge)"/>')
     # the knobs: tall black drums, the near one bigger (its grip lines move as the file turns)
-    g.append(_knob(704, CF_ROD, 16, 26))
-    g.append(_knob(904, CF_ROD, 22, 34, turns=True))
+    g.append(_knob(914, CF_ROD, 32, turns=True))
     return "".join(g)
 
 # ---------------------------------------------------------------- the shelf
