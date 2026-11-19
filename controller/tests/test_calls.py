@@ -1,9 +1,10 @@
 """The call engine, with a fake Asterisk."""
 import unittest
+from unittest import mock
 
 from tests import helpers
 from treeline import ari as ari_mod
-from treeline import calls, db, rules
+from treeline import calls, db, households, rules
 
 
 class FakeAri:
@@ -28,6 +29,8 @@ class EngineTests(unittest.TestCase):
         self.conn = db.local_conn()
         self.sam = db.create_treehouse(self.conn, "Sam's", number=None, timezone="America/Los_Angeles", quiet_enabled=0)
         self.alex = db.create_treehouse(self.conn, "Alex's", number=None, timezone="America/Los_Angeles", quiet_enabled=0)
+        households.create(self.sam)
+        households.create(self.alex)
         self.alex_h = db.create_handset(self.conn, self.alex, "ata", "Hall")[0]
         self.sam_h = db.create_handset(self.conn, self.sam, "ata", "Kitchen")[0]
         cur = self.conn.execute("INSERT INTO call(started_at,caller_treehouse,callee_treehouse,dialed,state) "
@@ -117,6 +120,65 @@ class EngineTests(unittest.TestCase):
         plan = calls.sound_plan(rules.SOUND_NO_911)
         self.assertEqual(plan[0][0], calls.TONES["sit"][0])
         self.assertEqual(plan[1][0], "sound:treeline/no_911")
+
+    # ---- the households' copies
+
+    def copies(self, tid):
+        return households.conn(tid).execute("SELECT * FROM call_log WHERE id=?", (self.call_id,)).fetchall()
+
+    def test_finishing_a_call_copies_it_to_both_families_with_their_own_view(self):
+        e, call = self.engine()
+        self.add_legs(e, call)
+        self.conn.execute("INSERT INTO call_event(call_id,at,handset_id,event) VALUES(?,?,?,?)",
+                          (self.call_id, db.iso(), self.sam_h, "dialed"))
+        e.connect(call, call.legs["a1"])
+        for t in call.timers:
+            t.cancel()
+        e.finish(call, rules.CONNECTED, None)
+        self.assertEqual(self.row()["logged"], 1)
+        mine, theirs = self.copies(self.sam)[0], self.copies(self.alex)[0]
+        self.assertEqual((mine["result"], theirs["result"]), ("connected", "connected"))
+        self.assertEqual((mine["answered_handset"], theirs["caller_handset"]), (None, None))       # the other family's phones
+        events = households.conn(self.alex).execute("SELECT event, handset_id, theirs FROM call_event WHERE call_id=? ORDER BY id",
+                                                    (self.call_id,)).fetchall()
+        self.assertEqual([(r["event"], r["handset_id"], r["theirs"]) for r in events],
+                         [("dialed", None, 1), ("answered", self.alex_h, 0), ("ended", None, 0)])
+
+    def test_an_error_writing_the_copies_never_breaks_ending_the_call_and_reconcile_repairs_it(self):
+        e, call = self.engine()
+        self.add_legs(e, call)
+        with mock.patch.object(households, "record_call", side_effect=RuntimeError("disk full")), \
+                self.assertLogs("treeline", "ERROR"):
+            e.finish(call, rules.NO_ANSWER, "not_answered")
+        self.assertEqual((self.row()["state"], self.row()["logged"]), ("ended", 0))                  # the call itself ended fine
+        self.assertEqual(self.copies(self.sam), [])
+        households.reconcile(self.conn)
+        self.assertEqual((len(self.copies(self.sam)), len(self.copies(self.alex)), self.row()["logged"]), (1, 1, 1))
+
+    def dial(self, e, number, handset=None):
+        handset = self.conn.execute("SELECT * FROM handset WHERE id=?", (handset or self.sam_h,)).fetchone()
+        before = self.conn.execute("SELECT COALESCE(MAX(id),0) FROM call").fetchone()[0]
+        e.on_incoming({"id": "d1", "name": f"PJSIP/{handset['sip_user']}-0001", "dialplan": {"exten": number}})
+        return self.conn.execute("SELECT * FROM call WHERE id>? ORDER BY id", (before,)).fetchall()
+
+    def test_blocked_attempts_are_copied_to_the_callers_file_only(self):
+        e, _ = self.engine()
+        self.conn.execute("UPDATE call SET state='ended', logged=1 WHERE id=?", (self.call_id,))    # the line is free
+        alex_number = db.get_treehouse(self.conn, self.alex)["number"]
+        for number in (alex_number, "911", "5555", "12"):                   # not strung, 911, no such number, too short
+            rows = self.dial(e, number)
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["state"], "ended")
+            self.assertEqual(rows[0]["logged"], 1, number)
+        got = households.conn(self.sam).execute("SELECT dialed, result, callee_treehouse FROM call_log ORDER BY id").fetchall()
+        self.assertEqual([(r["dialed"], r["result"]) for r in got][-4:],
+                         [(alex_number, "not_strung"), ("911", "no_911"), ("5555", "not_in_service"), ("12", "incomplete")])
+        self.assertIsNone(got[-4]["callee_treehouse"])                         # not whose number it was
+        self.assertEqual(households.conn(self.alex).execute("SELECT count(*) FROM call_log").fetchone()[0], 0)
+        notes = [n["kind"] for n in households.notices(self.sam)]
+        self.assertIn("no_911", notes)
+        self.assertIn("not_strung_attempt", notes)
+        self.assertEqual(households.notices(self.alex), [])                    # and Alex's family heard of none of it
 
 
 if __name__ == "__main__":

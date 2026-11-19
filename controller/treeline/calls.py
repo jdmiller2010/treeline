@@ -91,6 +91,14 @@ class Engine:
         self.conn.execute("INSERT INTO call_event(call_id,at,handset_id,event) VALUES(?,?,?,?)",
                           (call_id, db.iso(), handset_id, event))
 
+    def record(self, call_id):
+        """Copy a finished call into each family's own file. If that fails the ledger row stays unlogged and
+        reconcile (at startup and hourly) does it again: a call that ended must never be lost to an error here."""
+        try:
+            households.record_call(self.conn, call_id)
+        except Exception:
+            log.exception("call %s: could not write the households' copies; reconcile will retry", call_id)
+
     def handset_for(self, channel):
         """Who is on this channel? From the channel name (PJSIP/<user>-<n>),
         which can't be faked the way a caller ID could."""
@@ -176,9 +184,13 @@ class Engine:
         call_id = cur.lastrowid
         if not decision.allowed:
             self.conn.execute("UPDATE call SET ended_at=? WHERE id=?", (db.iso(now), call_id))
+            self.record(call_id)
             if decision.notify_caller_parents:
                 kind, title, body, key = decision.notify_caller_parents
-                households.add_notice(handset["treehouse_id"], kind, title, body, key)
+                try:
+                    households.add_notice(handset["treehouse_id"], kind, title, body, key)
+                except Exception:                              # the caller must still hear the tone
+                    log.exception("could not leave a note for treehouse %s", handset["treehouse_id"])
             log.info("blocked %s -> %s: %s", handset["sip_user"], dialed, decision.reason)
             self.ari.request("POST", f"/channels/{chan_id}/answer")
             self.play_plan(chan_id, sound_plan(decision.sound))
@@ -366,6 +378,7 @@ class Engine:
             "UPDATE call SET state='ended', ended_at=?, talk_sec=?, result=?, reason=?, hung_up_first=? "
             "WHERE id=?", (db.iso(), talk, final, reason, call.hung_up_first, call.id))
         self.audit(call.id, "ended")
+        self.record(call.id)
         log.info("call %s ended: %s (%ss)", call.id, final, talk)
 
     # ------------------------------------------------------------ ring test

@@ -7,7 +7,7 @@ import time
 import websocket
 
 from treeline import ari as ari_mod
-from treeline import db, jobs
+from treeline import db, households, jobs
 from treeline.calls import Engine
 
 log = logging.getLogger("treeline")
@@ -18,6 +18,13 @@ def main():
     client = ari_mod.Ari()
     engine = Engine(client)
     engine.clean_up_after_restart()
+    # The two kinds of file can disagree after a crash or a restore: repair that, and open every household once
+    # so a migration that fails shows up now (and in the health check), not when a family opens the app.
+    conn = db.local_conn()
+    log.info("reconcile: %s", households.reconcile(conn))
+    failed = households.sweep()
+    if failed:
+        log.error("%d household file(s) could not be opened: %s", len(failed), sorted(failed))
     threading.Thread(target=jobs.run_forever, args=(client,), daemon=True).start()
 
     ws_url = client.url.replace("http", "ws", 1) + \

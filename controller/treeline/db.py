@@ -50,7 +50,8 @@ CREATE TABLE treehouse (
   pin_locked_until TEXT,
   system INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL,
-  left_at TEXT
+  left_at TEXT,
+  deleted_at TEXT
 );
 
 CREATE TABLE handset (
@@ -130,8 +131,10 @@ CREATE TABLE call (
   result TEXT,
   reason TEXT,
   answered_handset INTEGER,
-  hung_up_first TEXT
+  hung_up_first TEXT,
+  logged INTEGER NOT NULL DEFAULT 0
 );
+CREATE INDEX call_unlogged ON call(id) WHERE state='ended' AND logged=0;
 CREATE INDEX call_caller ON call(caller_treehouse, started_at);
 CREATE INDEX call_callee ON call(callee_treehouse, started_at);
 
@@ -516,3 +519,12 @@ def get_string(conn, x, y):
 def live_string(conn, x, y):
     s = get_string(conn, x, y)
     return s if s and s["state"] == "live" else None
+
+
+# ------------------------------------------------------------- call ledger
+
+def prune_ledger(conn, now=None):
+    """Drop ledger rows older than LEDGER_DAYS. Only calls already copied to the households (`logged`):
+    one still waiting for reconcile is kept."""
+    cutoff = iso((now or utcnow()) - dt.timedelta(days=LEDGER_DAYS))
+    conn.execute("DELETE FROM call WHERE state='ended' AND logged=1 AND started_at < ?", (cutoff,))

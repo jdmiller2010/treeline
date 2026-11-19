@@ -16,6 +16,7 @@ Rules this module keeps:
 """
 
 import contextlib
+import datetime as dt
 import logging
 import os
 import re
@@ -23,7 +24,7 @@ import sqlite3
 import threading
 from collections import OrderedDict
 
-from . import db
+from . import db, rules
 
 log = logging.getLogger("treeline")
 
@@ -387,3 +388,199 @@ def actions(tid, limit=200):
         return conn(tid).execute("SELECT * FROM parent_action ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
     except HouseholdGone:
         return []
+
+
+# ------------------------------------------------------------- call history: the ledger and the two copies
+
+def visible_to_callee(c):
+    """What the called treehouse's parents may see of a call. Attempts that never had a live string, and
+    the caller's own rules, stay on the caller's side."""
+    if c["result"] in (rules.NOT_IN_SERVICE, rules.NOT_STRUNG, rules.NO_911, rules.INCOMPLETE):
+        return False
+    why = c["reason"] or ""
+    return not (why.startswith("caller_") or why in ("unstrung_limit", "repeat_limit"))
+
+
+# What a caller must not learn about the callee's own rules (it hears the same message for each).
+CALLEE_RULE_REASONS = ("callee_paused", "callee_quiet", "callee_daily_limit")
+
+
+def _copy_of(c, tid):
+    """The ledger row as the household `tid` may keep it: nothing of the other family's rules or handsets."""
+    row = {k: c[k] for k in ("id", "started_at", "caller_treehouse", "caller_handset", "dialed",
+                             "callee_treehouse", "ring_at", "answered_at", "ended_at", "talk_sec", "result",
+                             "reason", "answered_handset", "hung_up_first")}
+    if c["caller_treehouse"] == tid:
+        if row["reason"] in CALLEE_RULE_REASONS:
+            row["reason"] = "callee_unavailable"           # not "quiet hours" or "paused": that is their business
+        if row["result"] == rules.NOT_STRUNG:
+            row["callee_treehouse"] = None                 # only the number they dialed, not whose it is
+        row["answered_handset"] = None                      # the callee's handset
+    else:
+        row["caller_handset"] = None                        # the caller's handset
+    return row
+
+
+def record_call(conn, call_id):
+    """Write each family's copy of a finished call (or blocked attempt), then mark the ledger row `logged`.
+    Safe to repeat (INSERT OR IGNORE by id), so a crash half way is repaired by reconcile. A household with
+    no file is skipped. Any other error leaves `logged` at 0 for reconcile to retry."""
+    c = conn.execute("SELECT * FROM call WHERE id=? AND state='ended'", (call_id,)).fetchone()
+    if c is None:
+        return False
+    events = conn.execute("SELECT * FROM call_event WHERE call_id=? ORDER BY id", (call_id,)).fetchall()
+    wanted = sorted({int(e["handset_id"]) for e in events if e["handset_id"]})
+    owner = {r["id"]: r["treehouse_id"] for r in conn.execute(
+        f"SELECT id, treehouse_id FROM handset WHERE id IN ({','.join('?' * len(wanted))})", wanted)} if wanted else {}
+    for side, tid in (("caller", c["caller_treehouse"]), ("callee", c["callee_treehouse"])):
+        if tid is None or (side == "callee" and not visible_to_callee(c)):
+            continue
+        try:
+            _write_copy(tid, _copy_of(c, tid), events, owner)
+        except HouseholdGone:
+            log.info("call %s: household %s has no file, so it has no copy", call_id, tid)
+    conn.execute("UPDATE call SET logged=1 WHERE id=?", (call_id,))
+    return True
+
+
+def _write_copy(tid, row, events, owner):
+    with transaction(tid) as h:
+        keep = h.execute("SELECT retention_days FROM meta WHERE id=1").fetchone()["retention_days"]
+        if row["started_at"] < db.iso(db.utcnow() - dt.timedelta(days=keep)):
+            return                                          # already past this family's retention: not brought back
+        cols = list(row)
+        h.execute(f"INSERT OR IGNORE INTO call_log({','.join(cols)}) VALUES({','.join('?' * len(cols))})",
+                  [row[k] for k in cols])
+        for e in events:
+            theirs = bool(e["handset_id"]) and owner.get(e["handset_id"]) != tid
+            h.execute("INSERT OR IGNORE INTO call_event(id,call_id,at,handset_id,theirs,event) VALUES(?,?,?,?,?,?)",
+                      (e["id"], e["call_id"], e["at"], None if theirs else e["handset_id"], int(theirs), e["event"]))
+
+
+def trim(tid, now=None):
+    """Remove what this family's own retention has expired from its file, now. Returns calls removed."""
+    now = now or db.utcnow()
+    try:
+        c = conn(tid)
+    except HouseholdGone:
+        return 0
+    days = c.execute("SELECT retention_days FROM meta WHERE id=1").fetchone()["retention_days"]
+    n = c.execute("DELETE FROM call_log WHERE started_at < ?", (db.iso(now - dt.timedelta(days=days)),)).rowcount
+    c.execute("DELETE FROM parent_action WHERE at < ?", (db.iso(now - dt.timedelta(days=365)),))
+    c.execute("DELETE FROM notice WHERE created_at < ?", (db.iso(now - dt.timedelta(days=90)),))
+    return n
+
+
+def newest_record(tid):
+    """The time of the household's newest record of any kind, or None."""
+    c = conn(tid)
+    newest = [c.execute(sql).fetchone()[0] for sql in (
+        "SELECT max(started_at) FROM call_log", "SELECT max(created_at) FROM notice", "SELECT max(at) FROM parent_action")]
+    return max((n for n in newest if n), default=None)
+
+
+def purge_left(conn_, now=None):
+    """A treehouse that left keeps its file until its newest record (or its leaving) is past its own retention,
+    then the file goes with its pre-migration copies. Returns the ids removed."""
+    now = now or db.utcnow()
+    gone = []
+    for th in conn_.execute("SELECT id, left_at FROM treehouse WHERE left_at IS NOT NULL AND deleted_at IS NULL"):
+        if not exists(th["id"]):
+            continue
+        try:
+            newest = max(n for n in (th["left_at"], newest_record(th["id"])) if n)
+            if db.parse(newest) < now - dt.timedelta(days=retention_days(th["id"])):
+                remove(th["id"])
+                gone.append(th["id"])
+        except HouseholdGone:
+            continue
+        except Exception:                                       # one damaged file must not stop the rest
+            log.exception("household %s: could not check whether it is past retention", th["id"])
+    return gone
+
+
+def reconcile(conn_, now=None):
+    """Repair what a crash or a restore from backup can leave between the two kinds of file
+    (docs/DATA_LAYER.md, "Reconcile"). Safe to run at any time, as often as you like."""
+    now = now or db.utcnow()
+    done = {"orphans": [], "recreated": [], "logged": 0, "left": []}
+    rows = {r["id"]: r for r in conn_.execute("SELECT id, left_at, deleted_at, system FROM treehouse")}
+    # 1. files with no treehouse, or one that was deleted. A new treehouse's file is made inside the API's
+    # still-open central transaction, so for a moment it has no row we can see: only files that have sat
+    # for ORPHAN_GRACE are touched.
+    for tid in ids():
+        r = rows.get(tid)
+        if (r is not None and r["deleted_at"]) or (r is None and _older_than_grace(path(tid), now)):
+            remove(tid)
+            done["orphans"].append(tid)
+    for name in _stray_names():                               # WAL leftovers and old copies with no file to belong to
+        full = os.path.join(root(), name) if not name.startswith("pre-migrate/") \
+            else os.path.join(pre_migrate_dir(), name[len("pre-migrate/"):])
+        if _older_than_grace(full, now):
+            with contextlib.suppress(FileNotFoundError):
+                os.remove(full)
+    # 2. active treehouses with no file (central restored from a backup): an empty household, consent unset
+    for tid, r in rows.items():
+        if not r["left_at"] and not r["deleted_at"] and not r["system"] and not exists(tid):
+            log.warning("treehouse %s had no household file; made an empty one (consent not recorded)", tid)
+            create(tid)
+            done["recreated"].append(tid)
+    # 3. finished calls whose copies were not all written
+    for call in conn_.execute("SELECT id FROM call WHERE state='ended' AND logged=0 ORDER BY id").fetchall():
+        try:
+            record_call(conn_, call["id"])
+            done["logged"] += 1
+        except Exception:
+            log.exception("could not copy call %s into its households; will try again", call["id"])
+    # 4. households that left and are now past retention
+    done["left"] = purge_left(conn_, now)
+    return done
+
+
+ORPHAN_GRACE = dt.timedelta(hours=1)
+
+
+def _older_than_grace(p, now):
+    try:
+        return dt.datetime.fromtimestamp(os.path.getmtime(p), dt.timezone.utc) < now - ORPHAN_GRACE
+    except FileNotFoundError:
+        return False
+
+
+def _stray_names():
+    live = set(ids())
+    out = []
+    try:
+        names = os.listdir(root())
+    except FileNotFoundError:
+        return out
+    for name in names:
+        m = re.match(r"^(\d+)\.db(-wal|-shm|-journal)$", name)
+        if m and int(m.group(1)) not in live:
+            out.append(name)
+    try:
+        for name in os.listdir(pre_migrate_dir()):
+            m = re.match(r"^(\d+)-v\d+-", name)
+            if m and int(m.group(1)) not in live:
+                out.append("pre-migrate/" + name)
+    except FileNotFoundError:
+        pass
+    return out
+
+
+def call_page(tid, th, since=None, before=None, limit=300):
+    """One page of this family's call copies, newest first, and whether there are older ones. Applies
+    `visible_to_callee` again as a second check (the write path already did)."""
+    try:
+        c = conn(tid)
+    except HouseholdGone:
+        return [], False
+    sql, args = "SELECT * FROM call_log WHERE 1=1", []
+    if since:
+        sql += " AND started_at>=?"
+        args.append(db.iso(since))
+    if before:
+        sql += " AND id<?"
+        args.append(int(before))
+    raw = c.execute(sql + " ORDER BY id DESC LIMIT ?", (*args, limit + 1)).fetchall()
+    return [r for r in raw[:limit] if r["caller_treehouse"] == tid or visible_to_callee(r)], len(raw) > limit

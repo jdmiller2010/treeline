@@ -11,6 +11,14 @@ from . import db, households, mail
 log = logging.getLogger("treeline")
 
 
+def _safe(fn, *args):
+    """A note for one household must never stop the check for all the others (a damaged file is that family's problem)."""
+    try:
+        return fn(*args)
+    except Exception:
+        log.exception("household note failed (%s)", args[:1])
+
+
 def check_handsets(conn, ari, now=None):
     """Mark handsets online or offline, and raise a note when one has been
     offline a while."""
@@ -24,18 +32,17 @@ def check_handsets(conn, ari, now=None):
     for h in rows.fetchall():
         key = f"offline:{h['id']}"
         if h["disabled"]:                    # switched off on purpose: nothing to worry about
-            households.dismiss_key(h["treehouse_id"], key, db.iso(now))
+            _safe(households.dismiss_key, h["treehouse_id"], key, db.iso(now))
             continue
         if h["sip_user"] in online:
             conn.execute("UPDATE handset SET online=1, last_seen=? WHERE id=?", (db.iso(now), h["id"]))
-            households.dismiss_key(h["treehouse_id"], key, db.iso(now))
+            _safe(households.dismiss_key, h["treehouse_id"], key, db.iso(now))
             continue
         conn.execute("UPDATE handset SET online=0 WHERE id=?", (h["id"],))
         since = db.parse(h["last_seen"]) or db.parse(h["created_at"])
         if now - since >= wait:
-            households.add_notice(
-                h["treehouse_id"], "handset_offline", f"{h['name']} is offline",
-                "It hasn't checked in for a while, so calls can't reach it.", key)
+            _safe(households.add_notice, h["treehouse_id"], "handset_offline", f"{h['name']} is offline",
+                  "It hasn't checked in for a while, so calls can't reach it.", key)
 
 
 VAPID_PRIVATE = os.environ.get("TREELINE_VAPID_PRIVATE", "")
@@ -86,6 +93,9 @@ def send_alert_emails(conn, push=push_to):
             hc = households.conn(tid)
         except households.HouseholdGone:
             continue
+        except Exception:                                       # a damaged household file: the others still get their alerts
+            log.exception("household %s: could not open to send alerts", tid)
+            continue
         rows = hc.execute("SELECT * FROM notice WHERE emailed_at IS NULL AND dismissed_at IS NULL "
                           "AND created_at >= ?", (since,)).fetchall()
         for n in rows:
@@ -100,27 +110,22 @@ def send_alert_emails(conn, push=push_to):
 
 
 def purge(conn, now=None):
-    """Forget old records. A call involves two families, and each sets its own
-    retention, so when one family's time is up we remove *its side* of the record
-    (the other family still sees the call, without a name) and delete the row once
-    neither side is left. Parent actions go after a year, expired logins sooner."""
+    """Forget old records. Each family's retention trims only its own file: nobody's setting touches anyone else's
+    copy of a call. Notes and the action log age out inside each file too. The central ledger keeps only the last
+    few days (what the rules compute from), and only calls already copied to the households. A treehouse that left
+    keeps its file until its records are past its own retention. Expired logins and old pre-migration copies go."""
     now = now or db.utcnow()
-    for th in conn.execute("SELECT id FROM treehouse").fetchall():
-        cutoff = db.iso(now - dt.timedelta(days=households.retention_days(th["id"])))
-        conn.execute("UPDATE call SET caller_treehouse=NULL, caller_handset=NULL WHERE caller_treehouse=? "
-                     "AND started_at < ? AND state='ended'", (th["id"], cutoff))
-        conn.execute("UPDATE call SET callee_treehouse=NULL, answered_handset=NULL WHERE callee_treehouse=? "
-                     "AND started_at < ? AND state='ended'", (th["id"], cutoff))
-    conn.execute("DELETE FROM call WHERE state='ended' AND caller_treehouse IS NULL AND callee_treehouse IS NULL")
-    for tid in households.ids():                       # notes and the action log age out inside each household's own file
+    for tid in households.ids():
         try:
-            hc = households.conn(tid)
-        except households.HouseholdGone:
-            continue
-        hc.execute("DELETE FROM parent_action WHERE at < ?", (db.iso(now - dt.timedelta(days=365)),))
-        hc.execute("DELETE FROM notice WHERE created_at < ?", (db.iso(now - dt.timedelta(days=90)),))
+            households.trim(tid, now)
+        except Exception:                                       # one damaged file must not stop the rest
+            log.exception("household %s: could not trim", tid)
+    households.purge_left(conn, now)
+    db.prune_ledger(conn, now)
     for table in ("session", "login_code", "pairing"):
         conn.execute(f"DELETE FROM {table} WHERE expires_at < ?", (db.iso(now),))
+    db.prune_pre_migrate(os.path.join(os.path.dirname(db.DB_PATH) or ".", "pre-migrate"), now)
+    db.prune_pre_migrate(households.pre_migrate_dir(), now)
 
 
 def run_forever(ari):
@@ -132,6 +137,7 @@ def run_forever(ari):
             send_alert_emails(conn)
             if time.time() - last_purge > 3600:
                 purge(conn)
+                households.reconcile(conn)             # (also once at startup: run_controller.py)
                 last_purge = time.time()
         except Exception:
             log.exception("background job failed")
