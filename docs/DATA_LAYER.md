@@ -1,6 +1,6 @@
 # Data layer: one central database and one file per treehouse
 
-Status: **design, not yet implemented.** This is the spec to implement before the first deployment
+Status: **design, not yet implemented.** Decided with the owner: no migration from the old layout. This is the spec to implement before the first deployment
 (see the deploy plan in `infra/README.md`). Nothing here has been built or run.
 
 ## Why
@@ -119,31 +119,65 @@ The calls screen keeps today / week; "all" becomes paged. `GET /api/calls` accep
 and `limit` (default 50 for "all", max 300) and returns `more: true|false`; the parent app adds a
 "Show older" button. Everything on disk is within the household's retention, so there is no archive tier.
 
-## Migrating an existing single-file database
+## Starting fresh (no migration from the old layout)
 
-One new central migration step (the numbered `MIGRATIONS` list; never edit old steps), run once:
+Nothing is deployed and the dev data is disposable, so there is **no** upgrade path from the single-file
+layout. The new layout is the baseline:
 
-1. Copy the database to `treeline.db.pre-split` with SQLite's backup API (first time only). It is a
-   plain copy of everything: delete it once the upgrade is verified.
-2. For each treehouse, create its household file and copy in `meta` (from the old `treehouse` columns),
-   its `notice` and `parent_action` rows, and the calls it was part of (`call` + `call_event`, applying
-   `visible_to_callee` to the callee side). All with idempotent inserts keyed by the old ids, so the
-   step can be repeated after an interruption.
-3. In **one central transaction**: delete ledger rows older than `LEDGER_DAYS` (mark the rest
-   `logged = 1`), drop `notice` and `parent_action`, drop the four moved `treehouse` columns, set
-   `user_version`.
+- The existing numbered steps in `db.py` (`MIGRATIONS` 1 to 5) are folded into the new `SCHEMA`, and the
+  list starts empty. This is the one free chance to squash; after go-live, steps are never squashed
+  while any database could still be below them.
+- Each file type carries a marker: `PRAGMA application_id` = a fixed constant for central and another for
+  household files, and `user_version` = the schema version (baseline = 1).
+- A database without the marker (anything made before this change) is **refused at startup** with one clear
+  line: "this is an old-layout dev database; run `./dev clean` to start fresh". It is never opened or
+  guessed at. `./dev clean` must also delete `households/`.
 
-Only the dev database holds data today; nothing is deployed. The step still needs a real upgrade test.
+## Schema changes after go-live
+
+Once real families are on this, every schema change has to be safe on data that cannot be thrown away.
+These rules apply to the central database and to household files alike.
+
+1. **Numbered, append-only steps.** `MIGRATIONS` (central) and `HOUSEHOLD_MIGRATIONS` are lists. A step is
+   never edited, reordered or deleted after it has shipped. Each step and its `user_version` bump run in
+   **one transaction** (`BEGIN IMMEDIATE`; SQLite DDL is transactional), and the version is re-read inside
+   the transaction, so the API and the controller starting at the same moment cannot both apply a step.
+   (Today's `migrate()` is neither transactional nor re-checked: fix it as part of this work.)
+2. **Expand, then contract, across two releases.** Release N adds the new column or table and writes both;
+   release N+1 stops reading the old one; release N+2 drops it. A release can be rolled back by the deploy
+   agent only if its migration was expand-only, so a drop never ships in the same release as the code that
+   stops using the column.
+3. **Never open a database newer than the code.** If `user_version` is higher than the code knows, refuse to
+   start and say so (this is what stops an old release from writing into a newer layout after a rollback of
+   code but not data).
+4. **Back up before migrating.** Before applying any pending step to a file, take an online backup of that
+   file into `pre-migrate/` beside it, and delete it after 7 days (it holds the same personal data as the
+   file). Recovery from a bad migration is: stop, restore that file, deploy the previous release.
+5. **Central migrates at startup; households migrate lazily on first open, and are all swept at startup.**
+   The sweep opens every household file once, so a failing step shows up when the deploy's health check
+   runs, not when a family first opens the app. If a household's migration fails, that household gets a
+   clear error and the rest keep working. `/api/health` reports the number of households below the current
+   version.
+6. **Test against real old shapes.** Every new step ships with a test that builds a file at the *previous*
+   schema (a fixture of CREATE statements and rows, not the current `SCHEMA` with a column removed), runs the
+   step, checks the data survived and the version moved, runs it again (no-op), and kills it half way and
+   reruns. The existing `controller/tests/test_db.py` migration tests are the pattern.
+7. **Keep steps cheap.** A step runs while the app is down or a request waits on it. Big data rewrites are
+   batched and resumable, and avoid `VACUUM` in a step.
+8. **Cross-file changes follow the write-ordering table above**, and a step that changes how the two files
+   relate (for example, moving a fact from central to a household) is a release of its own with a
+   reconcile pass, not folded into another change.
 
 ## Code to change
 
-- `db.py`: remove moved columns and tables from `SCHEMA` for new databases, add the migration, change
-  `create_treehouse` (no consent fields), `log_action` and `add_notice` (take a treehouse id, write to the
-  household), add a ledger-prune helper.
+- `db.py`: new baseline `SCHEMA` (moved columns and tables removed, `logged` added, old steps folded in),
+  empty `MIGRATIONS`, the marker check and refusal described above, a transactional re-checked `migrate()`,
+  the newer-than-code refusal, pre-migration backup; change `create_treehouse` (no consent fields),
+  `log_action` and `add_notice` (take a treehouse id, write to the household), add a ledger-prune helper.
 - New `households.py`: path, per-thread connection cache **validated against the file's inode** (a file
   deleted by another thread must not be written through a stale handle), an LRU cap (about 32 open files per
   thread, since the jobs thread visits every household), `create`, `conn`, `meta`, `remove`, the household
-  schema and migrations, `record_call`, `trim`, reconcile.
+  schema and `HOUSEHOLD_MIGRATIONS` (empty at baseline), the startup sweep, `record_call`, `trim`, reconcile.
 - `api.py`: `th_json` reads retention from `meta`; `treehouse_create`, `treehouse_update`
   (retention), `treehouse_delete`, `treehouse_leave`, `home`, `notice_dismiss`, `calls_for`, `call_json`,
   `call_detail`, `calls_csv`, `actions_list`, `audit`, and the `add_notice` calls.
@@ -173,8 +207,13 @@ Unit, runnable anywhere (`cd controller && python -m unittest discover -s tests 
   handle in another thread cannot write to a deleted file;
 - leave: file kept until past retention, then removed;
 - create treehouse: failure while creating the file leaves no central rows;
-- migration: build a database with the **old** schema and real-looking data, upgrade it, check every
-  household file, check the central tables, run it twice, and kill it after step 2 and rerun;
+- an old-layout database (no marker) is refused with the `./dev clean` message and is not modified;
+- a database whose `user_version` is newer than the code is refused;
+- the migration runner: two threads starting at once apply a step once; a step that raises leaves the
+  version unchanged and the data as it was; a pre-migration backup is taken and restores; a household
+  below the current version is migrated on first open and counted by the startup sweep and by
+  `/api/health`. (There are no real steps yet, so these use a test-only step list; the first real step
+  must add its own fixture test per rule 6.)
 - backup: one file per household, restores to a working database, prune at 7 days;
 - pagination: `before` and `more`.
 
@@ -182,8 +221,8 @@ Needs the Docker stack (`./dev ...`) and was **not** run when this spec was writ
 
 - `./dev unit`, `./dev check`, `./dev sip` (17 scenarios, ~7 minutes), `./dev web` (both scripts),
   `./dev ui smoke`, `./dev ui pwa`.
-- A dev database that already holds a family, upgraded in place, then a real call and a check that both
-  families' history shows it.
+- After `./dev clean` (which must also remove `households/`), create two families, make a real call, and
+  check that both families' history shows it and that each family's file holds only its own records.
 
 ## Not decided here
 
