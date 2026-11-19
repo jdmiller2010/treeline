@@ -49,8 +49,8 @@ function draw() {
     <div class="tl-actions"><button type="button" class="tl-btn tl-btn--primary tl-btn--lg" id="wake-btn"><span class="tl-btn__label">Turn on</span></button></div>
   </div></div></div>`);
   const deskEl = root.querySelector("[data-tl-desk]");
-  // What the phone is doing goes on the wall, in the room's slot. The connection is the clock radio's light
-  // (its digits blink when the line is down); screen readers get it in words.
+  // What the phone is doing goes on the wall, in the room's slot. The connection is the little light on the
+  // phone itself (green: ready; dark: getting online; flashing: ringing); screen readers get it in words.
   deskEl.querySelector(".tl-desk__stage").insertAdjacentHTML("beforeend", str(html`<div class="tl-desk__slot ph__slot">
     <span class="ph__sr" id="reg" role="status"></span>
     <p class="ph__status" id="status" role="status" aria-live="polite"></p>
@@ -113,7 +113,7 @@ function fillRoom(r) {
 function setRegistration() {
   if (!ui) return;
   ui.reg.textContent = S.registered ? "The phone is connected." : "The phone is reconnecting.";
-  ui.desk.setOnline(S.registered);
+  ui.api.setLine(S.registered);                                    // the little light on the phone
 }
 
 // ------------------------------------------------------------------ line state

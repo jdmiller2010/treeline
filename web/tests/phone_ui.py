@@ -119,15 +119,18 @@ def main():
         quiet = tablet.evaluate("() => document.querySelector('.tl-desk__quiettext').textContent")
         check(bool(re.match(r"^(none|\d{1,2}(:\d\d)? [ap]m – \d{1,2}(:\d\d)? [ap]m)$", quiet)), "the sticky note shows the quiet hours", quiet)
         check(tablet.inner_text("#status").strip() == "" and tablet.inner_text("#sub").strip() == "", "an idle phone's wall has no how-to words: the guide book teaches")
-        # the clock radio on the desk shows the real time, and the line: no SIP here, so its digits blink
+        # the clock radio on the desk shows the real time
         now = tablet.evaluate("() => { const d = new Date(), h = d.getHours(); return ((h + 11) % 12 + 1) + ':' + String(d.getMinutes()).padStart(2, '0') + ' ' + (h >= 12 ? 'PM' : 'AM'); }")
         shown = tablet.get_attribute("[data-tl-desk]", "data-clock")
         check(shown == now, "the clock radio shows the real time", f"{shown} vs {now}")
-        check(tablet.locator(".tl-desk__clock.is-offline").count() == 3 and "reconnecting" in tablet.inner_text("#reg"),
-              "while the phone isn't connected the clock blinks and says so to screen readers")
-        tablet.evaluate("() => __phone.desk().setOnline(true)")
-        check(tablet.locator(".tl-desk__clock.is-offline").count() == 0, "and stops blinking when it's connected")
-        tablet.evaluate("() => __phone.desk().setOnline(false)")
+        # the little light on the phone is the line: no SIP here, so it's dark
+        lamp = lambda: tablet.evaluate("() => getComputedStyle(document.querySelector('.tl-rotary .tlp-lamp')).fill")
+        check(tablet.get_attribute(".tl-rotary", "data-line") == "off" and "reconnecting" in tablet.inner_text("#reg"),
+              "while the phone isn't connected its little light is dark, and screen readers hear it")
+        tablet.evaluate("() => __phone.rotary().setLine(true)")
+        tablet.wait_for_timeout(450)                                   # it fades up
+        check(lamp() == "rgb(127, 224, 138)", "connected, the light is green", lamp())
+        tablet.evaluate("() => __phone.rotary().setLine(false)")
         wide = tablet.evaluate("document.documentElement.scrollWidth > document.documentElement.clientWidth + 1")
         check(not wide, "nothing scrolls sideways")
         for theme in ("light", "dark"):
@@ -152,7 +155,8 @@ def main():
         tablet.click('[data-desk-open="book"]')
         tablet.wait_for_function("() => document.querySelector('.tl-book__count').textContent === 'Pages 1–2'", timeout=5000)
         check(True, "the guide book comes up and opens")
-        check(tablet.locator(".tl-desk__look--book .tl-book__art[aria-label]").count() >= 10, "its pages are pictures, each described for screen readers")
+        check(tablet.locator(".tl-desk__look--book .tl-book__art[aria-label]").count() >= 12, "its pages are pictures, each described for screen readers")
+        check("little light" in (tablet.get_attribute(".tl-desk__look--book .tl-book__sheet:nth-of-type(3) .tl-book__face--front .tl-book__art", "aria-label") or ""), "its first page explains the little light on the phone")
         tablet.keyboard.press("ArrowRight")
         tablet.wait_for_function("() => document.querySelector('.tl-book__count').textContent === 'Pages 3–4'", timeout=5000)
         check(True, "the pages turn")
@@ -181,6 +185,9 @@ def main():
           for (let i = 0; i < 12; i++) { seen.add(getComputedStyle(h).transform); body ||= getComputedStyle(b).transform !== 'none'; await new Promise((r) => setTimeout(r, 40)); }
           return { kinds: seen.size, body }; }""")
         check(tablet.locator(".tl-rotary.is-ringing").count() == 1 and moved["kinds"] > 2 and not moved["body"], "a ringing phone's handset trembles, and nothing else moves", str(moved))
+        flashes = tablet.evaluate("""async () => { const l = document.querySelector('.tl-rotary .tlp-lamp'), seen = new Set();
+          for (let i = 0; i < 10; i++) { seen.add(getComputedStyle(l).fill); await new Promise((r) => setTimeout(r, 120)); } return seen.size; }""")
+        check(flashes > 2, "and its little light flashes", str(flashes))
         tablet.evaluate("() => { __phone.S.phase = 'idle'; __phone.render(); }")
         check(tablet.locator(".tl-rotary.is-ringing").count() == 0, "and it stops when the ringing does")
 

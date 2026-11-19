@@ -810,6 +810,13 @@ body {
   6%, 14%, 22%, 30%, 38% { transform: translate(.6px, -.5px) rotate(.7deg); }
 }
 @media (prefers-reduced-motion: reduce) { .tl-rotary.is-ringing[data-hook="on"] .tlp-handset { animation: none; } }
+/* The line lamp: a little jewel light on the front of the phone. Dark until the app says the line is up
+   (online prop, api.setLine); then a soft green. While the phone rings it flashes gently. */
+.tl-rotary .tlp-lamp { transition: fill .3s ease; }
+.tl-rotary[data-line="on"] .tlp-lamp { fill: #7fe08a; filter: drop-shadow(0 0 3px rgba(127, 224, 138, .85)); }
+.tl-rotary.is-ringing .tlp-lamp { fill: #7fe08a; animation: tl-rotary-lamp 1.2s ease-in-out infinite; }
+@keyframes tl-rotary-lamp { 0%, 100% { fill: #8ef29a; filter: drop-shadow(0 0 4px rgba(142, 242, 154, .95)); } 50% { fill: #3f6b45; filter: none; } }
+@media (prefers-reduced-motion: reduce) { .tl-rotary.is-ringing .tlp-lamp { animation: none; } }
 .tl-rotary .tlp-wheel { cursor: grab; }
 .tl-rotary.is-dialing .tl-rotary__svg, .tl-rotary.is-dialing .tlp-wheel { cursor: grabbing; }
 /* A real button over the handset, so a keyboard or screen reader can lift and hang up too. */
@@ -873,11 +880,7 @@ body {
 /* The clock radio: red seven-segment digits; unlit segments show faintly through the smoked glass. */
 .tl-clk__seg { fill: rgba(255, 58, 36, .07); }
 .tl-clk__seg.is-on { fill: #ff3b26; filter: drop-shadow(0 0 1.2px rgba(255, 50, 30, .85)); }
-.tl-clk__led { fill: #3fd06a; filter: drop-shadow(0 0 1.4px rgba(63, 208, 106, .9)); }
-.tl-desk__clock.is-offline .tl-clk__led { fill: #3a302a; filter: none; }
-.tl-desk__clock.is-offline .tl-clk__digits { animation: tl-clk-blink 1s steps(1, end) infinite; }
-@keyframes tl-clk-blink { 50% { opacity: .12; } }
-@media (prefers-reduced-motion: reduce) { .tl-desk__clock.is-offline .tl-clk__digits { animation: none; opacity: .45; } }
+
 /* Picking things up. Everything here is laid over the whole room. */
 .tl-desk__layers { position: absolute; inset: 0; pointer-events: none; z-index: 20; }
 .tl-desk__look { position: absolute; inset: 0; pointer-events: auto; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-4); padding: var(--space-6) var(--space-4); }

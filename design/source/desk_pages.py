@@ -113,12 +113,25 @@ def pages():
          f'<text x="{PW/2}" y="222" text-anchor="middle" {SANS} font-size="13" fill="#5e5546">from your treehouse</text>'
          f'<text x="{PW/2}" y="320" text-anchor="middle" {SANS} font-size="10" font-weight="700" letter-spacing="1.5" fill="{SKY}">TREELINE PRESS</text>')
     out.append(page("t", t, "Rotary Phones the easy way: how to call a friend from your treehouse."))
+    # the little light on the phone
+    lamp_on = lambda svg: svg.replace('class="tlbook-lamp" cx="300" cy="362" r="5" fill="#3a3530"', 'class="tlbook-lamp" cx="300" cy="362" r="5" fill="#7fe08a"')
+    close = lamp_on(phone("L", False, 40, 62, 220, "214 300 172 117"))
+    win = (f'<clipPath id="tlb-lw"><rect x="40" y="62" width="220" height="150" rx="14"/></clipPath><g clip-path="url(#tlb-lw)">{close}</g>'
+           f'<g {WOB}><rect x="40" y="62" width="220" height="150" rx="14" {LN}/></g>'
+           f'<circle cx="{40 + (300-214)*220/172:.1f}" cy="{62 + (362-300)*220/172:.1f}" r="16" fill="none" stroke="{BERRY}" stroke-width="3"/>')
+    def lamp(cx, cy, fill, rays=False):
+        r_ = "".join(f'<path d="M{cx + 11*math.cos(a):.1f} {cy + 11*math.sin(a):.1f} L{cx + 16*math.cos(a):.1f} {cy + 16*math.sin(a):.1f}" stroke="#4fbf62" stroke-width="2" stroke-linecap="round"/>' for a in [i * math.pi / 4 for i in range(8)]) if rays else ""
+        return f'{r_}<circle cx="{cx}" cy="{cy}" r="8" fill="#5b5248"/><circle cx="{cx}" cy="{cy}" r="5.5" fill="{fill}"/><circle cx="{cx-1.8}" cy="{cy-1.8}" r="1.5" fill="#fff" opacity=".6"/>'
+    rows = [("#7fe08a", False, "Green: ready to call"), ("#3a3530", False, "Dark: getting online, wait"), ("#9cf5a6", True, "Flashing: a call! Lift it")]
+    legend = "".join(lamp(58, 246 + i * 30, f, r_) + f'<text x="84" y="{251 + i*30}" {SANS} font-size="14" fill="{INK}">{t}</text>' for i, (f, r_, t) in enumerate(rows))
+    out.append(page("L", f'<text x="{PW/2}" y="42" text-anchor="middle" {SERIF} font-size="24" font-style="italic" fill="{INK}">The little light</text>' + win + legend,
+                    "The little light on the phone. Green means it's ready to call. Dark means it's getting online, so wait. Flashing means a call is coming in: lift the handset.", 1))
     # 2 lift the handset
     hum = crayon("M40 66 q8 -8 16 0 t16 0 t16 0 M34 86 q8 -8 16 0 t16 0 t16 0", SKY, 2.4)
-    out.append(page(2, phone(2, True, 46, 20, 212) + hum + caption(["Lift the handset.", "Hear the hum?"], 300), "Step 1: lift the handset and listen for the hum of the dial tone.", 1))
+    out.append(page(2, phone(2, True, 46, 20, 212) + hum + caption(["Lift the handset.", "Hear the hum?"], 300), "Step 1: lift the handset and listen for the hum of the dial tone.", 2))
     # 3 finger in a number
     hx, hy = hole(4)
-    out.append(page(3, dial_window(3, phone(3, False, 30, 22, 240, "102 196 196 192", finger(hx, hy, 13))) + caption(["Put a finger", "in a number."], 300), "Step 2: put a finger in the hole for the first number.", 2))
+    out.append(page(3, dial_window(3, phone(3, False, 30, 22, 240, "102 196 196 192", finger(hx, hy, 13))) + caption(["Put a finger", "in a number."], 300), "Step 2: put a finger in the hole for the first number.", 3))
     # 4 turn to the stop
     a0 = rotary.HOLE_ANGLE[4]; tr = rotary.TRAVEL[4]
     pts = [rotary.P(a0 + tr * i / 20, 1.18) for i in range(21)]
@@ -128,7 +141,7 @@ def pages():
     sx, sy = rotary.P(rotary.STOP, 1.0)
     arrow = (f'<path d="{arc}" fill="none" stroke="{BERRY}" stroke-width="4" stroke-linecap="round"/><path d="{head}" fill="none" stroke="{BERRY}" stroke-width="4" stroke-linecap="round"/>'
              + finger(*rotary.P(a0 + tr, rotary.HOLE_K), 13))
-    out.append(page(4, dial_window(4, phone(4, False, 30, 22, 240, "96 184 208 204", arrow)) + caption(["Turn it to the metal stop.", "Then let go!"], 300), "Step 3: turn the number round to the metal stop, then let go.", 3))
+    out.append(page(4, dial_window(4, phone(4, False, 30, 22, 240, "96 184 208 204", arrow)) + caption(["Turn it to the metal stop.", "Then let go!"], 300), "Step 3: turn the number round to the metal stop, then let go.", 4))
     # 5 four numbers
     cardx, cardy = 54, 50
     cardd = rrect(cardx, cardy, 192, 120, 6)
@@ -139,22 +152,26 @@ def pages():
     for i, dgt in enumerate("3317"):
         cx_ = 72 + i * 52; cy_ = 220
         c += f'<circle cx="{cx_}" cy="{cy_}" r="20" fill="#fffaf0"/><g {WOB}><circle cx="{cx_}" cy="{cy_}" r="20" {LN}/></g><text x="{cx_}" y="{cy_+8}" text-anchor="middle" {SERIF} font-size="22" font-weight="600" fill="{INK}">{dgt}</text>'
-    out.append(page(5, c + caption(["Dial all four numbers", "to call a friend."], 300), "Step 4: dial all four numbers from the card file to call a friend.", 4))
+    out.append(page(5, c + caption(["Dial all four numbers", "to call a friend."], 300), "Step 4: dial all four numbers from the card file to call a friend.", 5))
     # 6 busy
     beep = (f'<text x="22" y="62" {HAND} font-size="24" font-weight="700" fill="{BERRY}" transform="rotate(-10 22 62)">beep</text>'
             f'<text x="34" y="96" {HAND} font-size="24" font-weight="700" fill="{BERRY}" transform="rotate(-6 34 96)">beep</text>'
             f'<text x="20" y="130" {HAND} font-size="24" font-weight="700" fill="{BERRY}" transform="rotate(-12 20 130)">beep</text>')
-    out.append(page(6, phone(6, True, 66, 24, 200) + beep + caption(["Beep, beep? They’re busy.", "Hang up, try later."], 300), "If you hear beep, beep, beep, they are busy. Hang up and try again later.", 5))
+    out.append(page(6, phone(6, True, 66, 24, 200) + beep + caption(["Beep, beep? They’re busy.", "Hang up, try later."], 300), "If you hear beep, beep, beep, they are busy. Hang up and try again later.", 6))
     # 7 quiet time
     moon = (f'<path d="M232 40 A26 26 0 1 0 256 78 A20 20 0 1 1 232 40 Z" fill="{SUN}" opacity=".8"/><g {WOB}><path d="M232 40 A26 26 0 1 0 256 78 A20 20 0 1 1 232 40 Z" {LN}/></g>'
             f'<text x="192" y="104" {HAND} font-size="22" fill="{SKY}">z</text><text x="206" y="88" {HAND} font-size="26" fill="{SKY}">z</text><text x="222" y="70" {HAND} font-size="30" fill="{SKY}">z</text>')
-    out.append(page(7, phone(7, False, 50, 6, 200) + moon + caption(["At quiet time", "the phone is asleep."], 300), "At quiet time the phone is asleep and can't ring or call.", 6))
+    out.append(page(7, phone(7, False, 50, 6, 200) + moon + caption(["At quiet time", "the phone is asleep."], 300), "At quiet time the phone is asleep and can't ring or call.", 7))
     # 8 no 911
     st = fix(desk.sticker(150, 132, 1.25, 1.25, -4), "tlb")
-    out.append(page(8, st + caption(["No 911 on this phone.", "In an emergency, find", "a grown-up and use theirs."], 264), "This phone can't call 911. In an emergency, find a grown-up and use their phone.", 7))
+    out.append(page(8, st + caption(["No 911 on this phone.", "In an emergency, find", "a grown-up and use theirs."], 264), "This phone can't call 911. In an emergency, find a grown-up and use their phone.", 8))
     # 9 hang up
     heart = crayon("M232 60 C222 44 200 52 210 70 L232 92 L254 70 C264 52 242 44 232 60 Z", BERRY, 2.6)
-    out.append(page(9, phone(9, False, 50, 6, 200) + heart + caption(["All done? Hang up.", "Bye!"], 300), "All done? Put the handset back to hang up. Bye!", 8))
+    out.append(page(9, phone(9, False, 50, 6, 200) + heart + caption(["All done? Hang up.", "Bye!"], 300), "All done? Put the handset back to hang up. Bye!", 9))
+    # notes: a lined page, before the end
+    lines = "".join(f'<path d="M30 {y} L{PW-30} {y}" stroke="{SKY}" stroke-width=".8" opacity=".45"/>' for y in range(96, 316, 24))
+    out.append(page("n", f'<text x="30" y="62" {HAND} font-size="30" font-weight="700" fill="{INK}">Notes</text><path d="M30 76 L{PW-30} 76" stroke="{BERRY}" stroke-width="1" opacity=".6"/>' + lines,
+                    "Notes: a lined page.", 10))
     # 10 the end (the inside of the back cover)
     end = (f'<text x="{PW/2}" y="150" text-anchor="middle" {SERIF} font-size="30" font-style="italic" fill="{INK}">The end.</text>'
            f'<text x="{PW/2}" y="190" text-anchor="middle" {HAND} font-size="28" fill="{SKY}">Now go call a friend!</text>'

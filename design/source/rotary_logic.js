@@ -118,7 +118,9 @@
     setLift(state.offHook ? 1 : 0); setTurn(0);
     // Ringing: only the handset trembles, a little, in bursts like the bell (see bundle.css).
     function setRinging(on) { root.classList.toggle("is-ringing", !!on); }
-    var api = { lift: function () { setHook(true); }, hangUp: function () { setHook(false); }, dial: dialDigit, setRinging: setRinging, isRinging: function () { return root.classList.contains("is-ringing"); },
+    // The line lamp on the front: lit when the phone is connected and ready; it flashes while it rings.
+    function setLine(on) { root.setAttribute("data-line", on ? "on" : "off"); }
+    var api = { lift: function () { setHook(true); }, hangUp: function () { setHook(false); }, dial: dialDigit, setRinging: setRinging, isRinging: function () { return root.classList.contains("is-ringing"); }, setLine: setLine, isLineOn: function () { return root.getAttribute("data-line") === "on"; },
                 isOffHook: function () { return state.offHook; }, setHook: setHook };
     root.__tlRotary = api;
     return api;

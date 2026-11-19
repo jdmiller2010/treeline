@@ -299,7 +299,9 @@
     setLift(state.offHook ? 1 : 0); setTurn(0);
     // Ringing: only the handset trembles, a little, in bursts like the bell (see bundle.css).
     function setRinging(on) { root.classList.toggle("is-ringing", !!on); }
-    var api = { lift: function () { setHook(true); }, hangUp: function () { setHook(false); }, dial: dialDigit, setRinging: setRinging, isRinging: function () { return root.classList.contains("is-ringing"); },
+    // The line lamp on the front: lit when the phone is connected and ready; it flashes while it rings.
+    function setLine(on) { root.setAttribute("data-line", on ? "on" : "off"); }
+    var api = { lift: function () { setHook(true); }, hangUp: function () { setHook(false); }, dial: dialDigit, setRinging: setRinging, isRinging: function () { return root.classList.contains("is-ringing"); }, setLine: setLine, isLineOn: function () { return root.getAttribute("data-line") === "on"; },
                 isOffHook: function () { return state.offHook; }, setHook: setHook };
     root.__tlRotary = api;
     return api;
@@ -468,8 +470,7 @@
       }
     });
     show();
-    // ---- the clock radio: the real time in red seven-segment digits; it blinks when the line is down,
-    // like a clock after a power cut. setOnline(true|false) from the app; the kit's demo assumes it's connected.
+    // ---- the clock radio: the real time in red seven-segment digits. (The line's state is the phone's own lamp.)
     var SEG = { "0": "abcdef", "1": "bc", "2": "abged", "3": "abgcd", "4": "fgbc", "5": "afgcd", "6": "afgedc", "7": "abc", "8": "abcdefg", "9": "abcdfg" };
     var online = true;
     function tick() {
@@ -477,19 +478,20 @@
       var cells = { h1: h12 >= 10 ? "1" : "", h2: String(h12 % 10), m1: String(Math.floor(m / 10)), m2: String(m % 10) };
       var label = h12 + ":" + (m < 10 ? "0" : "") + m + " " + (pm ? "PM" : "AM");
       all(".tl-desk__clock", function (c) {
-        if (c.getAttribute("data-time") === label + online) return;
-        c.setAttribute("data-time", label + online);
+        if (c.getAttribute("data-time") === label) return;
+        c.setAttribute("data-time", label);
         Array.prototype.forEach.call(c.querySelectorAll("[data-seg]"), function (sg) {
           var k = sg.getAttribute("data-seg"), cell = k.slice(0, 2), seg = k.slice(2);
           sg.classList.toggle("is-on", (SEG[cells[cell]] || "").indexOf(seg) >= 0);
         });
         c.querySelector(".tl-clk__am").classList.toggle("is-on", !pm);
         c.querySelector(".tl-clk__pm").classList.toggle("is-on", pm);
-        c.classList.toggle("is-offline", !online);
       });
       root.setAttribute("data-clock", label);
     }
-    function setOnline(on) { online = !!on; all(".tl-desk__clock", function (c) { c.setAttribute("data-time", ""); }); tick(); }
+    // The line: lights the lamp on the phone on the table (the kit's demo starts it lit).
+    function setOnline(on) { online = !!on; all("[data-tl-rotary]", function (r) { r.setAttribute("data-line", online ? "on" : "off"); }); }
+    if (!root.querySelector('[data-tl-rotary][data-line]')) setOnline(true);
     tick();
     var clockTimer = setInterval(function () { if (!root.isConnected) return clearInterval(clockTimer); tick(); }, 1000);
 

@@ -21,10 +21,11 @@ def look(kind, label, href_tok, attr_tok, link_label, note):
             f'<div class="tl-desk__held tl-desk__held--{kind}"><a class="tl-desk__heldart tl-desk__heldart--{kind}" href="{href_tok}"{attr_tok} aria-label="{link_label}">{PICK[kind]}</a></div>'
             f'<p class="tl-desk__heldnote">{note}</p>'
             f'<button type="button" class="tl-desk__putback" data-desk-close>Put it back</button></div>')
-sheets = "".join(f'<div class="tl-book__sheet"><div class="tl-book__face tl-book__face--front">{PAGES[2*k]}</div><div class="tl-book__face tl-book__face--back">{PAGES[2*k+1]}</div></div>' for k in range(5))
+assert len(PAGES) % 2 == 1, "the leaves take pages in pairs; the last page is the inside of the back cover"
+sheets = "".join(f'<div class="tl-book__sheet"><div class="tl-book__face tl-book__face--front">{PAGES[2*k]}</div><div class="tl-book__face tl-book__face--back">{PAGES[2*k+1]}</div></div>' for k in range(len(PAGES) // 2))
 book_look = ('<div class="tl-desk__look tl-desk__look--book" hidden role="dialog" aria-modal="true" aria-label="Rotary Phones the easy way">'
              '<div class="tl-desk__scrim" data-desk-close></div>'
-             f'<div class="tl-book"><div class="tl-book__fly"><div class="tl-book__spread"><div class="tl-book__base">{PAGES[10]}</div>{sheets}</div></div></div>'
+             f'<div class="tl-book"><div class="tl-book__fly"><div class="tl-book__spread"><div class="tl-book__base">{PAGES[-1]}</div>{sheets}</div></div></div>'
              '<div class="tl-book__nav"><button type="button" class="tl-book__turn tl-book__prev" aria-label="Turn back a page">‹</button>'
              '<p class="tl-book__count" aria-live="polite"></p>'
              '<button type="button" class="tl-book__turn tl-book__next" aria-label="Turn the page">›</button></div>'
@@ -80,7 +81,7 @@ component = r'''
       h("div", { className: "tl-desk__stage" },
         h("div", { className: "tl-desk__art", dangerouslySetInnerHTML: { __html: markup } }),
         h("div", { className: "tl-desk__phone" },
-          h(RotaryPhone, { id: pfx + "-phone", number: p.number, colorway: p.colorway, ringing: p.ringing, offHook: p.offHook, defaultOffHook: p.defaultOffHook,
+          h(RotaryPhone, { id: pfx + "-phone", number: p.number, colorway: p.colorway, ringing: p.ringing, online: p.online === undefined ? true : p.online, offHook: p.offHook, defaultOffHook: p.defaultOffHook,
             onDigit: p.onDigit, onHook: p.onHook, onPulse: p.onPulse, apiRef: p.apiRef, notice: false })),
         p.children ? h("div", { className: "tl-desk__slot" }, p.children) : null,
         h("p", { className: "tl-desk__sr" }, "This phone can’t call 911 or outside numbers. In an emergency, use a grown-up’s phone."),
@@ -163,11 +164,7 @@ css = f"""
 /* The clock radio: red seven-segment digits; unlit segments show faintly through the smoked glass. */
 .tl-clk__seg {{ fill: rgba(255, 58, 36, .07); }}
 .tl-clk__seg.is-on {{ fill: #ff3b26; filter: drop-shadow(0 0 1.2px rgba(255, 50, 30, .85)); }}
-.tl-clk__led {{ fill: #3fd06a; filter: drop-shadow(0 0 1.4px rgba(63, 208, 106, .9)); }}
-.tl-desk__clock.is-offline .tl-clk__led {{ fill: #3a302a; filter: none; }}
-.tl-desk__clock.is-offline .tl-clk__digits {{ animation: tl-clk-blink 1s steps(1, end) infinite; }}
-@keyframes tl-clk-blink {{ 50% {{ opacity: .12; }} }}
-@media (prefers-reduced-motion: reduce) {{ .tl-desk__clock.is-offline .tl-clk__digits {{ animation: none; opacity: .45; }} }}
+
 /* Picking things up. Everything here is laid over the whole room. */
 .tl-desk__layers {{ position: absolute; inset: 0; pointer-events: none; z-index: 20; }}
 .tl-desk__look {{ position: absolute; inset: 0; pointer-events: auto; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-4); padding: var(--space-6) var(--space-4); }}
@@ -248,7 +245,9 @@ export interface SoftphoneDeskProps {
   /** Something was picked up ("book", "coffee", "card", "licenses") or put back. */
   onOpen?: (item: string) => void; onClose?: (item: string) => void; onCoffee?: (e: any) => void;
   deskRef?: { current: SoftphoneDeskApi | null };
-  /** A few words on the wall above the phone (status, connection light). */
+  /** The line lamp on the phone: lit (default) when connected, dark when not. */
+  online?: boolean;
+  /** A few words on the wall (what the phone is doing). */
   children?: any;
   /** Fill the parent's height instead of the screen's. */
   fill?: boolean;

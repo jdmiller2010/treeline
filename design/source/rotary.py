@@ -22,6 +22,7 @@ L, M, D, S = "var(--tlp-l)", "var(--tlp-m)", "var(--tlp-d)", "var(--tlp-s)"
 # Western Electric 500 seen from the front and a little above: a big dial on the sloped face,
 # the classic curved handset across two cradle posts, its caps resting on the shoulders.
 CX, CY = 200, 292                        # dial center
+LAMP = (300, 362)                        # the line lamp on the body
 PLATE_R = 92                             # the printed number ring on the body
 R = 73                                   # finger wheel
 SQ = 0.93                                # the face's tilt squashes circles a little
@@ -95,6 +96,12 @@ def body():
         g.append(f'<path d="M{x-7} 140 L{x-10} 172" stroke="#ffffff" stroke-opacity=".45" stroke-width="3" stroke-linecap="round" fill="none"/>')
     g += ['</g>', f'<g opacity=".16" filter="url(#tlp-grain)"><path d="{FACE}" fill="#000"/></g>',
           f'<g {WOB}><path d="{FACE}" {LN}/>'] + [f'<path d="{post(x)}" {LN}/>' for x in POSTS] + ['</g>']
+    # The line lamp: a little jewel light on the front, lower right. Dark glass until the app lights it
+    # (data-line="on": ready, a soft green); it flashes gently while the phone rings. See bundle.css.
+    lx, ly = LAMP
+    g += [f'<circle cx="{lx}" cy="{ly}" r="7.5" fill="#5b5248"/><circle cx="{lx}" cy="{ly}" r="7.5" fill="none" stroke="#2a251c" stroke-width="1.2"/>',
+          f'<circle class="tlp-lamp" cx="{lx}" cy="{ly}" r="5" fill="#3a3530"/>',
+          f'<circle cx="{lx-1.8}" cy="{ly-1.8}" r="1.5" fill="#ffffff" opacity=".55"/>']
     # the number ring printed on the body, outside the finger wheel
     g.append(f'<ellipse cx="{CX}" cy="{CY}" rx="{PLATE_R}" ry="{PLATE_R*SQ:.2f}" fill="url(#tlp-plate)"/>')
     g.append(f'<g {WOB}><ellipse cx="{CX}" cy="{CY}" rx="{PLATE_R}" ry="{PLATE_R*SQ:.2f}" {LN}/></g>')

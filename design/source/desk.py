@@ -365,7 +365,7 @@ BOOK_W, BOOK_T = 200, 46          # length of the spine, thickness of the book
 def book_spine(x0, by, w=BOOK_W, t=BOOK_T, depth=60):
     """The guide lying flat on its back cover, spine toward you: the title reads across the spine."""
     x1 = x0 + w; top = by - t - depth
-    face = f"M{x0+7} {top} L{x1-7} {top} L{x1} {top+depth} L{x0} {top+depth} Z"
+    face = f"M{x0} {top} L{x1} {top} L{x1} {top+depth} L{x0} {top+depth} Z"      # square, so the cover picture fills it exactly
     spine = (f"M{x0} {top+depth} L{x1} {top+depth} C{x1+5} {top+depth+t*.3} {x1+5} {by-t*.3} {x1} {by} "
              f"L{x0} {by} C{x0-5} {by-t*.3} {x0-5} {top+depth+t*.3} {x0} {top+depth} Z")
     g = [f'<ellipse cx="{x0+w/2}" cy="{by+2}" rx="{w/2+16}" ry="8" fill="{INK}" opacity=".2" filter="url(#tls-edge)"/>',
@@ -477,7 +477,6 @@ def clock_radio():
           f'<text x="137" y="53" {SANS} font-size="4.2" fill="#d8ccbb">FM 88 92 96 100 108</text>',
           f'<text x="137" y="68" {SANS} font-size="4.2" fill="#d8ccbb">AM 55 65 80 100 160</text>',
           f'<path d="M168 55 L168 60" stroke="#ff5a3c" stroke-width="1.2"/>',
-          f'<text x="181" y="44.6" {SANS} font-size="3.2" letter-spacing=".4" fill="#b9ab98">LINE</text>',
           f'<g {WOB}><path d="{front} {top}" fill="none" stroke="{INK}" stroke-width="1.6"/></g>',
           f'<g opacity=".1" filter="url(#tls-grain)"><path d="{front} {top} {slope}" fill="#fff"/></g>']
     return "".join(g)
@@ -490,7 +489,7 @@ def clock_words():
             g.append(f'<polygon class="tl-clk__seg" data-seg="{cell}{k}" points="{pts}"/>')
     g.append('<rect class="tl-clk__seg is-on" x="75.6" y="49" width="3.2" height="3.2"/><rect class="tl-clk__seg is-on" x="75.6" y="58" width="3.2" height="3.2"/>')
     g.append('<circle class="tl-clk__seg tl-clk__am" cx="23" cy="48" r="1.6"/><circle class="tl-clk__seg tl-clk__pm" cx="23" cy="65.6" r="1.6"/>')
-    g.append('</g><circle class="tl-clk__led" cx="177.6" cy="43.6" r="1.8"/></g>')
+    g.append('</g></g>')
     return "".join(g)
 
 def book_box(x0, by, w=BOOK_W, t=BOOK_T, depth=60):
