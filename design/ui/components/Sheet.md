@@ -2,10 +2,10 @@
 
 A focused question or short form over the current screen: approve a friend, edit quiet hours, confirm a pause.
 
-**Consumer provides:** `title`, `children` (a `.tl-sheet__body` paragraph, fields), `actions` (up to two Buttons, primary last), `onClose`, `id` (for the title's label), `open`.
+**Consumer provides:** `title`, `children` (a `.tl-sheet__body` paragraph, fields), `actions` (up to two Buttons, primary written last), `onClose`, `id` (for the title's label), `open`.
 
-- **Under 768, bottom sheet:** full width, rounded `radius-xl` top corners, a grabber, `gutter-sm` side padding plus the safe area. Actions are stacked full width with the primary on top.
-- **768 and up, dialog:** centered, `sheet-max` (440) wide, `radius-xl`, `space-8` padding, a close button top-right, actions in a right-aligned row with the primary last.
+- **Under 768, bottom sheet:** full width, rounded `radius-xl` top corners, a grabber, `gutter-sm` side padding plus the safe area. Actions are in one left-aligned row, the primary first.
+- **768 and up, dialog:** centered, `sheet-max` (440) wide, `radius-xl`, `space-8` padding, a close button top-right, actions in the same left-aligned row, the primary first.
 - The `scrim` covers the whole app. Tapping it or pressing Escape closes the sheet unless it's mid-save.
 - Render it in AppShell's `overlay`, never inside main.
 - One sheet at a time. If a flow needs more than one screen, make it a page.

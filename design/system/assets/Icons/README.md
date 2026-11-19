@@ -14,6 +14,7 @@ These SVG files are drawn in `ink` (#2a251c) because an `<img>` can't inherit co
 - `shield-check`: approved, safe
 - `leaf`: connected friends
 - `ladder`: the treehouse, inviting someone in
+- `key`: entering a code
 - `home`: household
 - `users`: friends list
 - `clock`: time limits, waiting for approval

@@ -21,6 +21,7 @@ A 24-grid line icon drawn with `currentColor`, so it takes the color of the text
 | `shield-check` | Approved, safe |
 | `leaf` | Connected friends |
 | `ladder` | Treehouse, invite in |
+| `key` | Enter a code |
 | `home` | Household |
 | `users` | Friends list |
 | `clock` | Time limits, waiting |

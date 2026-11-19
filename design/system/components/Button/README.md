@@ -7,7 +7,7 @@ A labeled action. Secondary is the default; Primary (`canopy`) appears at most o
 - Labels are verbs, sentence case, short: "Approve", "Call Alex", "Pause Sam's phone". No exclamation marks.
 - `danger` (`berry`) only for removing a friend, ending a call or blocking. Always name what happens: "Remove Riley", not "Delete".
 - `ring` (`sunbeam`) is reserved for answering a ringing call. Nowhere else.
-- On phones, the main action is `lg` and `fullWidth`.
+- A button beside the main action is `secondary` (the default), never `quiet`: `quiet` is for a small extra action on its own ("Manage", "‹ All calls"), not the other half of a pair. On phones the main action is `lg`, at its natural width in the left-aligned `.tl-actions` row, never a full-width bar.
 - Disabled buttons drop to `opacity-disabled`. Say why nearby rather than leaving people guessing.
 - Buttons are pills. Primary is lit from above (`--tl-canopy-fill`); `ring` glows with `shadow-glow`.
 - Focus shows the `focus` ring, 2px with a 2px offset.

@@ -74,7 +74,7 @@ Pick space by **how related two things are**. Closer means more related. Each st
 - **Icons center on their text line.** With one line, use `align-items: center`. When text wraps, align the icon to the first line, not the middle of the block.
 - **Numbers align right and use tabular figures** (`font-variant-numeric: tabular-nums`) wherever they're compared: durations in the call log, times, counts.
 - **Rows align on their content,** not their borders: avatars, titles and trailing items line up down a list because every row uses the same padding and gap.
-- **Actions go at the end.** A card's or form's actions sit at the bottom right (`.tl-actions`), primary last (rightmost). On phones they stack full width with the primary on top (`.tl-actions--stack`).
+- **Actions go at the end, in one row, aligned left.** A card's, form's, sheet's or dialog's actions (`.tl-actions`) sit side by side at the bottom, aligned with each other and left-aligned as a group, at every width and in every container. The primary shows first (leftmost; write it last in the markup), the secondary after it. Buttons keep their natural width; the row wraps only if it can't fit. Never right-aligned, never stacked as full-width bars (`.tl-actions--stack` is kept for old markup and does nothing).
 - **Optical alignment wins over math** for round things: a pebble avatar or a circular icon well can sit 1px off the grid to look centered. Nothing else should.
 
 ## 6. Responsive behavior
@@ -117,7 +117,7 @@ The HTML kit and `bundle.css` include these classes so the rules above don't hav
 | `.tl-cluster` (+ `--actions`) | Wrapping row of tags or buttons |
 | `.tl-split` (+ `--top`) | Content left, trailing item right |
 | `.tl-grid` (+ `--2`, `--3`) | Card grid: 1 column under 640 content, 2 from 640, 3 from 900 |
-| `.tl-actions` (+ `--stack`) | End-of-card or form actions, right-aligned; `--stack` stacks them full width under 600 content |
+| `.tl-actions` | End-of-card, form, sheet or dialog actions: one row, left-aligned as a group, primary first, at every width (`--stack` is a no-op) |
 | `.tl-measure` | Caps running text at `reading-max` |
 
 ```html
@@ -182,7 +182,7 @@ Every screen is one of these four. Pick the template, then fill it with componen
 | --- | --- | --- | --- |
 | **Overview** | Home | One column: the one toned card (breeze or night) first, then today's summary, then waiting approvals, then sections | `.tl-grid--2` for the summary cards; sections below at full column width |
 | **List and detail** | Friends, Calls | The list fills the screen; tapping a row opens its detail as the whole screen with a back button (`.tl-listdetail.is-detail`) | List at `list-pane` (360) on the left, detail beside it, sticky under the AppBar |
-| **Settings form** | Quiet hours, a kid's phone, household | One column, cards full width, actions stacked full width at the bottom | One column at `sheet-max` (`.tl-page--narrow`), left-aligned under the AppBar title, actions right-aligned |
+| **Settings form** | Quiet hours, a kid's phone, household | One column, cards full width, actions in a left-aligned row at the bottom | One column at `sheet-max` (`.tl-page--narrow`), left-aligned under the AppBar title, actions in a left-aligned row |
 | **Focused task** | Approve a friend, pause a phone, confirm a change | Bottom sheet | Centered dialog |
 
 - A screen shows at most one toned card (breeze, night, dusk or plank).
@@ -227,7 +227,7 @@ Full markup for each part is in the AppShell, AppBar, NavBar, Sheet, ListDetail 
 | AppShell | Bar on top, tabs at the bottom, one column | Sidebar on the left, bar and page on one centered column |
 | NavBar | Bottom tabs: icon over 12px label, current tab marked on its top edge | Sidebar: icon beside 15px label, 44px rows, household footer. Tablets get the icon rail |
 | AppBar | 56 tall, Figtree 19 title, `collapse` buttons show icons only | 64 tall, Fraunces 24 title, labeled buttons, aligned to the page column |
-| Sheet | Bottom sheet, grabber, actions stacked full width, primary on top | Centered 440 dialog, close button, actions in a row, primary last |
+| Sheet | Bottom sheet, grabber, actions in a left-aligned row, primary first | Centered 440 dialog, close button, actions in a left-aligned row, primary first |
 | Menu | In the AppBar: action sheet from the bottom, 52px rows, scrim, tabs drop behind it. In the page: a popover, never wider than the column | Popover under its button, 44px rows, right-aligned |
 | Alert | Full column width; actions wrap under the body | Full column width, top of the page or above what it's about |
 | Toast | Centered just above the bottom tabs and the home indicator | Centered over the page column, `space-8` from the bottom, clear of the rail or sidebar |
@@ -247,7 +247,7 @@ Full markup for each part is in the AppShell, AppBar, NavBar, Sheet, ListDetail 
 | RotaryPhone | Fills the width up to 460, centered; the notice under it | Same, centered on the softphone screen |
 | ListDetail | One pane at a time; tapping a row shows the detail with a back link | List at 360 beside the detail; no back link |
 | Page templates | Single column; summary cards stack | Overview gets two summary cards; Settings form caps at 440 on the page's left edge |
-| Button | In `.tl-actions--stack` and sheets: full width, primary on top | Natural width, right-aligned in `.tl-actions`, primary last |
+| Button | In `.tl-actions` (cards, forms, sheets): natural width, in a left-aligned row, primary first | The same |
 | IconButton | 40 visible, 44 tap area | Same |
 | Card | Under 481 content: `space-5` padding; list cards keep `space-1` | `space-6` padding |
 | Card grid | One column | Two columns from 640, three from 900 |

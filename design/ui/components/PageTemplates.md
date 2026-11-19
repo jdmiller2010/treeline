@@ -4,7 +4,7 @@ Every parent screen is one of four templates. Pick the template first, then fill
 
 - **Overview (Home):** `.tl-page` › `.tl-stack--sections`. The one toned card (breeze or night) comes first, then the day's summary, in a `.tl-grid--2`; then "Waiting on families" (ApprovalCards); then "Approved friends" (a list card). One column on phones, two summary cards side by side from 640 content.
 - **List and detail (Friends, Calls):** see ListDetail.
-- **Settings form (Quiet hours, a kid's phone, the household):** `.tl-page.tl-page--narrow` › `.tl-stack--cards` of cards, each with `.tl-stack--group` fields and a `.tl-actions--stack` row. The column keeps the page's left edge (it lines up with the AppBar title) and caps at `sheet-max`. Actions stack full width under 600 content, primary on top; otherwise right-aligned, primary last.
+- **Settings form (Quiet hours, a kid's phone, the household):** `.tl-page.tl-page--narrow` › `.tl-stack--cards` of cards, each with `.tl-stack--group` fields and a `.tl-actions--stack` row. The column keeps the page's left edge (it lines up with the AppBar title) and caps at `sheet-max`. Actions are one left-aligned row at every width, the primary first.
 - **Focused task (approve, pause, confirm):** a Sheet over whatever screen you're on. See Sheet.
 - Section headings are `h2.title-lg`; the page's `h1` is the AppBar title. A screen shows at most one toned card.
 - Empty pages put an `EmptyState` in a card, centered in the column.

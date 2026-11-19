@@ -12,6 +12,7 @@ export const ICONS = {
  "eye": "<path d=\"M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z\"/><circle cx=\"12\" cy=\"12\" r=\"3\"/>",
  "home": "<path d=\"M4 11l8-6 8 6\"/><path d=\"M6 10v9h12v-9\"/><path d=\"M10 19v-5h4v5\"/>",
  "info": "<circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M12 11v5.5\"/><path d=\"M12 7.5v.01\"/>",
+ "key": "<circle cx=\"7.5\" cy=\"16.5\" r=\"3.5\"/><path d=\"M10 14 20 4\"/><path d=\"M15 9l2.5 2.5\"/><path d=\"M18 6l2 2\"/>",
  "ladder": "<path d=\"M8 3v18M16 3v18M8 7.5h8M8 12h8M8 16.5h8\"/>",
  "leaf": "<path d=\"M5 19c0-8 5-14 14-14 0 9-6 14-14 14z\"/><path d=\"M5 19l8-8\"/>",
  "lock": "<rect x=\"5\" y=\"11\" width=\"14\" height=\"9\" rx=\"2\"/><path d=\"M8 11V8a4 4 0 0 1 8 0v3\"/>",

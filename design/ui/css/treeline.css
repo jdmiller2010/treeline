@@ -382,9 +382,12 @@ body {
 @container (min-width: 640px) { .tl-grid--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); } .tl-grid--3 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @container (min-width: 900px) { .tl-grid--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 
-/* Actions row at the end of a card or form: right-aligned on wide screens, full width on phones. */
-.tl-actions { display: flex; flex-wrap: wrap; gap: var(--space-3); justify-content: flex-end; margin-top: var(--space-6); }
-@container (max-width: 599px) { .tl-actions--stack { flex-direction: column-reverse; } .tl-actions--stack > .tl-btn { width: 100%; } }
+/* Actions at the end of a card, form, sheet or dialog: one row, side by side, left-aligned as a group, at every width.
+   The primary is written last in the markup and shows first (leftmost); the secondary follows it. Buttons keep their
+   natural width and the row only wraps if it can't fit. Never right-aligned and never stacked as full-width bars. */
+.tl-actions { display: flex; flex-wrap: wrap; flex-direction: row-reverse; justify-content: flex-end; gap: var(--space-3); margin-top: var(--space-6); }
+.tl-actions > .tl-btn { width: auto; }
+/* .tl-actions--stack is kept so existing markup still works; it no longer changes anything. */
 
 /* Narrow content (phones): a row's presence moves under the name so the row never scrolls sideways. */
 .tl-row__presence-inline { display: none; }
@@ -485,8 +488,6 @@ body {
 .tl-sheet__title { margin: 0; font: 500 24px/32px var(--font-display); font-variation-settings: "SOFT" 100; letter-spacing: -.005em; }
 .tl-sheet__close { display: none; margin: calc(-1 * var(--space-2)) calc(-1 * var(--space-2)) 0 0; }
 .tl-sheet__body { margin: 0; font: 400 16px/26px var(--font-sans); color: var(--ink-muted); }
-.tl-sheet .tl-actions { flex-direction: column-reverse; }
-.tl-sheet .tl-actions > .tl-btn { width: 100%; }
 @keyframes tl-fade { from { opacity: 0; } }
 @keyframes tl-sheet-up { from { transform: translateY(24px); opacity: 0; } }
 @container tl-app (min-width: 768px) {
@@ -494,8 +495,6 @@ body {
   .tl-sheet { max-width: var(--sheet-max); max-height: 85%; border-radius: var(--radius-xl); padding: var(--space-8); }
   .tl-sheet__grabber { display: none; }
   .tl-sheet__close { display: inline-flex; }
-  .tl-sheet .tl-actions { flex-direction: row; }
-  .tl-sheet .tl-actions > .tl-btn { width: auto; }
 }
 @media (prefers-reduced-motion: reduce) { .tl-sheet, .tl-sheet-scrim { animation: none; } }
 
@@ -636,6 +635,8 @@ body {
 .tl-avatar-btn { display: inline-grid; place-items: center; width: var(--touch-min); height: var(--touch-min); padding: 0; border: 0; border-radius: 50%; background: none; cursor: pointer; }
 .tl-avatar-btn:focus-visible { outline: var(--border-focus) solid var(--focus); outline-offset: 0; }
 .tl-avatar-btn[aria-expanded="true"] .tl-avatar { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--line-strong); }
+/* In the app bar the account avatar is as tall as the buttons beside it (the pause button), so the two read as one row. */
+.tl-appbar .tl-avatar-btn .tl-avatar { width: var(--control-md); height: var(--control-md); font-size: 16px; }
 
 /* Hook classes: kept in the markup for scripting and tests. They need no styles of their own
    (the neutral and success tones use the base look), so the rule is intentionally empty. */
