@@ -161,6 +161,8 @@ css = f"""
 .tl-desk__slot {{ left: 32%; right: 42%; top: 2%; }}
 }}
 .tl-desk__card, .tl-desk__card--falling {{ transform-box: fill-box; transform-origin: 50% 100%; }}
+.tl-cf-knob {{ transform-box: fill-box; transform-origin: 50% 50%; }}
+.tl-cf-fan {{ transform-box: fill-box; transform-origin: 0% 100%; }}
 
 /* Picking things up. Everything here is laid over the whole room. */
 .tl-desk__layers {{ position: absolute; inset: 0; pointer-events: none; z-index: 20; }}
@@ -221,7 +223,7 @@ export interface SoftphoneDeskApi { setOnline(on: boolean): void; isOnline(): bo
 export interface SoftphoneDeskProps {
   /** The treehouse's own 4 digits, shown in the middle of the dial. */
   number?: string;
-  colorway?: "moss" | "ivory" | "berry";
+  colorway?: "berry" | "moss" | "ivory";
   /** Written across the top of the kid's drawing on the wall. */
   treehouseName?: string;
   /** The approved strings, one card each in the card file (the phone book). */

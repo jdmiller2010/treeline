@@ -24,26 +24,36 @@
         : "Phone book: no strings yet. A grown-up can add one in the parent app.");
     }
 
-    // ---- the card file: the front card tips forward over the rod, a blank one after it, and the next is underneath
-    var flipping = 0;
+    // ---- the card file turns like a real rotary file. Forward: the front card tips toward you off the rod and
+    // drops away; the next card swings up out of the fan behind and settles upright with a small tick; the big
+    // knob turns a notch and the fan rocks with it. Back: the same, reversed. Reduced motion: the card just changes.
+    var flipping = 0, knobTurn = 0;
     function go(step) {
       if (list.length < 2) return;
       var animate = !reduce && typeof Element.prototype.animate === "function";
-      if (animate) all(".tl-desk__card", function (card) {
-        if (!card.getBoundingClientRect().width) return;                    // a hidden arrangement
-        [1, 0].forEach(function (k) {
-          var c = card.cloneNode(true);
-          c.classList.remove("tl-desk__card"); c.classList.add("tl-desk__card--falling");
-          if (k) Array.prototype.forEach.call(c.querySelectorAll("text"), function (t) { t.textContent = ""; });
-          card.parentNode.appendChild(c);
-          var a = c.animate([
-            { transform: "none", opacity: 1 },
-            { transform: "translateY(3%) scaleY(.06)", opacity: 1, offset: .62 },
-            { transform: "translateY(10%) scaleY(-.18)", opacity: 0 }], { duration: 300, delay: k * 110 + flipping * 40, easing: "cubic-bezier(.5,0,.75,.4)", fill: "both" });
-          a.onfinish = function () { c.remove(); };
+      var fwd = step > 0, lag = flipping * 50;
+      if (animate) {
+        all(".tl-desk__card", function (card) {
+          if (!card.getBoundingClientRect().width) return;                  // a hidden arrangement
+          var old = card.cloneNode(true);                                   // the card going away, still showing its words
+          old.classList.remove("tl-desk__card"); old.classList.add("tl-desk__card--falling");
+          Array.prototype.forEach.call(old.querySelectorAll("[class]"), function (n) { n.removeAttribute("class"); });   // keep its old words
+          card.parentNode.appendChild(old);
+          var away = fwd
+            ? [{ transform: "none", opacity: 1 }, { transform: "translateY(2%) scaleY(.35)", opacity: 1, offset: .55 }, { transform: "translateY(9%) scaleY(-.12)", opacity: 0 }]
+            : [{ transform: "none", opacity: 1 }, { transform: "translate(5%, -3%) scaleY(.82) skewX(-10deg)", opacity: .6, offset: .6 }, { transform: "translate(9%, -5%) scaleY(.7) skewX(-16deg)", opacity: 0 }];
+          var a = old.animate(away, { duration: 320, delay: lag, easing: "cubic-bezier(.45,0,.8,.45)", fill: "both" });
+          a.onfinish = function () { old.remove(); };
+          var come = fwd
+            ? [{ transform: "translate(9%, -5%) scaleY(.7) skewX(-16deg)", opacity: 0 }, { transform: "translate(2%, -1%) scaleY(.95) skewX(-4deg)", opacity: 1, offset: .55 }, { transform: "translateY(-1.5%) scaleY(1.02)", offset: .82 }, { transform: "none", opacity: 1 }]
+            : [{ transform: "translateY(9%) scaleY(-.12)", opacity: 0 }, { transform: "translateY(2%) scaleY(.4)", opacity: 1, offset: .45 }, { transform: "translateY(-1.5%) scaleY(1.02)", offset: .82 }, { transform: "none", opacity: 1 }];
+          card.animate(come, { duration: 420, delay: lag + 140, easing: "cubic-bezier(.2,.7,.3,1)", fill: "backwards" });
         });
-      });
-      flipping++; setTimeout(function () { flipping = Math.max(0, flipping - 1); }, 420);
+        knobTurn += fwd ? 36 : -36;
+        all(".tl-cf-knob", function (k) { k.animate([{ transform: "rotate(" + (knobTurn - (fwd ? 36 : -36)) + "deg)" }, { transform: "rotate(" + knobTurn + "deg)" }], { duration: 460, delay: lag, easing: "cubic-bezier(.3,.7,.3,1)", fill: "forwards" }); });
+        all(".tl-cf-fan", function (f) { f.animate([{ transform: "none" }, { transform: "rotate(" + (fwd ? -3 : 3) + "deg)", offset: .4 }, { transform: "none" }], { duration: 520, delay: lag, easing: "ease-in-out" }); });
+      }
+      flipping++; setTimeout(function () { flipping = Math.max(0, flipping - 1); }, 480);
       i = (i + step + list.length) % list.length; show();
       emit("tl-desk-card", { index: i, contact: list[i] });
     }

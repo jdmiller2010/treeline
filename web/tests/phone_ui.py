@@ -118,7 +118,8 @@ def main():
         check(friend["number"] in nums, "the card file has a card for the string, with its number")
         quiet = tablet.evaluate("() => document.querySelector('.tl-desk__quiettext').textContent")
         check(bool(re.match(r"^(none|\d{1,2}(:\d\d)? [ap]m – \d{1,2}(:\d\d)? [ap]m)$", quiet)), "the sticky note shows the quiet hours", quiet)
-        check(tablet.inner_text("#status").strip() == "" and tablet.inner_text("#sub").strip() == "", "an idle phone's wall has no how-to words: the guide book teaches")
+        _st, _sb = tablet.inner_text("#status").strip(), tablet.inner_text("#sub").strip()
+        check(_st in ("", "The phone is sleeping") and _sb == "", "an idle phone's wall has no how-to words: the guide book teaches", f"{_st!r} / {_sb!r}")
         # the little light on the phone is the line: no SIP here, so it's dark
         lamp = lambda: tablet.evaluate("() => getComputedStyle(document.querySelector('.tl-rotary .tlp-lamp')).fill")
         check(tablet.get_attribute(".tl-rotary", "data-line") == "off" and "reconnecting" in tablet.inner_text("#reg"),

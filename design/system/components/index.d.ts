@@ -123,7 +123,7 @@ export interface SoftphoneDeskApi { setOnline(on: boolean): void; isOnline(): bo
 export interface SoftphoneDeskProps {
   /** The treehouse's own 4 digits, shown in the middle of the dial. */
   number?: string;
-  colorway?: "moss" | "ivory" | "berry";
+  colorway?: "berry" | "moss" | "ivory";
   /** Written across the top of the kid's drawing on the wall. */
   treehouseName?: string;
   /** The approved strings, one card each in the card file (the phone book). */

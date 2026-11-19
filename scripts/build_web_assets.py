@@ -39,9 +39,9 @@ def brand():
 
 
 def rotary():
-    """The softphone's drawing, from components/RotaryPhone.html (moss, on the hook)."""
+    """The softphone's drawing, from components/RotaryPhone.html (berry, on the hook)."""
     text = (UI / "components" / "RotaryPhone.html").read_text()
-    m = re.search(r"<!-- Moss, on the hook -->\s*(<div class=\"tl-rotary .*?</p>\s*</div>)", text, re.S)
+    m = re.search(r"<!-- Berry, on the hook -->\s*(<div class=\"tl-rotary .*?</p>\s*</div>)", text, re.S)
     return m.group(1)
 
 
@@ -53,7 +53,7 @@ def desk():
     markup = m.group(1).rstrip()
     markup = re.sub(r'(class="tl-desk__name"[^>]*>)[^<]*<', r"\1<", markup)
     markup = re.sub(r'(class="tl-desk__quiettext"[^>]*>)[^<]*<', r"\1<", markup)
-    markup = markup.replace("tl-rotary--ivory", "tl-rotary--moss", 1)      # the example's phone is ivory; ours is moss
+    markup = markup.replace("tl-rotary--ivory", "tl-rotary--berry", 1)    # the example's phone is ivory; ours is berry (red)
     assert markup.count('class="tl-desk__name"') == 3 and "data-tl-desk" in markup
     return markup
 

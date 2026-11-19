@@ -1,4 +1,4 @@
-# Flat stills of the room for the design system: the scene, its words and the moss phone in one SVG per layout.
+# Flat stills of the room for the design system: the scene, its words and the berry (red) phone in one SVG per layout.
 import re, os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import desk
@@ -11,7 +11,7 @@ ON = {"h2a", "h2b", "h2c", "m1a", "m1b", "m1c", "m1d", "m1g", "m2a", "m2b", "m2c
 def inner(svg):
     return re.sub(r"^<svg[^>]*>|</svg>\s*$", "", svg.strip(), flags=re.S)
 
-phone = open(os.path.join(OUT, "rotary-phone-moss.svg")).read()
+phone = open(os.path.join(OUT, "rotary-phone-berry.svg")).read()
 pv = re.search(r'viewBox="([^"]+)"', phone).group(1); _, _, vw, vh = map(float, pv.split())
 phone_in = re.sub(r'(class="tlp-lamp"[^>]*?)fill="[^"]*"', r'\1fill="#7fd08a"', inner(phone))
 for name, fn in NAMES.items():

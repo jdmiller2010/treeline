@@ -212,6 +212,7 @@ def card_file():
     g = [f'<ellipse cx="808" cy="668" rx="124" ry="13" fill="{WOOD_S}" opacity=".35" filter="url(#tls-soft)"/>']
     # the cards fanned back round the rod, furthest first; a few have index tabs
     tabs = {30: "#c9a24a", 60: "#6f8f5a", 90: "#b0372f"}
+    g.append('<g class="tl-cf-fan">')
     for th in range(110, 0, -10):
         pts = _cf_card(th)
         d = "M" + " L".join(f"{px:.1f} {py:.1f}" for px, py in pts) + " Z"
@@ -221,6 +222,7 @@ def card_file():
         if th in tabs:
             (_, _), (_, _), (tx, ty_), (_, _) = pts
             g.append(f'<path d="M{tx-30:.1f} {ty_:.1f} L{tx-28:.1f} {ty_-8:.1f} L{tx-10:.1f} {ty_-8:.1f} L{tx-8:.1f} {ty_:.1f} Z" fill="{tabs[th]}" stroke="{INK}" stroke-width=".9"/>')
+    g.append('</g>')
     # the rod
     g.append(f'<g {WOB}><path d="M708 {CF_ROD} L894 {CF_ROD}" {LN}/></g>')
     # the cradle: a low base with arms up to the knobs; its right end shows
@@ -234,13 +236,15 @@ def card_file():
     g.append(f'<path d="{rrect(x, y, w, h, 4)}" fill="{INK}" opacity=".14" transform="translate(3 3)" filter="url(#tls-edge)"/>')
     # knobs: the near one big, at the hub of the fan; the far one smaller
     for kx, r in ((704, 20), (900, 26)):
+        if kx == 900: g.append('<g class="tl-cf-knob">')
         g.append(f'<circle cx="{kx+2}" cy="{CF_ROD+3}" r="{r}" fill="{INK}" opacity=".3"/>'
                  f'<g {WASH}><circle cx="{kx+2}" cy="{CF_ROD+1.5}" r="{r}" fill="#57514a"/></g>'
                  f'<circle cx="{kx}" cy="{CF_ROD}" r="{r*.3:.1f}" fill="#d9d2c4"/>'
                  f'<g {WOB}><circle cx="{kx}" cy="{CF_ROD}" r="{r}" {LN}/><circle cx="{kx}" cy="{CF_ROD}" r="{r*.3:.1f}" {LNS}/></g>')
-    for k in range(12):                                       # grip ridges on the big knob
+    for k in range(12):                                       # grip ridges on the big knob (they turn with it)
         a_ = k / 12 * math.tau
         g.append(f'<path d="M{900+19*math.cos(a_):.1f} {CF_ROD+19*math.sin(a_):.1f} L{900+25*math.cos(a_):.1f} {CF_ROD+25*math.sin(a_):.1f}" stroke="{INK}" stroke-width="1.1" opacity=".55"/>')
+    g.append('</g>')
     return "".join(g)
 
 # ---------------------------------------------------------------- the shelf
@@ -402,19 +406,17 @@ def moved(box, pl):
 
 # ---------------------------------------------------------------- the guide book, spine out
 BOOK_W, BOOK_T = 200, 30          # length of the spine, thickness of the book
-def book_spine(x0, by, w=BOOK_W, t=BOOK_T, depth=60):
-    """The guide lying flat on its back cover, spine toward you: the title reads across the spine."""
-    x1 = x0 + w; top = by - t - depth
-    face = f"M{x0} {top} L{x1} {top} L{x1} {top+depth} L{x0} {top+depth} Z"      # square, so the cover picture fills it exactly
+def book_spine(x0, by, w=BOOK_W, t=BOOK_T, depth=26):
+    """The guide lying flat on its back cover, spine toward you: the title reads across the spine. Seen from
+    the side of the table, only a sliver of the front cover shows on top: its blue band and cream, no words."""
+    x1 = x0 + w; top = by - t - depth; k = depth * .55          # the far edge is a little shorter, like the table top
+    face = f"M{x0+k:.1f} {top} L{x1-k:.1f} {top} L{x1} {top+depth} L{x0} {top+depth} Z"
+    band = f"M{x0+k:.1f} {top} L{x0+k+w*.3:.1f} {top} L{x0+w*.3:.1f} {top+depth} L{x0} {top+depth} Z"
     spine = (f"M{x0} {top+depth} L{x1} {top+depth} C{x1+5} {top+depth+t*.3} {x1+5} {by-t*.3} {x1} {by} "
              f"L{x0} {by} C{x0-5} {by-t*.3} {x0-5} {top+depth+t*.3} {x0} {top+depth} Z")
     g = [f'<ellipse cx="{x0+w/2}" cy="{by+2}" rx="{w/2+16}" ry="8" fill="{INK}" opacity=".2" filter="url(#tls-edge)"/>',
-         shape(face, "#fbf3df"),
-         # the front cover, seen from above: the same design as the book's real cover (desk_pages), lying with
-         # its spine edge toward you, so its top points left. Plain shapes only: no ids, since the room is drawn three ways.
-         f'<clipPath id="tls-bookface{int(x0)}{int(by)}"><path d="{face}"/></clipPath>',
-         f'<g clip-path="url(#tls-bookface{int(x0)}{int(by)})"><g transform="translate({x0} {top+depth}) scale({w/450:.4f} {depth/300:.4f}) rotate(-90)">'
-         f'<image href="{COVER_IMAGE}" width="300" height="450" preserveAspectRatio="none"/></g></g>',
+         f'<g {WASH}><path d="{face}" fill="#fbf3df"/><path d="{band}" fill="{SKY}"/>'
+         f'<path d="M{x0+w*.3:.1f} {top+depth} L{x0+k+w*.3:.1f} {top}" stroke="{SUN}" stroke-width="2.4"/></g>',
          f'<g {WOB}><path d="{face}" {LN}/></g>',
          shape(spine, SKY, edge="#0f2c40"),
          f'<path d="M{x0+30} {top+depth+4} L{x0+30} {by-4} M{x0+34} {top+depth+4} L{x0+34} {by-4} M{x1-34} {top+depth+4} L{x1-34} {by-4} M{x1-30} {top+depth+4} L{x1-30} {by-4}" stroke="{SUN}" stroke-width="1.6"/>',
@@ -429,7 +431,7 @@ def book_spine(x0, by, w=BOOK_W, t=BOOK_T, depth=60):
 import base64, os
 _here = os.path.dirname(os.path.abspath(__file__))
 _cov = next((f for f in (os.path.join(_here, "cover.jpg"), os.path.join(_here, "out", "cover.jpg")) if os.path.exists(f)), "")
-COVER_IMAGE = "data:image/jpeg;base64," + base64.b64encode(open(_cov, "rb").read()).decode() if _cov else ""
+COVER_IMAGE = ""   # (the table book no longer shows the cover picture)
 
 def cover_top():
     """The guide's front cover (300 x 356): the same design as the cover in the book (desk_pages), drawn
@@ -460,7 +462,7 @@ def cover_top():
             f'<text x="274" y="344" text-anchor="end" {SANS} font-size="10" font-weight="700" letter-spacing="1.6" fill="{SKY}">2ND EDITION</text>'
             f'<rect width="300" height="356" fill="none" stroke="{INK}" stroke-width="2" opacity=".5"/>')
 
-def book_box(x0, by, w=BOOK_W, t=BOOK_T, depth=60):
+def book_box(x0, by, w=BOOK_W, t=BOOK_T, depth=26):
     return (x0 - 8, by - t - depth - 6, w + 16, t + depth + 14)
 
 # ---------------------------------------------------------------- the warranty card, sticking out of the drawer
@@ -488,8 +490,8 @@ LAYOUTS = {
         "phone": {"x": 270, "y": 2, "w": 560},
         "sticker": (510, 820, .78, .78, -3),
         "bookspine": (70, 692, 228), "peek": (668, 768),
-        "place": {"sticky": (72, 150, 34, 40, 1), "sketch": (92, 360, 46, 252, .92), "cork": (676, 64, 800, 40, 1),
-                  "cardfile": (684, 674, 738, 650, .8)},
+        "place": {"sticky": (72, 150, 34, 40, 1), "sketch": (92, 360, 46, 252, .92), "cork": (676, 64, 768, 40, 1),
+                  "cardfile": (684, 674, 786, 652, .78)},
         "shelf": [], "table_items": ["cardfile"], "sketch": True},
     # Tablets held upright: the same side table, the phone much bigger, the corkboard down beside it.
     "portrait": {"W": 1000, "H": 1304,
@@ -497,10 +499,10 @@ LAYOUTS = {
                   "drawer": (286, 978, 428, 100), "knob": (324, 1028)},
         "phone": {"x": 170, "y": 49, "w": 660},
         "sticker": (466, 1030, .78, .78, -3),
-        "bookspine": (66, 898, 186), "peek": (624, 978),
-        "place": {"sticky": (72, 150, 20, 60, 1), "sketch": (92, 360, 30, 290, .9), "cork": (676, 64, 788, 180, .72),
-                  "cardfile": (684, 674, 700, 888, .78), "spines": (0, 0, 120, 440, .8), "plant": (0, 0, 172, 453, .8)},
-        "shelf": ["spines", "plant"], "table_items": ["cardfile"], "sketch": True},
+        "bookspine": (64, 898, 168), "peek": (624, 978),
+        "place": {"sticky": (72, 150, 20, 60, 1), "sketch": (92, 360, 30, 290, .9), "cork": (676, 64, 763, 180, .72),
+                  "cardfile": (684, 674, 196, 1240, .72), "spines": (0, 0, 196, 440, .8), "plant": (0, 0, 172, 453, .8)},
+        "shelf": ["spines", "plant", "cardfile"], "table_items": [], "sketch": True},
     # Phones: a narrow nightstand, the phone across nearly the whole width, the wall things above it,
     # the book and the card file on the shelf.
     "tall": {"W": 600, "H": 1340,
@@ -508,9 +510,9 @@ LAYOUTS = {
                   "drawer": (70, 990, 460, 118), "knob": (108, 1049)},
         "phone": {"x": 28, "y": 245, "w": 544},
         "sticker": (290, 1050, .85, .85, -3),
-        "bookspine": (82, 1290, 150), "peek": (452, 990),
+        "bookspine": (126, 1290, 150), "peek": (452, 990),
         "place": {"sticky": (72, 150, 12, 28, .96), "sketch": (92, 360, 14, 214, .85), "cork": (676, 64, 350, 12, .82),
-                  "cardfile": (684, 674, 238, 1286, .6)},
+                  "cardfile": (684, 674, 308, 1286, .6)},
         "shelf": ["cardfile"], "table_items": [], "sketch": True},
 }
 
