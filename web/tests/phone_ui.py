@@ -119,10 +119,6 @@ def main():
         quiet = tablet.evaluate("() => document.querySelector('.tl-desk__quiettext').textContent")
         check(bool(re.match(r"^(none|\d{1,2}(:\d\d)? [ap]m – \d{1,2}(:\d\d)? [ap]m)$", quiet)), "the sticky note shows the quiet hours", quiet)
         check(tablet.inner_text("#status").strip() == "" and tablet.inner_text("#sub").strip() == "", "an idle phone's wall has no how-to words: the guide book teaches")
-        # the clock radio on the desk shows the real time
-        now = tablet.evaluate("() => { const d = new Date(), h = d.getHours(); return ((h + 11) % 12 + 1) + ':' + String(d.getMinutes()).padStart(2, '0') + ' ' + (h >= 12 ? 'PM' : 'AM'); }")
-        shown = tablet.get_attribute("[data-tl-desk]", "data-clock")
-        check(shown == now, "the clock radio shows the real time", f"{shown} vs {now}")
         # the little light on the phone is the line: no SIP here, so it's dark
         lamp = lambda: tablet.evaluate("() => getComputedStyle(document.querySelector('.tl-rotary .tlp-lamp')).fill")
         check(tablet.get_attribute(".tl-rotary", "data-line") == "off" and "reconnecting" in tablet.inner_text("#reg"),

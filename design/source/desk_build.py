@@ -129,9 +129,9 @@ def layout_css(n, sel=""):
     out += [f"{sel}.tl-desk__hot--{k} {{ left: {pct(x, W)}; top: {pct(y, H)}; width: {pct(w, W)}; height: {pct(h, H)}; }}" for k, (x, y, w, h) in g["hotspots"].items()]
     return "\n".join(out)
 css = f"""
-/* >>> SoftphoneDesk — the tablet softphone screen: the phone on a log table in a treehouse.
-   The room is a still picture drawn three ways, chosen by the screen's shape: wide (1240 × 890) for
-   landscape tablets and desktops, portrait (1000 × 1420) for upright tablets, tall (600 × 1412) for phones.
+/* >>> SoftphoneDesk — the tablet softphone screen: the phone on a side table in a 90s room.
+   The room is a still picture drawn three ways, chosen by the screen's shape: wide (1100 × 890) for
+   landscape tablets and desktops, portrait (1000 × 1304) for upright tablets, tall (600 × 1340) for phones.
    No wallpaper: the room sits on the page's canvas, so it works in Daylight and Lantern.
    Each is zoomed in on the phone and the table top so the dial and handset stay big. The phone and the props on it are live. */
 .tl-desk {{ container-type: size; position: relative; width: 100%; height: 100dvh; overflow: hidden; display: flex; align-items: flex-end; justify-content: center;
@@ -161,9 +161,6 @@ css = f"""
 .tl-desk__slot {{ left: 32%; right: 42%; top: 2%; }}
 }}
 .tl-desk__card, .tl-desk__card--falling {{ transform-box: fill-box; transform-origin: 50% 100%; }}
-/* The clock radio: red seven-segment digits; unlit segments show faintly through the smoked glass. */
-.tl-clk__seg {{ fill: rgba(255, 58, 36, .07); }}
-.tl-clk__seg.is-on {{ fill: #ff3b26; filter: drop-shadow(0 0 1.2px rgba(255, 50, 30, .85)); }}
 
 /* Picking things up. Everything here is laid over the whole room. */
 .tl-desk__layers {{ position: absolute; inset: 0; pointer-events: none; z-index: 20; }}

@@ -470,30 +470,10 @@
       }
     });
     show();
-    // ---- the clock radio: the real time in red seven-segment digits. (The line's state is the phone's own lamp.)
-    var SEG = { "0": "abcdef", "1": "bc", "2": "abged", "3": "abgcd", "4": "fgbc", "5": "afgcd", "6": "afgedc", "7": "abc", "8": "abcdefg", "9": "abcdfg" };
     var online = true;
-    function tick() {
-      var d = new Date(), h = d.getHours(), m = d.getMinutes(), pm = h >= 12, h12 = ((h + 11) % 12) + 1;
-      var cells = { h1: h12 >= 10 ? "1" : "", h2: String(h12 % 10), m1: String(Math.floor(m / 10)), m2: String(m % 10) };
-      var label = h12 + ":" + (m < 10 ? "0" : "") + m + " " + (pm ? "PM" : "AM");
-      all(".tl-desk__clock", function (c) {
-        if (c.getAttribute("data-time") === label) return;
-        c.setAttribute("data-time", label);
-        Array.prototype.forEach.call(c.querySelectorAll("[data-seg]"), function (sg) {
-          var k = sg.getAttribute("data-seg"), cell = k.slice(0, 2), seg = k.slice(2);
-          sg.classList.toggle("is-on", (SEG[cells[cell]] || "").indexOf(seg) >= 0);
-        });
-        c.querySelector(".tl-clk__am").classList.toggle("is-on", !pm);
-        c.querySelector(".tl-clk__pm").classList.toggle("is-on", pm);
-      });
-      root.setAttribute("data-clock", label);
-    }
     // The line: lights the lamp on the phone on the table (the kit's demo starts it lit).
     function setOnline(on) { online = !!on; all("[data-tl-rotary]", function (r) { r.setAttribute("data-line", online ? "on" : "off"); }); }
     if (!root.querySelector('[data-tl-rotary][data-line]')) setOnline(true);
-    tick();
-    var clockTimer = setInterval(function () { if (!root.isConnected) return clearInterval(clockTimer); tick(); }, 1000);
 
     // Words the app fills in: the name on the kid's drawing, the sticky note, and where the cards' links go.
     function setName(name) { name = String(name || ""); all(".tl-desk__name", function (n) { n.textContent = name; n.setAttribute("font-size", deskNameSize(name)); }); }
