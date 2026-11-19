@@ -161,7 +161,6 @@ css = f"""
 .tl-desk__slot {{ left: 32%; right: 42%; top: 2%; }}
 }}
 .tl-desk__card, .tl-desk__card--falling {{ transform-box: fill-box; transform-origin: 50% 100%; }}
-.tl-cf-knob {{ transform-box: fill-box; transform-origin: 50% 50%; }}
 .tl-cf-fan {{ transform-box: fill-box; transform-origin: 0% 100%; }}
 
 /* Picking things up. Everything here is laid over the whole room. */

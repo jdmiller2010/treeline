@@ -336,9 +336,9 @@
     }
 
     // ---- the card file turns like a real rotary file. Forward: the front card tips toward you off the rod and
-    // drops away; the next card swings up out of the fan behind and settles upright with a small tick; the big
-    // knob turns a notch and the fan rocks with it. Back: the same, reversed. Reduced motion: the card just changes.
-    var flipping = 0, knobTurn = 0;
+    // drops away; the next card swings up out of the fan behind and settles upright with a small tick; the fan
+    // rocks with it. Back: the same, reversed. Reduced motion: the card just changes.
+    var flipping = 0;
     function go(step) {
       if (list.length < 2) return;
       var animate = !reduce && typeof Element.prototype.animate === "function";
@@ -360,8 +360,6 @@
             : [{ transform: "translateY(9%) scaleY(-.12)", opacity: 0 }, { transform: "translateY(2%) scaleY(.4)", opacity: 1, offset: .45 }, { transform: "translateY(-1.5%) scaleY(1.02)", offset: .82 }, { transform: "none", opacity: 1 }];
           card.animate(come, { duration: 420, delay: lag + 140, easing: "cubic-bezier(.2,.7,.3,1)", fill: "backwards" });
         });
-        // the knob's grip lines roll one notch, as a drum does when it turns
-        all(".tl-cf-knob", function (k) { k.animate([{ transform: "translateY(0)" }, { transform: "translateY(" + (fwd ? 7 : -7) + "px)" }], { duration: 460, delay: lag, easing: "cubic-bezier(.3,.7,.3,1)" }); });
         all(".tl-cf-fan", function (f) { f.animate([{ transform: "none" }, { transform: "rotate(" + (fwd ? -3 : 3) + "deg)", offset: .4 }, { transform: "none" }], { duration: 520, delay: lag, easing: "ease-in-out" }); });
       }
       flipping++; setTimeout(function () { flipping = Math.max(0, flipping - 1); }, 480);

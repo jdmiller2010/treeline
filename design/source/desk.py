@@ -245,7 +245,7 @@ def _ring(cx, cy, r, n=40):
     return "M" + " L".join("%.1f %.1f" % cf_proj(cx, cy - r * math.cos(t), r * math.sin(t)) for t in [i / n * math.tau for i in range(n)]) + " Z"
 
 def _knob(cx, cy, r, turns=False, side=1):
-    """A black drum knob on the end of the rod, its face square to the rod; grip lines run across the face."""
+    """A plain black drum knob on the end of the rod, its face square to the rod."""
     k = f"tls-knob{int(cx)}"
     face, back = _ring(cx, cy, r), _ring(cx - 9 * side, cy, r)          # the drum is 9 deep along the rod
     ax, ay = cf_proj(0, 0, 1)                                            # the face's depth direction on the page
@@ -254,8 +254,6 @@ def _knob(cx, cy, r, turns=False, side=1):
     return (f'<g {WASH}><path d="{back}" fill="#3e3933"/></g><g {WOB}><path d="{back}" {LN}/></g>'
             f'<path d="M{cx - 9*side} {cy - r} L{cx} {cy - r} M{cx - 9*side} {cy + r} L{cx} {cy + r}" stroke="{INK}" stroke-width="1.8"/>'
             f'<g {WASH}><path d="{face}" fill="#57514a"/></g>'
-            f'<clipPath id="{k}"><path d="{_ring(cx, cy, r - 3)}"/></clipPath>'
-            f'<g clip-path="url(#{k})"><g{" class=" + chr(34) + "tl-cf-knob" + chr(34) if turns else ""}>{lines}</g></g>'
             f'<path d="{_ring(cx, cy, r * .26)}" fill="#d9d2c4"/>'
             f'<g {WOB}><path d="{face}" {LN}/></g>')
 
