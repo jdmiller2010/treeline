@@ -85,16 +85,16 @@ def deck():
 
 def body():
     g = [f'<g {WASH}><path d="{LIP}" {sf(D)}/></g>', f'<g {WOB}><path d="{LIP}" {LN}/></g>',
-         f'<path d="M70 383 L330 383" stroke="#ffffff" stroke-opacity=".35" stroke-width="2" fill="none"/>',
+         f'<path d="M70 383 L330 383" stroke="#ffffff" stroke-opacity="0.17" stroke-width="2" fill="none"/>',
          f'<g {WASH}><path d="{FACE}" fill="url(#tlp-body)"/><path d="{FACE}" fill="url(#tlp-side)"/>',
          f'<g clip-path="url(#tlp-faceclip)"><path d="{FACE}" fill="none" {ss(S)} stroke-opacity=".55" stroke-width="12" filter="url(#tlp-edge)"/></g>',
-         f'<path d="M100 206 C96 250 86 306 80 356" fill="none" stroke="#ffffff" stroke-opacity=".38" stroke-width="6" stroke-linecap="round"/>',
-         f'<path d="M120 180 C150 174 250 174 280 180" fill="none" stroke="#ffffff" stroke-opacity=".5" stroke-width="3" stroke-linecap="round"/>',
+         f'<path d="M100 206 C96 250 86 306 80 356" fill="none" stroke="#ffffff" stroke-opacity="0.19" stroke-width="6" stroke-linecap="round"/>',
+         f'<path d="M120 180 C150 174 250 174 280 180" fill="none" stroke="#ffffff" stroke-opacity="0.25" stroke-width="3" stroke-linecap="round"/>',
          f'<ellipse cx="{CX}" cy="{CY+5}" rx="{PLATE_R+10}" ry="{(PLATE_R+10)*SQ:.1f}" {sf(S)} opacity=".35" filter="url(#tlp-edge)"/>']
     for x in POSTS:
         g.append(f'<path d="{post(x)}" fill="url(#tlp-post)"/>')
-        g.append(f'<path d="M{x-7} 140 L{x-10} 172" stroke="#ffffff" stroke-opacity=".45" stroke-width="3" stroke-linecap="round" fill="none"/>')
-    g += ['</g>', f'<g opacity=".16" filter="url(#tlp-grain)"><path d="{FACE}" fill="#000"/></g>',
+        g.append(f'<path d="M{x-7} 140 L{x-10} 172" stroke="#ffffff" stroke-opacity="0.23" stroke-width="3" stroke-linecap="round" fill="none"/>')
+    g += ['</g>', 
           f'<g {WOB}><path d="{FACE}" {LN}/>'] + [f'<path d="{post(x)}" {LN}/>' for x in POSTS] + ['</g>']
     # The line lamp: a little jewel light on the front, lower right. Dark glass until the app lights it
     # (data-line="on": ready, a soft green); it flashes gently while the phone rings. See bundle.css.
@@ -163,9 +163,9 @@ def handset():
     return "".join([
         f'<g {WASH}><path d="{HANDSET}" fill="url(#tlp-hand)"/><path d="{HANDSET_TOP}" {sf(L)} opacity=".7"/>',
         f'<g clip-path="url(#tlp-handclip)"><path d="{HANDSET}" fill="none" {ss(S)} stroke-opacity=".5" stroke-width="10" filter="url(#tlp-edge)"/></g>',
-        '<path d="M64 136 C60 158 62 178 68 194" fill="none" stroke="#ffffff" stroke-opacity=".35" stroke-width="5" stroke-linecap="round"/>',
-        '<path d="M300 112 C318 116 330 126 336 140" fill="none" stroke="#ffffff" stroke-opacity=".4" stroke-width="3" stroke-linecap="round"/>',
-        '<path d="M130 100 C168 92 232 92 270 100" fill="none" stroke="#ffffff" stroke-opacity=".6" stroke-width="3" stroke-linecap="round"/>',
+        '<path d="M64 136 C60 158 62 178 68 194" fill="none" stroke="#ffffff" stroke-opacity="0.17" stroke-width="5" stroke-linecap="round"/>',
+        '<path d="M300 112 C318 116 330 126 336 140" fill="none" stroke="#ffffff" stroke-opacity="0.20" stroke-width="3" stroke-linecap="round"/>',
+        '<path d="M130 100 C168 92 232 92 270 100" fill="none" stroke="#ffffff" stroke-opacity="0.30" stroke-width="3" stroke-linecap="round"/>',
         rims, '</g>',
         f'<g {WOB}><path d="{HANDSET}" {LN}/>{rimlines}',
         '<path d="M60 150 C80 140 112 140 128 150" ' + LNS + '/><path d="M272 150 C288 140 320 140 340 150" ' + LNS + '/></g>'])

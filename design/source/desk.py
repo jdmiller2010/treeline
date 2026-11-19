@@ -29,7 +29,7 @@ PAPER = "#fffaf0"
 
 def defs():
     return f"""<defs>
-<filter id="tls-wobble" x="-5%" y="-5%" width="110%" height="110%"><feTurbulence type="fractalNoise" baseFrequency="0.03" numOctaves="2" seed="7"/><feDisplacementMap in="SourceGraphic" scale="1.8"/></filter>
+<filter id="tls-wobble" x="-5%" y="-5%" width="110%" height="110%"><feTurbulence type="fractalNoise" baseFrequency="0.03" numOctaves="2" seed="7"/><feDisplacementMap in="SourceGraphic" scale="1.1"/></filter>
 <filter id="tls-wash" x="-8%" y="-8%" width="116%" height="116%"><feTurbulence type="fractalNoise" baseFrequency="0.02" numOctaves="3" seed="11" result="n"/><feDisplacementMap in="SourceGraphic" in2="n" scale="5"/><feGaussianBlur stdDeviation="0.6"/></filter>
 <filter id="tls-grain" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" seed="5"/><feColorMatrix values="0 0 0 0 0.16  0 0 0 0 0.12  0 0 0 0 0.07  0 0 0 -1.5 1.0"/><feComposite in2="SourceGraphic" operator="in"/></filter>
 <filter id="tls-edge" x="-5%" y="-5%" width="110%" height="110%"><feGaussianBlur stdDeviation="2.4"/></filter>
@@ -45,10 +45,18 @@ def defs():
 <pattern id="tls-cork" width="14" height="14" patternUnits="userSpaceOnUse"><rect width="14" height="14" fill="{CORK}"/><circle cx="3" cy="4" r="1.1" fill="{CORK_D}"/><circle cx="10" cy="9" r=".9" fill="{CORK_D}"/><circle cx="7" cy="12" r=".7" fill="#e6c79c"/></pattern>
 </defs>"""
 
-def shape(d, fill, edge=None, extra=""):
-    """A watercolor-filled shape with its ink line."""
-    e = f'<path d="{d}" fill="none" stroke="{edge}" stroke-opacity=".45" stroke-width="8" filter="url(#tls-edge)"/>' if edge else ""
-    return f'<g {WASH}><path d="{d}" fill="{fill}"/>{e}{extra}</g><g {WOB}><path d="{d}" {LN}/></g>'
+_SHAPES = [0]
+def shape(d, fill, edge=None, extra="", loose=False):
+    """A watercolor-filled shape with its ink line. The darker pigment pools along the edge inside the shape,
+    never outside it. Loose: the wash sits a few pixels off the line and a little translucent, as if painted
+    after inking (for drawn objects, not for paper with words on it)."""
+    e = ""
+    if edge:
+        _SHAPES[0] += 1; cid = f"tls-in{_SHAPES[0]}"
+        e = (f'<clipPath id="{cid}"><path d="{d}"/></clipPath>'
+             f'<path d="{d}" fill="none" stroke="{edge}" stroke-opacity=".38" stroke-width="9" filter="url(#tls-edge)" clip-path="url(#{cid})"/>')
+    wash = f'<g {WASH} transform="translate(2.5 2)">' if loose else f'<g {WASH}>'
+    return f'{wash}<path d="{d}" fill="{fill}"/>{e}{extra}</g><g {WOB}><path d="{d}" {LN}/></g>'
 
 def rrect(x, y, w, h, r):
     return f"M{x+r} {y} L{x+w-r} {y} Q{x+w} {y} {x+w} {y+r} L{x+w} {y+h-r} Q{x+w} {y+h} {x+w-r} {y+h} L{x+r} {y+h} Q{x} {y+h} {x} {y+h-r} L{x} {y+r} Q{x} {y} {x+r} {y} Z"
@@ -214,25 +222,25 @@ def card_file():
             (_, _), (_, _), (tx, ty_), (_, _) = pts
             g.append(f'<path d="M{tx-30:.1f} {ty_:.1f} L{tx-28:.1f} {ty_-8:.1f} L{tx-10:.1f} {ty_-8:.1f} L{tx-8:.1f} {ty_:.1f} Z" fill="{tabs[th]}" stroke="{INK}" stroke-width=".9"/>')
     # the rod
-    g.append(f'<path d="M708 {CF_ROD} L894 {CF_ROD}" stroke="url(#tls-metal)" stroke-width="7" stroke-linecap="round"/>')
+    g.append(f'<g {WOB}><path d="M708 {CF_ROD} L894 {CF_ROD}" {LN}/></g>')
     # the cradle: a low base with arms up to the knobs; its right end shows
     base = "M700 640 C700 633 705 630 712 630 L892 630 C898 630 902 633 902 640 L904 662 C905 667 902 670 896 670 L706 670 C700 670 697 667 698 662 Z"
     side = "M902 638 L922 626 L924 652 L904 668 Z"
-    g += [shape(side, "#262420", edge="#000"), shape(base, "#3d3a35", edge="#000"),
-          f'<path d="M712 637 L888 637" stroke="#fff" stroke-opacity=".22" stroke-width="2"/>',
-          shape("M698 632 L710 632 L708 604 L700 604 Z", "#2f2c28", edge="#000"),
-          shape("M892 632 L904 632 L906 604 L898 604 Z", "#2f2c28", edge="#000")]
+    g += [shape(side, "#55504a", loose=True), shape(base, "#6b655d", edge="#3d3a35", loose=True),
+          
+          shape("M698 632 L710 632 L708 604 L700 604 Z", "#55504a"),
+          shape("M892 632 L904 632 L906 604 L898 604 Z", "#55504a")]
     # the front card's shadow on the cards behind it
     g.append(f'<path d="{rrect(x, y, w, h, 4)}" fill="{INK}" opacity=".14" transform="translate(3 3)" filter="url(#tls-edge)"/>')
     # knobs: the near one big, at the hub of the fan; the far one smaller
     for kx, r in ((704, 20), (900, 26)):
         g.append(f'<circle cx="{kx+2}" cy="{CF_ROD+3}" r="{r}" fill="{INK}" opacity=".3"/>'
-                 f'<circle cx="{kx}" cy="{CF_ROD}" r="{r}" fill="url(#tls-knob)"/><circle cx="{kx-r*.25:.1f}" cy="{CF_ROD-r*.3:.1f}" r="{r*.25:.1f}" fill="#fff" opacity=".22"/>'
-                 f'<circle cx="{kx}" cy="{CF_ROD}" r="{r*.3:.1f}" fill="url(#tls-metal)"/>'
+                 f'<g {WASH}><circle cx="{kx+2}" cy="{CF_ROD+1.5}" r="{r}" fill="#57514a"/></g>'
+                 f'<circle cx="{kx}" cy="{CF_ROD}" r="{r*.3:.1f}" fill="#d9d2c4"/>'
                  f'<g {WOB}><circle cx="{kx}" cy="{CF_ROD}" r="{r}" {LN}/><circle cx="{kx}" cy="{CF_ROD}" r="{r*.3:.1f}" {LNS}/></g>')
     for k in range(12):                                       # grip ridges on the big knob
         a_ = k / 12 * math.tau
-        g.append(f'<path d="M{900+19*math.cos(a_):.1f} {CF_ROD+19*math.sin(a_):.1f} L{900+25*math.cos(a_):.1f} {CF_ROD+25*math.sin(a_):.1f}" stroke="#6b6258" stroke-width="1.5"/>')
+        g.append(f'<path d="M{900+19*math.cos(a_):.1f} {CF_ROD+19*math.sin(a_):.1f} L{900+25*math.cos(a_):.1f} {CF_ROD+25*math.sin(a_):.1f}" stroke="{INK}" stroke-width="1.1" opacity=".55"/>')
     return "".join(g)
 
 # ---------------------------------------------------------------- the shelf
@@ -262,7 +270,6 @@ def book():
          f'<g transform="translate({w-14} {y+58}) rotate(12)"><path d="{burst}" fill="{BERRY}"/><g {WOB}><path d="{burst}" {LNS}/></g>'
          f'<text x="0" y="-2" text-anchor="middle" {SANS} font-size="7.5" font-weight="800" fill="#fff">4-DIGIT</text>'
          f'<text x="0" y="7" text-anchor="middle" {SANS} font-size="7.5" font-weight="800" fill="#fff">DIALING!</text></g>',
-         f'<g opacity=".12" filter="url(#tls-grain)"><path d="{cover}" fill="#000"/></g>',
          '</g>']
     return "".join(g)
 
@@ -270,9 +277,8 @@ def spines():
     g = []
     for x, w, h, col in ((392, 30, 160, "#55704f"), (423, 26, 150, "#8f5f33"), (450, 34, 166, "#97483d"), (485, 24, 140, "#2a6488")):   # spines
         d = rrect(x, 1000 - h, w, h, 2)
-        g.append(shape(d, col, edge="#000"))
+        g.append(shape(d, col, loose=True))
         g.append(f'<path d="M{x+4} {1000-h+18} L{x+w-4} {1000-h+18} M{x+4} {1000-h+24} L{x+w-4} {1000-h+24} M{x+4} {1000-26} L{x+w-4} {1000-26}" stroke="{SUN}" stroke-width="1.6" opacity=".8"/>')
-        g.append(f'<path d="M{x+w/2} {1000-h+40} L{x+w/2} {1000-50}" stroke="#fff" stroke-width="3" opacity=".25" stroke-linecap="round"/>')
     return "".join(g)
 
 def warranty():
@@ -293,12 +299,12 @@ def warranty():
 
 def plant():
     g = []
-    g.append(shape(rrect(672, 966, 178, 18, 2), "#c4ad82", edge="#000"))
-    g.append(shape(rrect(684, 948, 160, 18, 2), "#7f9e74", edge="#000"))
+    g.append(shape(rrect(672, 966, 178, 18, 2), "#c4ad82", loose=True))
+    g.append(shape(rrect(684, 948, 160, 18, 2), "#7f9e74", loose=True))
     g.append(f'<path d="M690 957 L838 957" stroke="{SUN}" stroke-width="1.4" opacity=".7"/>')
     pot = "M732 948 L728 906 L800 906 L796 948 Z"
-    g.append(shape(pot, "#c9744f", edge="#6a2f28"))
-    g.append(shape("M724 896 L804 896 L804 910 L724 910 Z", "#d98a63", edge="#6a2f28"))
+    g.append(shape(pot, "#c9744f", edge="#a2563a", loose=True))
+    g.append(shape("M724 896 L804 896 L804 910 L724 910 Z", "#d98a63", loose=True))
     g.append(f'<g {WOB}><path d="M764 896 C762 870 766 850 764 828" {LN}/><path d="M764 862 C752 856 744 848 740 838 M765 850 C776 842 784 832 786 822" {LN}/></g>')
     for cx_, cy_, r_, c in ((738, 832, 17, "#7f9e74"), (790, 820, 18, "#7f9e74"), (764, 808, 24, "#9db88e"), (762, 836, 14, "#6c8c62")):
         g.append(f'<g {WASH}><circle cx="{cx_}" cy="{cy_}" r="{r_}" fill="{c}"/></g><g {WOB}><circle cx="{cx_}" cy="{cy_}" r="{r_}" {LNS}/></g>')
@@ -321,23 +327,21 @@ def table(t):
     DRAWER = rrect(dx, dy, dw, dh, 6)
     STOP = f"M{x0+60} {sy} L{x1-60} {sy} L{x1-26} {sy+26} L{x0+26} {sy+26} Z"
     SFRONT = f"M{x0+26} {sy+26} L{x1-26} {sy+26} L{x1-26} {sy+50} C{x1-26} {sy+54} {x1-29} {sy+56} {x1-33} {sy+56} L{x0+33} {sy+56} C{x0+29} {sy+56} {x0+26} {sy+54} {x0+26} {sy+50} Z"
-    back = [shape(leg(x0+84, x0+110, cb, H + 10, 2), WOOD_D), shape(leg(x1-110, x1-84, cb, H + 10, 2), WOOD_D), shape(STOP, "url(#tls-top)"),
+    back = [shape(leg(x0+84, x0+110, cb, H + 10, 2), WOOD_D, loose=True), shape(leg(x1-110, x1-84, cb, H + 10, 2), WOOD_D, loose=True), shape(STOP, WOOD_L, edge=WOOD_M, loose=True),
             f'<g {WOB}><path d="M{x0+68} {sy+6} C{x0+230} {sy+4} {x1-230} {sy+4} {x1-68} {sy+6}" {LNS}/></g>']
-    sfront = [shape(SFRONT, "url(#tls-front)", edge=WOOD_S), f'<g opacity=".18" filter="url(#tls-grain)"><path d="{STOP} {SFRONT}" fill="#000"/></g>']
-    front = [shape(leg(x0+32, x0+70, cb, H + 10), "url(#tls-leg)", edge=WOOD_S), shape(leg(x1-70, x1-32, cb, H + 10), "url(#tls-leg)", edge=WOOD_S),
-             shape(CARC, "url(#tls-front)", edge=WOOD_S),
-             shape(DRAWER, WOOD_M, edge=WOOD_S, extra=f'<path d="M{dx+14} {dy+10} L{dx+dw-14} {dy+10}" stroke="#fff" stroke-opacity=".3" stroke-width="3" stroke-linecap="round"/>'),
+    sfront = [shape(SFRONT, WOOD_M, edge=WOOD_D, loose=True)]
+    front = [shape(leg(x0+32, x0+70, cb, H + 10), WOOD_M, edge=WOOD_D, loose=True), shape(leg(x1-70, x1-32, cb, H + 10), WOOD_M, edge=WOOD_D, loose=True),
+             shape(CARC, WOOD_M, edge=WOOD_D, loose=True),
+             shape(DRAWER, WOOD_L, edge=WOOD_M, loose=True),
              ]
     kx, ky = t["knob"]
     front += [f'<ellipse cx="{kx}" cy="{ky+2}" rx="11" ry="7" fill="{WOOD_S}" opacity=".5" transform="translate(1 3)"/>',
-              f'<circle cx="{kx}" cy="{ky}" r="9" fill="url(#tls-metal)"/><g {WOB}><circle cx="{kx}" cy="{ky}" r="9" {LN}/></g>',
-              shape(APRON, "url(#tls-front)", edge=WOOD_S),
-              shape(TOP, "url(#tls-top)", extra=f'<path d="M{x0+inset+10} {ty+8} L{x1-inset-10} {ty+8}" stroke="#fff" stroke-opacity=".25" stroke-width="3"/>')]
+              f'<circle cx="{kx+1.5}" cy="{ky+1.5}" r="9" fill="{WOOD_D}" opacity=".8"/><g {WOB}><circle cx="{kx}" cy="{ky}" r="9" {LN}/></g>',
+              shape(APRON, WOOD_M, edge=WOOD_D, loose=True),
+              shape(TOP, WOOD_L, edge=WOOD_M, loose=True)]
     for f in (.2, .41, .65, .9):     # wood grain
         y = ty + 114 * f; a = x0 + inset * (1 - f); b = x1 - inset * (1 - f)
-        front.append(f'<g {WOB}><path d="M{a:.0f} {y:.0f} C{a+150:.0f} {y-3:.0f} {a+260:.0f} {y+3:.0f} {(a+b)/2:.0f} {y:.0f} S{b-120:.0f} {y-3:.0f} {b:.0f} {y+1:.0f}" fill="none" stroke="{WOOD_D}" stroke-width="1" opacity=".35"/></g>')
-    front.append(f'<g opacity=".16" filter="url(#tls-grain)"><path d="{TOP} {APRON} {CARC}" fill="#000"/></g>')
-    front.append(wear(t, TOP, F, cb, cx))
+        front.append(f'<g {WOB}><path d="M{a:.0f} {y:.0f} C{a+150:.0f} {y-3:.0f} {a+260:.0f} {y+3:.0f} {(a+b)/2:.0f} {y:.0f} S{b-120:.0f} {y-3:.0f} {b:.0f} {y+1:.0f}" fill="none" stroke="{INK}" stroke-width="1" opacity=".18"/></g>')
     front.append(f'<g {WOB}><path d="M{x0+8} {F+16} L{x1-8} {F+16}" {LNS}/></g>')
     return "".join(back), "".join(sfront), "".join(front)
 
@@ -413,13 +417,11 @@ def book_spine(x0, by, w=BOOK_W, t=BOOK_T, depth=60):
          f'<image href="{COVER_IMAGE}" width="300" height="450" preserveAspectRatio="none"/></g></g>',
          f'<g {WOB}><path d="{face}" {LN}/></g>',
          shape(spine, SKY, edge="#0f2c40"),
-         f'<path d="M{x0+4} {top+depth+7} L{x1-4} {top+depth+7}" stroke="#fff" stroke-opacity=".3" stroke-width="3" stroke-linecap="round"/>',
          f'<path d="M{x0+30} {top+depth+4} L{x0+30} {by-4} M{x0+34} {top+depth+4} L{x0+34} {by-4} M{x1-34} {top+depth+4} L{x1-34} {by-4} M{x1-30} {top+depth+4} L{x1-30} {by-4}" stroke="{SUN}" stroke-width="1.6"/>',
          f'<text x="{x0+42}" y="{by-t/2+1}" {SERIF} font-size="{15*min(1, (w-84)/116):.1f}" font-weight="700" letter-spacing="1.2" fill="#fff" textLength="{w-84}" lengthAdjust="spacingAndGlyphs">ROTARY PHONES</text>',
          f'<text x="{x0+42}" y="{by-t/2+15}" {SERIF} font-size="10.5" font-style="italic" fill="#fff" opacity=".92">the easy way</text>',
          f'<text x="{x0+15}" y="{by-t/2+4}" text-anchor="middle" {SANS} font-size="9" font-weight="800" fill="{SUN}">2</text>',
-         f'<g transform="translate({x1-15} {by-t/2})"><path d="M0 -8 C5 -4 5 4 0 8 C-5 4 -5 -4 0 -8Z" fill="#7fc49a"/></g>',
-         f'<g opacity=".14" filter="url(#tls-grain)"><path d="{spine}" fill="#000"/></g>']
+         f'<g transform="translate({x1-15} {by-t/2})"><path d="M0 -8 C5 -4 5 4 0 8 C-5 4 -5 -4 0 -8Z" fill="#7fc49a"/></g>',]
     return "".join(g)
 
 # The book's real cover, exactly as it is when you pick the book up (desk_pages page 0, with its fonts),

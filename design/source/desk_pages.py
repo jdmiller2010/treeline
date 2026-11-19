@@ -75,8 +75,9 @@ def page(n, body, label, num=None):
             + d + paper.replace("url(#tlb-", f"url(#tlb-{n}") + (f'<g transform="translate(0 {OFF})">' if n != "c" else "<g>") + body.replace('url(#tlb-', f'url(#tlb-{n}').replace('id="tlb-', f'id="tlb-{n}') + '</g>' + foot + '</svg>')
 
 def finger(cx, cy, r=15):
-    return (f'<circle cx="{cx+3}" cy="{cy+5}" r="{r}" fill="{INK}" opacity=".18"/>'
-            f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="#f2c9b8"/><path d="M{cx-r*.5} {cy-r*.3} q{r*.5} {-r*.6} {r} 0" fill="none" stroke="#fff" stroke-width="2.5" opacity=".6" stroke-linecap="round"/>'
+    """Where your finger goes: a soft sunbeam spot with a ring round it (no hands in Treeline art)."""
+    return (f'<circle cx="{cx+2}" cy="{cy+2}" r="{r}" fill="{SUN}" opacity=".55"/>'
+            f'<circle cx="{cx}" cy="{cy}" r="{r+5}" fill="none" stroke="{INK}" stroke-width="1.2" stroke-dasharray="2 4" stroke-linecap="round" opacity=".6"/>'
             f'<circle cx="{cx}" cy="{cy}" r="{r}" {LN}/>')
 
 def hole(d):
