@@ -1,13 +1,20 @@
 """SQLite storage for Treeline. Standard library only.
 
-One file, shared by the control app (calls) and the API (parent app).
-WAL mode lets both processes use it at once.
+Two kinds of file (docs/DATA_LAYER.md):
+
+  * the central database (this module): what the app needs to route calls and to find a
+    household from an outside key (a number, an email, a SIP user, a code), plus the call ledger;
+  * one file per treehouse (households.py): that family's call history, notes, audit log and consent.
+
+Both kinds are made by `prepare()`: a marker (`PRAGMA application_id`) says which kind a file is, and
+`user_version` says which schema it has. WAL mode lets the API and the controller use a file at once.
 """
 
 import datetime as dt
 import hashlib
 import hmac
 import os
+import re
 import secrets
 import sqlite3
 import threading
@@ -15,9 +22,19 @@ import threading
 DB_PATH = os.environ.get("TREELINE_DB", "/data/treeline.db")
 SIP_REALM = "treeline"
 
+# What kind of file this is. "TRLC" and "TRLH" as 32-bit numbers.
+CENTRAL_APP_ID = 0x54524C43
+HOUSEHOLD_APP_ID = 0x54524C48
+
+LEDGER_DAYS = 3          # the call ledger keeps this long (long enough for any time zone's "today")
+PRE_MIGRATE_DAYS = 7
+
+# The baseline, schema version 1. NEVER EDIT THIS AFTER A RELEASE: a change to the schema is a new
+# numbered step in MIGRATIONS below (a fresh file is made at version 1 and then every step is applied,
+# the same path an existing file takes).
 SCHEMA = """
-CREATE TABLE IF NOT EXISTS treehouse (
-  id INTEGER PRIMARY KEY,
+CREATE TABLE treehouse (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
   number TEXT UNIQUE,
   timezone TEXT NOT NULL DEFAULT 'America/Los_Angeles',
@@ -28,6 +45,9 @@ CREATE TABLE IF NOT EXISTS treehouse (
   paused INTEGER NOT NULL DEFAULT 0,
   max_call_minutes REAL NOT NULL DEFAULT 30,
   daily_minutes REAL,
+  parent_pin_hash TEXT,
+  pin_fails INTEGER NOT NULL DEFAULT 0,
+  pin_locked_until TEXT,
   retention_days INTEGER NOT NULL DEFAULT 90,
   ack_911 INTEGER NOT NULL DEFAULT 0,
   consent_at TEXT,
@@ -37,7 +57,7 @@ CREATE TABLE IF NOT EXISTS treehouse (
   left_at TEXT
 );
 
-CREATE TABLE IF NOT EXISTS handset (
+CREATE TABLE handset (
   id INTEGER PRIMARY KEY,
   treehouse_id INTEGER NOT NULL REFERENCES treehouse(id),
   kind TEXT NOT NULL CHECK (kind IN ('rotary','ata','softphone')),
@@ -53,7 +73,7 @@ CREATE TABLE IF NOT EXISTS handset (
   removed_at TEXT
 );
 
-CREATE TABLE IF NOT EXISTS string (
+CREATE TABLE string (
   id INTEGER PRIMARY KEY,
   a_id INTEGER NOT NULL REFERENCES treehouse(id),
   b_id INTEGER NOT NULL REFERENCES treehouse(id),
@@ -67,7 +87,7 @@ CREATE TABLE IF NOT EXISTS string (
   CHECK (a_id < b_id)
 );
 
-CREATE TABLE IF NOT EXISTS ladder_code (
+CREATE TABLE ladder_code (
   code TEXT PRIMARY KEY,
   treehouse_id INTEGER NOT NULL REFERENCES treehouse(id),
   expires_at TEXT NOT NULL,
@@ -75,7 +95,7 @@ CREATE TABLE IF NOT EXISTS ladder_code (
   used_at TEXT
 );
 
-CREATE TABLE IF NOT EXISTS grown_up (
+CREATE TABLE grown_up (
   id INTEGER PRIMARY KEY,
   email TEXT NOT NULL UNIQUE,
   name TEXT,
@@ -84,20 +104,22 @@ CREATE TABLE IF NOT EXISTS grown_up (
   created_at TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS login_code (
+CREATE TABLE login_code (
   email TEXT PRIMARY KEY,
   code_hash TEXT NOT NULL,
   expires_at TEXT NOT NULL,
   attempts INTEGER NOT NULL DEFAULT 0
 );
 
-CREATE TABLE IF NOT EXISTS session (
+CREATE TABLE session (
   token_hash TEXT PRIMARY KEY,
   email TEXT NOT NULL,
   expires_at TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS call (
+-- The ledger: calls in progress, and the recent record the rules are computed from. The family-facing
+-- history is a copy per household (households.py), written when a call ends; `logged` says it was.
+CREATE TABLE call (
   id INTEGER PRIMARY KEY,
   started_at TEXT NOT NULL,
   caller_treehouse INTEGER,
@@ -114,10 +136,10 @@ CREATE TABLE IF NOT EXISTS call (
   answered_handset INTEGER,
   hung_up_first TEXT
 );
-CREATE INDEX IF NOT EXISTS call_caller ON call(caller_treehouse, started_at);
-CREATE INDEX IF NOT EXISTS call_callee ON call(callee_treehouse, started_at);
+CREATE INDEX call_caller ON call(caller_treehouse, started_at);
+CREATE INDEX call_callee ON call(callee_treehouse, started_at);
 
-CREATE TABLE IF NOT EXISTS call_event (
+CREATE TABLE call_event (
   id INTEGER PRIMARY KEY,
   call_id INTEGER NOT NULL REFERENCES call(id) ON DELETE CASCADE,
   at TEXT NOT NULL,
@@ -125,7 +147,7 @@ CREATE TABLE IF NOT EXISTS call_event (
   event TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS parent_action (
+CREATE TABLE parent_action (
   id INTEGER PRIMARY KEY,
   at TEXT NOT NULL,
   treehouse_id INTEGER,
@@ -136,7 +158,7 @@ CREATE TABLE IF NOT EXISTS parent_action (
   after TEXT
 );
 
-CREATE TABLE IF NOT EXISTS notice (
+CREATE TABLE notice (
   id INTEGER PRIMARY KEY,
   treehouse_id INTEGER NOT NULL REFERENCES treehouse(id),
   kind TEXT NOT NULL,
@@ -147,9 +169,9 @@ CREATE TABLE IF NOT EXISTS notice (
   emailed_at TEXT,
   key TEXT
 );
-CREATE INDEX IF NOT EXISTS notice_house ON notice(treehouse_id, created_at);
+CREATE INDEX notice_house ON notice(treehouse_id, created_at);
 
-CREATE TABLE IF NOT EXISTS pairing (
+CREATE TABLE pairing (
   code TEXT PRIMARY KEY,
   token_hash TEXT NOT NULL,
   created_at TEXT NOT NULL,
@@ -160,7 +182,7 @@ CREATE TABLE IF NOT EXISTS pairing (
   claimed_at TEXT
 );
 
-CREATE TABLE IF NOT EXISTS push_subscription (
+CREATE TABLE push_subscription (
   id INTEGER PRIMARY KEY,
   email TEXT NOT NULL,
   endpoint TEXT NOT NULL UNIQUE,
@@ -169,7 +191,7 @@ CREATE TABLE IF NOT EXISTS push_subscription (
   created_at TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS setting (
+CREATE TABLE setting (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
@@ -198,59 +220,190 @@ def parse(s):
     return dt.datetime.fromisoformat(s) if s else None
 
 
-# Changes to tables that already exist. CREATE TABLE IF NOT EXISTS never alters a
-# table, so every later change to the schema goes here as a numbered step. Never
-# edit or reorder an old step; add a new one.
-def _has_column(conn, table, column):
-    return any(r["name"] == column for r in conn.execute(f"PRAGMA table_info({table})"))
+# ------------------------------------------------------------- schema versions and migrations
+
+# Changes to the central schema after the baseline. Step n (1-based) takes the file from version n to
+# n + 1 and runs in one transaction with the version bump, so a step that fails changes nothing. A step
+# uses `conn.execute` (never `executescript`, which commits). Never edit, reorder or delete a shipped
+# step; a column is added in one release, the code stops using the old one in the next, and the old one
+# is dropped in the one after (docs/DATA_LAYER.md, "Schema changes after go-live").
+MIGRATIONS = []
 
 
-def _add_column(conn, table, column, decl):
-    if not _has_column(conn, table, column):
-        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+class DatabaseRefused(RuntimeError):
+    """A file this code must not open. Nothing is written to it."""
 
 
-MIGRATIONS = [
-    # 1: adapters fetch their settings by a private link, which needs the secret kept.
-    lambda c: _add_column(c, "handset", "provision_secret", "TEXT"),
-    # 2: a parent agrees to the privacy notes when setting up; we keep when, and which version.
-    lambda c: _add_column(c, "treehouse", "consent_at", "TEXT"),
-    lambda c: _add_column(c, "treehouse", "consent_version", "TEXT"),
-    # 4: a parent can disconnect one phone: it stops ringing and calling, nothing else changes.
-    lambda c: _add_column(c, "handset", "disabled", "INTEGER NOT NULL DEFAULT 0"),
-    # 5: a released number used to rest for a year before anyone could claim it. It no longer does.
-    lambda c: c.execute("DROP TABLE IF EXISTS number_rest"),
-    # 6: the parent code: a 4 to 6 digit PIN (salted scrypt) that lets a phone stop being a phone. Wrong tries are counted
-    # here, not in memory, so a restart doesn't forgive them.
-    lambda c: _add_column(c, "treehouse", "parent_pin_hash", "TEXT"),
-    lambda c: _add_column(c, "treehouse", "pin_fails", "INTEGER NOT NULL DEFAULT 0"),
-    lambda c: _add_column(c, "treehouse", "pin_locked_until", "TEXT"),
-]
+class OldLayoutDatabase(DatabaseRefused):
+    pass
 
 
-def migrate(conn):
-    version = conn.execute("PRAGMA user_version").fetchone()[0]
-    for number, step in enumerate(MIGRATIONS, 1):
-        if number > version:
-            step(conn)
-            conn.execute(f"PRAGMA user_version={number}")
+class WrongKindOfDatabase(DatabaseRefused):
+    pass
 
 
-_initialized = set()
+class DatabaseNewerThanCode(DatabaseRefused):
+    pass
 
 
-def connect(path=None):
+OLD_LAYOUT_MESSAGE = ("this is an old-layout dev database; run `./dev clean` to start fresh "
+                      "(Treeline's data layout changed and there is no upgrade path)")
+
+
+def target_version(migrations):
+    return 1 + len(migrations)
+
+
+def _statements(script):
+    """Split a script into single statements (so they can run inside our own transaction)."""
+    out, buf = [], ""
+    for line in script.splitlines(keepends=True):
+        buf += line
+        if sqlite3.complete_statement(buf):
+            if buf.strip():
+                out.append(buf.strip())
+            buf = ""
+    if buf.strip() and not buf.strip().startswith("--"):
+        out.append(buf.strip())
+    return out
+
+
+def _inspect(conn, app_id, target, label, old_message):
+    """What state is this file in? 'fresh', 'behind' or 'current'; or refuse it."""
+    # One snapshot: another process may be creating this file right now, and three separate reads could
+    # see its marker before the commit and its tables after it (and call a new file an old one).
+    own = not conn.in_transaction
+    if own:
+        conn.execute("BEGIN")
+    try:
+        found = conn.execute("PRAGMA application_id").fetchone()[0]
+        version = conn.execute("PRAGMA user_version").fetchone()[0]
+        tables = conn.execute("SELECT count(*) FROM sqlite_master").fetchone()[0]
+    finally:
+        if own:
+            conn.execute("COMMIT")
+    if found == app_id:
+        if version > target:
+            raise DatabaseNewerThanCode(
+                f"this {label} is at schema version {version}, but this code only knows up to {target}: "
+                "refusing to open it (an older release must not write into a newer layout)")
+        return ("current" if version == target else "behind"), version
+    if found == 0 and version == 0 and tables == 0:
+        return "fresh", 0
+    if found == 0:
+        raise OldLayoutDatabase(old_message)
+    raise WrongKindOfDatabase(f"this file is not a Treeline {label} (application id {found:#x})")
+
+
+def _timestamp(now=None):
+    return (now or utcnow()).strftime("%Y%m%dT%H%M%S")
+
+
+def backup_before_migration(conn, directory, stem, version, now=None):
+    """An online copy of the file as it is now, kept for PRE_MIGRATE_DAYS (it holds the same personal
+    data as the file). Recovery from a bad migration: stop, restore this file, deploy the previous release."""
+    os.makedirs(directory, mode=0o700, exist_ok=True)
+    out = os.path.join(directory, f"{stem}-v{version}-{_timestamp(now)}-{secrets.token_hex(3)}.db")
+    fd = os.open(out, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)      # private from the first byte
+    os.close(fd)
+    dst = sqlite3.connect(out)
+    try:
+        conn.backup(dst)
+    finally:
+        dst.close()
+    return out
+
+
+_PRE_MIGRATE_NAME = re.compile(r"^.+-v\d+-(\d{8}T\d{6})-[0-9a-f]+\.db$")
+
+
+def prune_pre_migrate(directory, now=None):
+    """Delete pre-migration backups older than PRE_MIGRATE_DAYS (by the timestamp in the name)."""
+    now = now or utcnow()
+    cutoff = _timestamp(now - dt.timedelta(days=PRE_MIGRATE_DAYS))
+    try:
+        names = os.listdir(directory)
+    except FileNotFoundError:
+        return
+    for name in names:
+        m = _PRE_MIGRATE_NAME.match(name)
+        if m and m.group(1) < cutoff:
+            try:
+                os.remove(os.path.join(directory, name))
+            except FileNotFoundError:
+                pass
+
+
+def prepare(conn, *, app_id, schema, migrations, label, old_message=OLD_LAYOUT_MESSAGE,
+            init=None, backup=None):
+    """Make this file ready: create it if it is brand new, refuse it if it is not ours or is newer than
+    this code, and apply any pending migration steps, each in its own transaction with the version
+    re-read inside it (so two processes starting together apply a step once).
+
+    `init(conn)` runs inside the transaction that creates a fresh file. `backup(version)` is called
+    once, before the first pending step on an existing file.
+    """
+    target = target_version(migrations)
+    state, version = _inspect(conn, app_id, target, label, old_message)
+    if state == "current":
+        return
+    if state == "behind" and backup:
+        backup(version)
+    if state == "fresh":
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            state, _ = _inspect(conn, app_id, target, label, old_message)      # someone may have beaten us to it
+            if state == "fresh":
+                for statement in _statements(schema):
+                    conn.execute(statement)
+                conn.execute(f"PRAGMA application_id={int(app_id)}")
+                conn.execute("PRAGMA user_version=1")
+                if init:
+                    init(conn)
+            conn.execute("COMMIT")
+        except BaseException:
+            conn.execute("ROLLBACK")
+            raise
+    while True:
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            _, version = _inspect(conn, app_id, target, label, old_message)
+            if version >= target:
+                conn.execute("COMMIT")
+                return
+            migrations[version - 1](conn)
+            conn.execute(f"PRAGMA user_version={version + 1}")
+            conn.execute("COMMIT")
+        except BaseException:
+            conn.execute("ROLLBACK")
+            raise
+
+
+def migrate(conn, migrations=None):
+    """Apply pending central steps to an open central database."""
+    prepare(conn, app_id=CENTRAL_APP_ID, schema=SCHEMA,
+            migrations=MIGRATIONS if migrations is None else migrations, label="central database")
+
+
+def connect(path=None, migrations=None):
     path = path or DB_PATH
-    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    migrations = MIGRATIONS if migrations is None else migrations
+    if path != ":memory:":
+        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     conn = sqlite3.connect(path, timeout=15, isolation_level=None)
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA foreign_keys=ON")
     conn.execute("PRAGMA busy_timeout=15000")
-    if path == ":memory:" or path not in _initialized:
-        conn.executescript(SCHEMA)
-        migrate(conn)
-        _initialized.add(path)
+    try:
+        # The marker is read before anything is changed: a file we refuse is left exactly as it was.
+        directory = os.path.join(os.path.dirname(path) or ".", "pre-migrate")
+        prepare(conn, app_id=CENTRAL_APP_ID, schema=SCHEMA, migrations=migrations, label="central database",
+                backup=None if path == ":memory:" else
+                lambda v: backup_before_migration(conn, directory, "treeline", v))
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA foreign_keys=ON")
+    except BaseException:
+        conn.close()
+        raise
     return conn
 
 
