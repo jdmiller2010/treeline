@@ -1,7 +1,7 @@
 {
   "name": "Treeline",
   "short_name": "Treeline",
-  "description": "A house-to-house phone for kids, with parents holding the keys.",
+  "description": "A safe phone line for neighborhood kids, with parents holding the keys.",
   "start_url": "/parent/",
   "scope": "/parent/",
   "display": "standalone",

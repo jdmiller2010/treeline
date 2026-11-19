@@ -230,6 +230,8 @@ body {
 .tl-card__head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-3); }
 .tl-card__eyebrow { margin: 0 0 var(--space-1); font: 700 11px/14px var(--font-sans); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-muted); }
 .tl-card__title { margin: 0; font: 500 21px/28px var(--font-display); font-variation-settings: "SOFT" 100; letter-spacing: -.005em; color: var(--ink); }
+/* The tagline, under the name wherever the name stands on its own. */
+.tl-tagline { margin: 0; font: italic 400 15px/22px var(--font-display); font-variation-settings: "SOFT" 100; color: var(--ink-muted); }
 
 /* ---------- Rows (FriendRow, CallLogItem): dividers fade at both ends ---------- */
 .tl-row { position: relative; display: flex; align-items: center; gap: var(--space-4); padding: var(--space-4) var(--space-5); border-radius: var(--radius-md); }
@@ -838,11 +840,11 @@ body {
 .tl-desk__hot:focus-visible { outline: var(--border-focus, 3px) solid var(--focus); outline-offset: 2px; }
 .tl-desk__stage { width: min(100cqw, 123.596cqh); aspect-ratio: 1100 / 890; }
 .tl-desk__phone { left: 24.545%; top: 0.225%; width: 50.909%; }
-.tl-desk__hot--guide { left: 6.364%; top: 64.944%; width: 19.636%; height: 13.483%; }
+.tl-desk__hot--guide { left: 5.636%; top: 66.966%; width: 22.182%; height: 11.685%; }
 .tl-desk__hot--licenses { left: 57.636%; top: 76.854%; width: 10.182%; height: 10.337%; }
 .tl-desk__hot--coffee { left: 73.818%; top: 6.292%; width: 24.364%; height: 18.652%; }
-.tl-desk__hot--card { left: 73.818%; top: 24.944%; width: 21.455%; height: 15.955%; }
-.tl-desk__hot--cardfile { left: 70.673%; top: 53.809%; width: 15.964%; height: 20.112%; }
+.tl-desk__hot--card { left: 73.818%; top: 24.944%; width: 21.818%; height: 17.079%; }
+.tl-desk__hot--cardfile { left: 66.800%; top: 54.697%; width: 20.945%; height: 18.337%; }
 /* The slot: the wall above the phone. For the app's few words (what the phone is doing, the connection
    light, a sleeping card). Keep it short: two lines. */
 .tl-desk__slot { position: absolute; left: 2.5%; right: 77%; top: 50%; display: flex; flex-direction: column; align-items: center; gap: var(--space-2); text-align: center; color: var(--ink); }
@@ -851,11 +853,11 @@ body {
 .tl-desk__art > .tl-desk__l--portrait { display: block; }
 .tl-desk__stage { width: min(100cqw, 76.687cqh); aspect-ratio: 1000 / 1304; }
 .tl-desk__phone { left: 17.000%; top: 3.758%; width: 66.000%; }
-.tl-desk__hot--guide { left: 5.800%; top: 60.276%; width: 20.200%; height: 9.202%; }
+.tl-desk__hot--guide { left: 5.800%; top: 61.503%; width: 20.200%; height: 7.975%; }
 .tl-desk__hot--licenses { left: 59.000%; top: 68.558%; width: 11.200%; height: 7.055%; }
 .tl-desk__hot--coffee { left: 79.660%; top: 14.686%; width: 19.300%; height: 9.164%; }
-.tl-desk__hot--card { left: 79.660%; top: 23.850%; width: 16.990%; height: 7.837%; }
-.tl-desk__hot--cardfile { left: 73.320%; top: 55.307%; width: 17.120%; height: 13.382%; }
+.tl-desk__hot--card { left: 79.660%; top: 23.850%; width: 17.280%; height: 8.390%; }
+.tl-desk__hot--cardfile { left: 69.690%; top: 55.897%; width: 22.460%; height: 12.201%; }
 .tl-desk__slot { left: 2%; right: 79%; top: 46%; }
 }
 @container (aspect-ratio < 0.65) {
@@ -863,11 +865,11 @@ body {
 .tl-desk__art > .tl-desk__l--tall { display: block; }
 .tl-desk__stage { width: min(100cqw, 44.776cqh); aspect-ratio: 600 / 1340; }
 .tl-desk__phone { left: 4.667%; top: 18.284%; width: 90.667%; }
-.tl-desk__hot--guide { left: 12.333%; top: 87.910%; width: 27.667%; height: 8.955%; }
+.tl-desk__hot--guide { left: 12.333%; top: 89.104%; width: 27.667%; height: 7.761%; }
 .tl-desk__hot--licenses { left: 69.667%; top: 67.612%; width: 18.667%; height: 6.866%; }
 .tl-desk__hot--coffee { left: 59.967%; top: 1.873%; width: 36.633%; height: 10.157%; }
-.tl-desk__hot--card { left: 59.967%; top: 12.030%; width: 32.250%; height: 8.687%; }
-.tl-desk__hot--cardfile { left: 40.600%; top: 86.396%; width: 21.950%; height: 10.015%; }
+.tl-desk__hot--card { left: 59.967%; top: 12.030%; width: 32.800%; height: 9.299%; }
+.tl-desk__hot--cardfile { left: 39.267%; top: 86.836%; width: 28.800%; height: 9.134%; }
 .tl-desk__slot { left: 32%; right: 42%; top: 2%; }
 }
 .tl-desk__card, .tl-desk__card--falling { transform-box: fill-box; transform-origin: 50% 100%; }
@@ -891,7 +893,7 @@ body {
 .tl-desk__putback:active { transform: translateY(2px); box-shadow: 0 1px 0 #2a251c; }
 .tl-desk__putback:focus-visible, .tl-book__turn:focus-visible { outline: var(--border-focus, 3px) solid var(--focus); outline-offset: 3px; }
 /* The guide book: two pages side by side, leaves that turn over from right to left. */
-.tl-book { --p: min(46cqw, 44cqh, 360px); position: relative; width: calc(var(--p) * 2); height: calc(var(--p) * 356 / 300); cursor: pointer; touch-action: pan-y; }
+.tl-book { --p: min(46cqw, 38cqh, 340px); position: relative; width: calc(var(--p) * 2); height: calc(var(--p) * 450 / 300); cursor: pointer; touch-action: pan-y; }
 .tl-book__fly, .tl-book__spread { position: absolute; inset: 0; }
 .tl-book__spread { perspective: calc(var(--p) * 5); transform: translateX(calc(var(--p) * -.5)); transition: transform .6s ease; }
 .tl-book.is-open .tl-book__spread { transform: none; }

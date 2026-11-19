@@ -145,20 +145,27 @@ def certificate(turn=3):
     return "".join(g)
 
 LOGO_INNER = None
+CARD_BOX = (690, 250, 234, 132)     # the business card on the corkboard: x, y, w, h
+TAGLINE = "A safe phone line for neighborhood kids"
 def business_card(turn=-3):
-    x, y, w, h = 694, 254, 222, 124
+    """Treeline's business card: logo, name and tagline, then Jordan's name, email and the copyright,
+    with a generous white border all round."""
+    x, y, w, h = CARD_BOX
+    m = 20                                         # the white border
     d = rrect(x, y, w, h, 3)
     logo = open("/home/claude/treeline/project/assets/Logos/treeline-logo.svg").read()
-    logo = logo.replace('<svg xmlns="http://www.w3.org/2000/svg" viewBox="10 14 222 146" width="444" height="292">', f'<svg x="{x+14}" y="{y+16}" width="66" height="44" viewBox="10 14 222 146">')
+    logo = logo.replace('<svg xmlns="http://www.w3.org/2000/svg" viewBox="10 14 222 146" width="444" height="292">', f'<svg x="{x+m}" y="{y+m}" width="50" height="33" viewBox="10 14 222 146">')
     g = [f'<g transform="rotate({turn} {x+w/2} {y+h/2})">',
          f'<path d="{d}" fill="{INK}" opacity=".15" transform="translate(3 5)" filter="url(#tls-edge)"/>',
          shape(d, PAPER), logo,
-         f'<text x="{x+90}" y="{y+44}" {SERIF} font-size="24" font-weight="600" fill="{INK}">Treeline</text>',
-         f'<path d="M{x+14} {y+70} L{x+w-14} {y+70}" stroke="{INK}" stroke-width=".8" opacity=".35"/>',
-         f'<text x="{x+16}" y="{y+89}" {SANS} font-size="13" font-weight="600" fill="{INK}">Made by Jordan Miller</text>',
-         f'<text x="{x+16}" y="{y+105}" {SANS} font-size="12" fill="#5e5546">jdmiller2010@gmail.com</text>',
-         f'<text x="{x+16}" y="{y+118}" {SANS} font-size="9.5" fill="#857b6b">© 2026 Jordan Miller · noncommercial use</text>',
-         pin(x+w-24, y+14, SKY), '</g>']
+         f'<text x="{x+m+60}" y="{y+m+17}" {SERIF} font-size="21" font-weight="600" fill="{INK}">Treeline</text>',
+         f'<text x="{x+m+60}" y="{y+m+30}" {SERIF} font-size="8.6" font-style="italic" fill="#5e5546">A safe phone line</text>',
+         f'<text x="{x+m+60}" y="{y+m+40}" {SERIF} font-size="8.6" font-style="italic" fill="#5e5546">for neighborhood kids</text>',
+         f'<path d="M{x+m} {y+m+54} L{x+w-m} {y+m+54}" stroke="{INK}" stroke-width=".8" opacity=".3"/>',
+         f'<text x="{x+m}" y="{y+m+73}" {SANS} font-size="12.5" font-weight="600" fill="{INK}">Jordan Miller</text>',
+         f'<text x="{x+m}" y="{y+m+87}" {SANS} font-size="11" fill="#5e5546">jdmiller2010@gmail.com</text>',
+         f'<text x="{x+m}" y="{y+m+99}" {SANS} font-size="8.5" fill="#857b6b">© 2026 Jordan Miller · noncommercial use</text>',
+         pin(x+w-22, y+12, SKY), '</g>']
     return "".join(g)
 
 
@@ -179,31 +186,54 @@ def sticker(cx, cy, sx=.9, sy=.72, rot=-5):
             '</g>')
 
 CARD = (722, 506, 156, 100)        # the front card in the card file: x, y, w, h
-# The card file is turned a little toward the phone: its right end sits further back (higher), its front a touch narrower.
-CF_TURN = "translate(800 668) matrix(.92 -.085 0 1 0 0) translate(-800 -668)"
-def cf_turn_pt(x, y):
-    return (800 + .92 * (x - 800), 668 - .085 * (x - 800) + (y - 668))
+# The card file is a rotary one, seen a little from its right end: the cards fan back round the rod like a wheel,
+# with the big knob at the hub, so it reads as a Rolodex. The front card (and its words) stand square to you.
+CF_TURN = ""
+def cf_turn_pt(x, y): return (x, y)
+CF_ROD = 610
+def _cf_card(theta, R=100):
+    """One card on the rod, tipped back by theta degrees: (bottom-left, bottom-right, top-right, top-left)."""
+    t = math.radians(theta); z = R * math.sin(t)
+    dx, dy = .78 * z, -.3 * z
+    top = CF_ROD - R * math.cos(t) + dy
+    x0, x1 = CARD[0], CARD[0] + CARD[2]
+    return [(x0, CF_ROD), (x1, CF_ROD), (x1 + dx, top), (x0 + dx, top)]
 def card_file():
     """A rotary card file: the treehouse's phone book. The front card's words go in the overlay."""
     x, y, w, h = CARD
-    g = [f'<ellipse cx="800" cy="668" rx="118" ry="13" fill="{WOOD_S}" opacity=".35" filter="url(#tls-soft)"/>']
-    base = "M716 640 C716 632 722 628 730 628 L870 628 C878 628 884 632 884 640 L890 662 C891 667 888 670 882 670 L718 670 C712 670 709 667 710 662 Z"
-    g.append(shape(base, "#3d3a35", edge="#000"))
-    g.append(f'<path d="M726 636 L874 636" stroke="#fff" stroke-opacity=".25" stroke-width="2"/>')
-    g.append(f'<path d="M712 610 L888 610" stroke="url(#tls-metal)" stroke-width="7" stroke-linecap="round"/><g {WOB}><path d="M712 607 L888 607 M712 613 L888 613" {LNS}/></g>')
-    for i, (dx, dy, rot) in enumerate(((-6, -34, -7), (4, -26, 5), (-2, -18, -3), (5, -10, 3))):   # the cards behind
-        cx_, cy_ = x + w/2 + dx, y + h/2 + dy
-        d = rrect(x + dx, y + dy, w, h, 4)
-        g.append(f'<g transform="rotate({rot} {cx_} {cy_ + 40})"><g {WASH}><path d="{d}" fill="{["#f7efdc","#fbf6ea","#f3ead6","#faf3e4"][i]}"/></g><g {WOB}><path d="{d}" {LN}/></g></g>')
-    front = rrect(x, y, w, h, 4)
-    g.append(f'<path d="{front}" fill="{INK}" opacity=".12" transform="translate(2 4)" filter="url(#tls-edge)"/>')
-    g.append(f'<path d="M{x+w/2-20} {y+h} L{x+w/2-14} {y+h-9} L{x+w/2-6} {y+h-9} L{x+w/2} {y+h} M{x+w/2} {y+h} L{x+w/2+6} {y+h-9} L{x+w/2+14} {y+h-9} L{x+w/2+20} {y+h}" fill="#3d3a35"/>')
-    for kx in (704, 896):           # knobs
-        g.append(f'<circle cx="{kx}" cy="610" r="24" fill="url(#tls-knob)"/><circle cx="{kx-6}" cy="603" r="6" fill="#fff" opacity=".22"/><circle cx="{kx}" cy="610" r="7" fill="url(#tls-metal)"/>')
-        g.append(f'<g {WOB}><circle cx="{kx}" cy="610" r="24" {LN}/><circle cx="{kx}" cy="610" r="7" {LNS}/></g>')
-    # its right end, seen because it's turned a little toward the phone
-    g.append(shape("M884 638 L897 631 L902 657 L890 666 Z", "#2b2925", edge="#000"))
-    return f'<g transform="{CF_TURN}">{"".join(g)}</g>'
+    g = [f'<ellipse cx="808" cy="668" rx="124" ry="13" fill="{WOOD_S}" opacity=".35" filter="url(#tls-soft)"/>']
+    # the cards fanned back round the rod, furthest first; a few have index tabs
+    tabs = {30: "#c9a24a", 60: "#6f8f5a", 90: "#b0372f"}
+    for th in range(110, 0, -10):
+        pts = _cf_card(th)
+        d = "M" + " L".join(f"{px:.1f} {py:.1f}" for px, py in pts) + " Z"
+        shade = 250 - int(th * .3)
+        col = f"#{shade:02x}{shade-8:02x}{shade-26:02x}"
+        g.append(f'<g {WASH}><path d="{d}" fill="{col}"/></g><g {WOB}><path d="{d}" {LNS}/></g>')
+        if th in tabs:
+            (_, _), (_, _), (tx, ty_), (_, _) = pts
+            g.append(f'<path d="M{tx-30:.1f} {ty_:.1f} L{tx-28:.1f} {ty_-8:.1f} L{tx-10:.1f} {ty_-8:.1f} L{tx-8:.1f} {ty_:.1f} Z" fill="{tabs[th]}" stroke="{INK}" stroke-width=".9"/>')
+    # the rod
+    g.append(f'<path d="M708 {CF_ROD} L894 {CF_ROD}" stroke="url(#tls-metal)" stroke-width="7" stroke-linecap="round"/>')
+    # the cradle: a low base with arms up to the knobs; its right end shows
+    base = "M700 640 C700 633 705 630 712 630 L892 630 C898 630 902 633 902 640 L904 662 C905 667 902 670 896 670 L706 670 C700 670 697 667 698 662 Z"
+    side = "M902 638 L922 626 L924 652 L904 668 Z"
+    g += [shape(side, "#262420", edge="#000"), shape(base, "#3d3a35", edge="#000"),
+          f'<path d="M712 637 L888 637" stroke="#fff" stroke-opacity=".22" stroke-width="2"/>',
+          shape("M698 632 L710 632 L708 604 L700 604 Z", "#2f2c28", edge="#000"),
+          shape("M892 632 L904 632 L906 604 L898 604 Z", "#2f2c28", edge="#000")]
+    # the front card's shadow on the cards behind it
+    g.append(f'<path d="{rrect(x, y, w, h, 4)}" fill="{INK}" opacity=".14" transform="translate(3 3)" filter="url(#tls-edge)"/>')
+    # knobs: the near one big, at the hub of the fan; the far one smaller
+    for kx, r in ((704, 20), (900, 26)):
+        g.append(f'<circle cx="{kx+2}" cy="{CF_ROD+3}" r="{r}" fill="{INK}" opacity=".3"/>'
+                 f'<circle cx="{kx}" cy="{CF_ROD}" r="{r}" fill="url(#tls-knob)"/><circle cx="{kx-r*.25:.1f}" cy="{CF_ROD-r*.3:.1f}" r="{r*.25:.1f}" fill="#fff" opacity=".22"/>'
+                 f'<circle cx="{kx}" cy="{CF_ROD}" r="{r*.3:.1f}" fill="url(#tls-metal)"/>'
+                 f'<g {WOB}><circle cx="{kx}" cy="{CF_ROD}" r="{r}" {LN}/><circle cx="{kx}" cy="{CF_ROD}" r="{r*.3:.1f}" {LNS}/></g>')
+    for k in range(12):                                       # grip ridges on the big knob
+        a_ = k / 12 * math.tau
+        g.append(f'<path d="M{900+19*math.cos(a_):.1f} {CF_ROD+19*math.sin(a_):.1f} L{900+25*math.cos(a_):.1f} {CF_ROD+25*math.sin(a_):.1f}" stroke="#6b6258" stroke-width="1.5"/>')
+    return "".join(g)
 
 # ---------------------------------------------------------------- the shelf
 def book():
@@ -356,7 +386,7 @@ def wear(t, TOP, F, cb, cx):
 # translate + scale: place = (old x, old y, new x, new y, scale).
 BOX = {   # each prop's box in the wide room's coordinates (what its link covers)
     "sticky": (72, 150, 176, 176), "sketch": (92, 360, 200, 160), "cork": (676, 64, 290, 340),
-    "coffee": (688, 80, 268, 166), "card": (688, 246, 236, 142), "cardfile": (684, 470, 232, 204),
+    "coffee": (688, 80, 268, 166), "card": (688, 246, 240, 152), "cardfile": (680, 470, 282, 204),
     "book": (-14, -186, 186, 196), "warranty": (-10, -155, 150, 160),
 }
 def placed(content, pl):
@@ -367,7 +397,7 @@ def moved(box, pl):
     return (round(nx + (bx - ox) * s, 1), round(ny + (by - oy) * s, 1), round(bw * s, 1), round(bh * s, 1))
 
 # ---------------------------------------------------------------- the guide book, spine out
-BOOK_W, BOOK_T = 200, 46          # length of the spine, thickness of the book
+BOOK_W, BOOK_T = 200, 30          # length of the spine, thickness of the book
 def book_spine(x0, by, w=BOOK_W, t=BOOK_T, depth=60):
     """The guide lying flat on its back cover, spine toward you: the title reads across the spine."""
     x1 = x0 + w; top = by - t - depth
@@ -379,8 +409,8 @@ def book_spine(x0, by, w=BOOK_W, t=BOOK_T, depth=60):
          # the front cover, seen from above: the same design as the book's real cover (desk_pages), lying with
          # its spine edge toward you, so its top points left. Plain shapes only: no ids, since the room is drawn three ways.
          f'<clipPath id="tls-bookface{int(x0)}{int(by)}"><path d="{face}"/></clipPath>',
-         f'<g clip-path="url(#tls-bookface{int(x0)}{int(by)})"><g transform="translate({x0} {top+depth}) scale({w/356:.4f} {depth/300:.4f}) rotate(-90)">'
-         f'<image href="{COVER_IMAGE}" width="300" height="356" preserveAspectRatio="none"/></g></g>',
+         f'<g clip-path="url(#tls-bookface{int(x0)}{int(by)})"><g transform="translate({x0} {top+depth}) scale({w/450:.4f} {depth/300:.4f}) rotate(-90)">'
+         f'<image href="{COVER_IMAGE}" width="300" height="450" preserveAspectRatio="none"/></g></g>',
          f'<g {WOB}><path d="{face}" {LN}/></g>',
          shape(spine, SKY, edge="#0f2c40"),
          f'<path d="M{x0+4} {top+depth+7} L{x1-4} {top+depth+7}" stroke="#fff" stroke-opacity=".3" stroke-width="3" stroke-linecap="round"/>',
@@ -455,9 +485,9 @@ LAYOUTS = {
                   "drawer": (336, 768, 428, 100), "knob": (374, 818)},
         "phone": {"x": 270, "y": 2, "w": 560},
         "sticker": (510, 820, .78, .78, -3),
-        "bookspine": (78, 690, 200), "peek": (668, 768),
+        "bookspine": (70, 692, 228), "peek": (668, 768),
         "place": {"sticky": (72, 150, 34, 40, 1), "sketch": (92, 360, 46, 252, .92), "cork": (676, 64, 800, 40, 1),
-                  "cardfile": (684, 674, 770, 650, .8)},
+                  "cardfile": (684, 674, 738, 650, .8)},
         "shelf": [], "table_items": ["cardfile"], "sketch": True},
     # Tablets held upright: the same side table, the phone much bigger, the corkboard down beside it.
     "portrait": {"W": 1000, "H": 1304,
@@ -467,7 +497,7 @@ LAYOUTS = {
         "sticker": (466, 1030, .78, .78, -3),
         "bookspine": (66, 898, 186), "peek": (624, 978),
         "place": {"sticky": (72, 150, 20, 60, 1), "sketch": (92, 360, 30, 290, .9), "cork": (676, 64, 788, 180, .72),
-                  "cardfile": (684, 674, 726, 888, .78), "spines": (0, 0, 120, 440, .8), "plant": (0, 0, 172, 453, .8)},
+                  "cardfile": (684, 674, 700, 888, .78), "spines": (0, 0, 120, 440, .8), "plant": (0, 0, 172, 453, .8)},
         "shelf": ["spines", "plant"], "table_items": ["cardfile"], "sketch": True},
     # Phones: a narrow nightstand, the phone across nearly the whole width, the wall things above it,
     # the book and the card file on the shelf.

@@ -11,6 +11,8 @@ Treeline is a house-to-house phone network for kids who live near each other, wi
 
 ## Voice and writing
 
+**Tagline:** *A safe phone line for neighborhood kids.* It goes under the name wherever the name stands on its own: the business card in the softphone room, the sign-in screen, the About card, the app's store and page descriptions. Set it in Fraunces italic, smaller than the name and in `ink-muted`, on one line where it fits (two on the business card). Don't reword it or add an exclamation mark.
+
 Two readers: **kids** (on the phone itself and its prompts) and **parents** (in the app). Both get short, warm, plain sentences.
 
 - Sentence case everywhere: "Quiet hours", "Approve Alex". The only all-caps text is the `overline` style.

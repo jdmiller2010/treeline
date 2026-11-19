@@ -39,13 +39,14 @@ def pickups():
     war = fix(warranty_detail(), k)
     out = {
         "coffee": f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="686 84 270 156" aria-hidden="true" focusable="false">{defs(k)}{cert}</svg>',
-        "card": f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="686 246 238 140" aria-hidden="true" focusable="false">{defs(k)}{card}</svg>',
+        "card": f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="686 246 242 148" aria-hidden="true" focusable="false">{defs(k)}{card}</svg>',
         "licenses": f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="-4 -4 126 158" aria-hidden="true" focusable="false">{defs(k)}{war}</svg>',
     }
     return out
 
 # ---------------------------------------------------------------- the book
-PW, PH = 300, 356                      # one page (the cover is 150 x 178, so the same shape)
+PW, PH = 300, 450                      # one page: a standard 6 x 9 book
+OFF = (450 - 356) / 2                  # the inside pages were laid out 356 tall: centred on the taller page
 def dial_window(n, svg, cx=150, cy=140, r=116):
     """A round window onto the dial, for the close-ups."""
     return (f'<clipPath id="tlb-dw{n}"><circle cx="{cx}" cy="{cy}" r="{r}"/></clipPath><g clip-path="url(#tlb-dw{n})">{svg}</g>'
@@ -71,7 +72,7 @@ def page(n, body, label, num=None):
     grad = '<linearGradient id="tlb-pagegrad" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#000" stop-opacity=".06"/><stop offset=".12" stop-color="#000" stop-opacity="0"/><stop offset=".9" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".04"/></linearGradient>'
     d = defs("tlb").replace("</defs>", grad + "</defs>").replace('id="tlb-', f'id="tlb-{n}').replace("url(#tlb-", f"url(#tlb-{n}")
     return (f'<svg xmlns="http://www.w3.org/2000/svg" class="tl-book__art" viewBox="0 0 {PW} {PH}" role="img" aria-label="{label}">'
-            + d + paper.replace("url(#tlb-", f"url(#tlb-{n}") + body.replace('url(#tlb-', f'url(#tlb-{n}').replace('id="tlb-', f'id="tlb-{n}') + foot + '</svg>')
+            + d + paper.replace("url(#tlb-", f"url(#tlb-{n}") + (f'<g transform="translate(0 {OFF})">' if n != "c" else "<g>") + body.replace('url(#tlb-', f'url(#tlb-{n}').replace('id="tlb-', f'id="tlb-{n}') + '</g>' + foot + '</svg>')
 
 def finger(cx, cy, r=15):
     return (f'<circle cx="{cx+3}" cy="{cy+5}" r="{r}" fill="{INK}" opacity=".18"/>'
@@ -86,23 +87,23 @@ def pages():
     # 0 the cover (front of the first leaf): set like a real paperback, on a clean grid
     burst = " ".join(f"{'M' if i == 0 else 'L'}{(31 if i % 2 == 0 else 24) * math.cos(math.radians(i * 15 - 90)):.1f} {(31 if i % 2 == 0 else 24) * math.sin(math.radians(i * 15 - 90)):.1f}" for i in range(24)) + " Z"
     cov = (f'<rect width="{PW}" height="{PH}" fill="#fbf3df"/>'
-           f'<rect width="{PW}" height="122" fill="{SKY}"/>'
-           f'<rect y="122" width="{PW}" height="5" fill="{SUN}"/>'
-           f'<text x="26" y="56" {SERIF} font-size="36" font-weight="700" letter-spacing="3" fill="#fff">ROTARY</text>'
-           f'<text x="26" y="98" {SERIF} font-size="36" font-weight="700" letter-spacing="3" fill="#fff">PHONES</text>'
-           f'<text x="26" y="166" {SERIF} font-size="30" font-style="italic" fill="{INK}">the easy way</text>'
-           f'<path d="M26 182 L138 182" stroke="{SKY}" stroke-width="1.4"/>'
-           f'<text x="26" y="204" {SANS} font-size="12" fill="#5e5546">How to call a friend</text>'
-           f'<text x="26" y="220" {SANS} font-size="12" fill="#5e5546">from your treehouse</text>'
-           f'<text x="26" y="286" {SANS} font-size="11" font-weight="700" letter-spacing="1.2" fill="{INK}">FOR KIDS</text>'
-           f'<text x="26" y="302" {SANS} font-size="11" font-weight="700" letter-spacing="1.2" fill="{INK}">&amp; GROWN-UPS</text>'
-           + phone("c", False, 156, 168, 120)
-           + f'<g transform="translate(246 122) rotate(14)"><path d="{burst}" fill="{BERRY}"/>'
+           f'<rect width="{PW}" height="150" fill="{SKY}"/>'
+           f'<rect y="150" width="{PW}" height="5" fill="{SUN}"/>'
+           f'<text x="26" y="70" {SERIF} font-size="38" font-weight="700" letter-spacing="3" fill="#fff">ROTARY</text>'
+           f'<text x="26" y="116" {SERIF} font-size="38" font-weight="700" letter-spacing="3" fill="#fff">PHONES</text>'
+           f'<text x="26" y="200" {SERIF} font-size="30" font-style="italic" fill="{INK}">the easy way</text>'
+           f'<path d="M26 218 L138 218" stroke="{SKY}" stroke-width="1.4"/>'
+           f'<text x="26" y="242" {SANS} font-size="12" fill="#5e5546">How to call a friend</text>'
+           f'<text x="26" y="258" {SANS} font-size="12" fill="#5e5546">from your treehouse</text>'
+           f'<text x="26" y="360" {SANS} font-size="11" font-weight="700" letter-spacing="1.2" fill="{INK}">FOR KIDS</text>'
+           f'<text x="26" y="376" {SANS} font-size="11" font-weight="700" letter-spacing="1.2" fill="{INK}">&amp; GROWN-UPS</text>'
+           + phone("c", False, 150, 236, 132)
+           + f'<g transform="translate(246 150) rotate(14)"><path d="{burst}" fill="{BERRY}"/>'
            f'<text x="0" y="-3" text-anchor="middle" {SANS} font-size="10" font-weight="800" letter-spacing=".5" fill="#fff">4-DIGIT</text>'
            f'<text x="0" y="9" text-anchor="middle" {SANS} font-size="10" font-weight="800" letter-spacing=".5" fill="#fff">DIALING!</text></g>'
-           f'<path d="M26 326 L{PW-26} 326" stroke="{SKY}" stroke-width="1.2"/>'
-           f'<text x="26" y="344" {SANS} font-size="10" font-weight="700" letter-spacing="1.6" fill="{SKY}">TREELINE PRESS</text>'
-           f'<text x="{PW-26}" y="344" text-anchor="end" {SANS} font-size="10" font-weight="700" letter-spacing="1.6" fill="{SKY}">2ND EDITION</text>'
+           f'<path d="M26 412 L{PW-26} 412" stroke="{SKY}" stroke-width="1.2"/>'
+           f'<text x="26" y="432" {SANS} font-size="10" font-weight="700" letter-spacing="1.6" fill="{SKY}">TREELINE PRESS</text>'
+           f'<text x="{PW-26}" y="432" text-anchor="end" {SANS} font-size="10" font-weight="700" letter-spacing="1.6" fill="{SKY}">2ND EDITION</text>'
            f'<rect width="{PW}" height="{PH}" fill="url(#tlb-pagegrad)"/>')
     out.append(page("c", cov, "Rotary Phones the easy way. A Treeline guide."))
     # 1 title page

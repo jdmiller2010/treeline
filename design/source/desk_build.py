@@ -181,7 +181,7 @@ css = f"""
 .tl-desk__putback:active {{ transform: translateY(2px); box-shadow: 0 1px 0 #2a251c; }}
 .tl-desk__putback:focus-visible, .tl-book__turn:focus-visible {{ outline: var(--border-focus, 3px) solid var(--focus); outline-offset: 3px; }}
 /* The guide book: two pages side by side, leaves that turn over from right to left. */
-.tl-book {{ --p: min(46cqw, 44cqh, 360px); position: relative; width: calc(var(--p) * 2); height: calc(var(--p) * 356 / 300); cursor: pointer; touch-action: pan-y; }}
+.tl-book {{ --p: min(46cqw, 38cqh, 340px); position: relative; width: calc(var(--p) * 2); height: calc(var(--p) * 450 / 300); cursor: pointer; touch-action: pan-y; }}
 .tl-book__fly, .tl-book__spread {{ position: absolute; inset: 0; }}
 .tl-book__spread {{ perspective: calc(var(--p) * 5); transform: translateX(calc(var(--p) * -.5)); transition: transform .6s ease; }}
 .tl-book.is-open .tl-book__spread {{ transform: none; }}
