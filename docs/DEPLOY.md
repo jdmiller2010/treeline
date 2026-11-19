@@ -65,7 +65,7 @@ A tablet that is closed, asleep or offline can't ring, and callers hear fast bus
 
 ## Backups
 
-The `backup` service copies the database every night at 03:00 UTC into `data/backups/` and keeps `BACKUP_KEEP_DAYS` days (14 by default). Backups contain emails and call records: keep that folder as private as the database, and copy it off the machine (an `rsync` or object-storage job) so one lost disk doesn't lose everything.
+The `backup` service copies the central database and every household file (`data/households/<id>.db`) every night at 03:00 UTC into `data/backups/central/` and `data/backups/households/<id>/`, one file each, and keeps `BACKUP_KEEP_DAYS` days (7 by default, the same rule as the bucket in `infra/README.md`), by the timestamp in each file's name. A household that deleted its data stops being backed up and its folder rolls off within the week. Backups contain emails and call records: keep that folder as private as the database, and copy it off the machine (an `rsync` or object-storage job) so one lost disk doesn't lose everything.
 
 To restore:
 

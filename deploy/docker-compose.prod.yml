@@ -86,7 +86,7 @@ services:
     environment:
       TREELINE_DB: /data/treeline.db
       BACKUP_DIR: /backups
-      BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-14}
+      BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-7}
     volumes:
       - ../data:/data                     # read-write only because SQLite's WAL files need it; backup.py opens read-only
       - ../data/backups:/backups
