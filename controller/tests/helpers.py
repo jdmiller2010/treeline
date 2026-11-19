@@ -6,6 +6,7 @@ import tempfile
 _dir = tempfile.mkdtemp(prefix="treeline-test-")
 # Always override: a test must never touch the real database or Asterisk config.
 os.environ["TREELINE_DB"] = os.path.join(_dir, "test.db")
+os.environ["TREELINE_HOUSEHOLDS_DIR"] = os.path.join(_dir, "households")
 os.environ["TREELINE_PJSIP_FILE"] = os.path.join(_dir, "pjsip.conf")
 os.environ["TREELINE_OUTBOX"] = os.path.join(_dir, "outbox")
 os.environ["TREELINE_DEV_CODES"] = "1"
