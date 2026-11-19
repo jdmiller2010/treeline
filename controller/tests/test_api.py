@@ -844,6 +844,20 @@ class CallLogs(unittest.TestCase):
         inn = self.b.get("/api/calls").get_json()["calls"][0]
         self.assertEqual((inn["label"], inn["detail"]), ("Blocked", "During your quiet hours"))
 
+    def test_the_callers_json_never_carries_why_the_callee_would_not_take_the_call(self):
+        """R1-3: the JSON's raw `reason` used to be `callee_paused`, `callee_quiet` or `callee_daily_limit`."""
+        for reason in ("callee_paused", "callee_quiet", "callee_daily_limit"):
+            self.call(self.a.house, self.b.house, "quiet_or_paused", reason)
+        calls = self.a.get("/api/calls?range=all").get_json()["calls"]
+        self.assertEqual({c["reason"] for c in calls}, {"callee_unavailable"})
+        detail = self.a.get(f"/api/calls/{calls[0]['id']}").get_json()
+        self.assertEqual(detail["reason"], "callee_unavailable")
+        body = self.a.get("/api/calls?range=all").get_data(as_text=True) + self.a.get("/api/calls.csv").get_data(as_text=True)
+        for word in ("callee_paused", "callee_quiet", "callee_daily_limit"):
+            self.assertNotIn(word, body)
+        self.assertEqual({c["reason"] for c in self.b.get("/api/calls?range=all").get_json()["calls"]},
+                         {"callee_paused", "callee_quiet", "callee_daily_limit"})        # the callee sees its own rules
+
     def test_the_other_family_never_sees_unstrung_or_callers_own_blocks(self):
         stranger = make_house("Stranger's")
         self.call(stranger.house, self.b.house, "not_strung", "no_live_string")

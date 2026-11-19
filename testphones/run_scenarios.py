@@ -29,7 +29,7 @@ from zoneinfo import ZoneInfo
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from treeline import ari as ari_mod  # noqa: E402
-from treeline import db, pjsip  # noqa: E402
+from treeline import db, households, pjsip  # noqa: E402
 
 SERVER = os.environ.get("SIP_SERVER", "127.0.0.1")
 TZ = "America/Los_Angeles"
@@ -84,8 +84,8 @@ class World:
         self.destroy()
         for name, (number, handsets) in HOUSES.items():
             self.house[name] = db.create_treehouse(
-                self.conn, f"{name} test", number=number, timezone=TZ,
-                quiet_enabled=0, ack_911=1)
+                self.conn, f"{name} test", number=number, timezone=TZ, quiet_enabled=0)
+            households.create(self.house[name], ack_911=True)
             for h in handsets:
                 hid, user, secret = db.create_handset(
                     self.conn, self.house[name], "ata", h, secret=f"test-{h}")
@@ -108,8 +108,8 @@ class World:
                         "DELETE FROM string WHERE a_id=? OR b_id=?"):
                 self.conn.execute(sql, (tid, tid))
             self.conn.execute("DELETE FROM handset WHERE treehouse_id=?", (tid,))
-            self.conn.execute("DELETE FROM notice WHERE treehouse_id=?", (tid,))
             self.conn.execute("DELETE FROM treehouse WHERE id=?", (tid,))
+            households.remove(tid)
         pjsip.write(self.conn, client=self.ari)
 
     def reset(self):
@@ -119,7 +119,9 @@ class World:
             self.conn.execute(
                 "UPDATE treehouse SET quiet_enabled=0, paused=0, max_call_minutes=30, daily_minutes=NULL "
                 "WHERE id=?", (tid,))
-            self.conn.execute("DELETE FROM notice WHERE treehouse_id=?", (tid,))
+            h = households.conn(tid)            # each test family's own file: back to empty (call_event goes with call_log)
+            for table in ("notice", "call_log", "parent_action"):
+                h.execute(f"DELETE FROM {table}")
         ids = ",".join(str(i) for i in self.house.values())
         where = f"caller_treehouse IN ({ids}) OR callee_treehouse IN ({ids})"
         self.conn.execute(f"DELETE FROM call_event WHERE call_id IN (SELECT id FROM call WHERE {where})")
@@ -147,10 +149,23 @@ class World:
         deadline = time.time() + wait
         while time.time() < deadline:
             row = self.newest()
-            if row and row["state"] == "ended":
+            if row and row["state"] == "ended" and row["logged"]:       # ended, and copied into the families' files
                 return row
             time.sleep(0.4)
         return self.newest()
+
+    def hh(self, name):
+        """A test family's own file (the control app writes to it too: a different process)."""
+        return households.conn(self.house[name])
+
+    def copies(self, name):
+        return self.hh(name).execute("SELECT * FROM call_log ORDER BY id").fetchall()
+
+    def notes(self, name, kind=None):
+        sql, args = "SELECT * FROM notice WHERE dismissed_at IS NULL", ()
+        if kind:
+            sql, args = sql + " AND kind=?", (kind,)
+        return self.hh(name).execute(sql, args).fetchall()
 
     def events(self, call_id):
         return [r["event"] for r in self.conn.execute(
@@ -260,33 +275,46 @@ def dial_by_number(w):
     """Sam dials Alex's number; both houses approved the string, so it connects."""
     c = call_and_check(w, "sam", "0102", ["alex"])
     ev = w.events(c["id"])
-    return (c["result"] == "connected" and c["talk_sec"] >= 2 and
-            ev[:1] == ["dialed"] and "rang" in ev and "answered" in ev and ev[-1] == "ended"), dict(c)
+    # Both families have their own copy, written by the control app when the call ended; neither holds the other's phones.
+    mine, theirs = w.copies("sam"), w.copies("alex")
+    sam_h, alex_h = w.handset["sam"][0], w.handset["alex"][0]
+    copies_ok = (
+        [r["id"] for r in mine] == [c["id"]] and [r["id"] for r in theirs] == [c["id"]]
+        and mine[0]["answered_handset"] is None and theirs[0]["caller_handset"] is None
+        and mine[0]["caller_handset"] == sam_h and theirs[0]["answered_handset"] == alex_h
+        and "rang" in [e["event"] for e in w.hh("alex").execute("SELECT * FROM call_event WHERE theirs=0")]
+        and all(e["handset_id"] in (None, sam_h) for e in w.hh("sam").execute("SELECT * FROM call_event")))
+    return (c["result"] == "connected" and c["talk_sec"] >= 2 and copies_ok and
+            ev[:1] == ["dialed"] and "rang" in ev and "answered" in ev and ev[-1] == "ended"), \
+        {"call": dict(c), "sam": [dict(r) for r in mine], "alex": [dict(r) for r in theirs]}
 
 
 def not_in_service(w):
     """Sam dials a number nobody has."""
     c = call_and_check(w, "sam", "0199")
-    return c["result"] == "not_in_service", dict(c)
+    return c["result"] == "not_in_service" and [r["id"] for r in w.copies("sam")] == [c["id"]], dict(c)
 
 
 def not_strung(w):
     """Riley dials Sam, but the string isn't live yet: blocked, and Riley's parents get a note."""
     c = call_and_check(w, "riley", "0101", ["sam"])
-    notes = w.conn.execute("SELECT * FROM notice WHERE treehouse_id=?", (w.house["riley"],)).fetchall()
-    return c["result"] == "not_strung" and len(notes) == 1, dict(c)
+    notes = w.notes("riley")
+    mine = w.copies("riley")
+    # Riley's family keeps the attempt (without whose number it was); Sam's family never hears of it.
+    return (c["result"] == "not_strung" and len(notes) == 1 and len(mine) == 1 and mine[0]["callee_treehouse"] is None
+            and mine[0]["dialed"] == "0101" and w.copies("sam") == [] and w.notes("sam") == []), dict(c)
 
 
 def no_911(w):
     """Dialing 911 gets the message that this phone can't call 911, and the parents get a note on Home at once
     (the alert job then emails them and pushes). A second try in the same hour doesn't pile up a second note."""
-    w.conn.execute("DELETE FROM notice WHERE treehouse_id=? AND kind='no_911'", (w.house["sam"],))
+    w.hh("sam").execute("DELETE FROM notice WHERE kind='no_911'")
     c = call_and_check(w, "sam", "911")
     c2 = call_and_check(w, "sam", "911")
-    notes = w.conn.execute("SELECT * FROM notice WHERE treehouse_id=? AND kind='no_911' AND dismissed_at IS NULL",
-                           (w.house["sam"],)).fetchall()
+    notes = w.notes("sam", "no_911")
     ok = (c["result"] == "no_911" and c2["result"] == "no_911" and len(notes) == 1
-          and "911" in notes[0]["title"] and "dialed 911" in notes[0]["body"])
+          and "911" in notes[0]["title"] and "dialed 911" in notes[0]["body"]
+          and len(w.copies("sam")) == 2 and all(w.copies(n) == [] for n in ("alex", "grandma", "riley")))
     return ok, {"calls": [dict(c), dict(c2)], "notes": [dict(n) for n in notes]}
 
 
@@ -301,7 +329,11 @@ def callee_paused(w):
     """Alex's line is paused: Sam is blocked."""
     w.set("alex", paused=1)
     c = call_and_check(w, "sam", "0102", ["alex"])
-    return c["result"] == "quiet_or_paused" and c["reason"] == "callee_paused", dict(c)
+    # Alex's family sees why (their own pause); Sam's family is told only that Alex's line isn't taking calls.
+    mine, theirs = w.copies("sam"), w.copies("alex")
+    ok = (c["result"] == "quiet_or_paused" and c["reason"] == "callee_paused"
+          and [r["reason"] for r in mine] == ["callee_unavailable"] and [r["reason"] for r in theirs] == ["callee_paused"])
+    return ok, {"call": dict(c), "sam": [dict(r) for r in mine], "alex": [dict(r) for r in theirs]}
 
 
 def caller_quiet_hours(w):
@@ -311,7 +343,9 @@ def caller_quiet_hours(w):
           quiet_start=(now - dt.timedelta(hours=1)).strftime("%H:%M"),
           quiet_end=(now + dt.timedelta(hours=1)).strftime("%H:%M"))
     c = call_and_check(w, "sam", "0102", ["alex"])
-    return c["result"] == "quiet_or_paused" and c["reason"] == "caller_quiet", dict(c)
+    # Sam's own quiet hours are Sam's business: Alex's family has no record of the attempt.
+    return (c["result"] == "quiet_or_paused" and c["reason"] == "caller_quiet"
+            and len(w.copies("sam")) == 1 and w.copies("alex") == []), dict(c)
 
 
 def callee_quiet_hours(w):
@@ -321,7 +355,9 @@ def callee_quiet_hours(w):
           quiet_start=(now - dt.timedelta(hours=1)).strftime("%H:%M"),
           quiet_end=(now + dt.timedelta(hours=1)).strftime("%H:%M"))
     c = call_and_check(w, "sam", "0102", ["alex"])
-    return c["result"] == "quiet_or_paused" and c["reason"] == "callee_quiet", dict(c)
+    return (c["result"] == "quiet_or_paused" and c["reason"] == "callee_quiet"
+            and [r["reason"] for r in w.copies("sam")] == ["callee_unavailable"]
+            and [r["reason"] for r in w.copies("alex")] == ["callee_quiet"]), dict(c)
 
 
 def busy_line(w):
@@ -390,9 +426,9 @@ def repeat_limit(w):
     """Too many calls to the same treehouse in a short time are stopped."""
     db.set_setting(w.conn, "repeat_limit_count", 2)
     for _ in range(2):
-        w.conn.execute("INSERT INTO call(started_at,caller_treehouse,callee_treehouse,dialed,state,result)"
-                       " VALUES(?,?,?,?,?,?)", (db.iso(), w.house["sam"], w.house["alex"], "0102",
-                                                "ended", "connected"))
+        w.conn.execute("INSERT INTO call(started_at,caller_treehouse,callee_treehouse,dialed,state,result,logged)"
+                       " VALUES(?,?,?,?,?,?,1)", (db.iso(), w.house["sam"], w.house["alex"], "0102",
+                                                  "ended", "connected"))
     c = call_and_check(w, "sam", "0102", ["alex"])
     return c["result"] == "repeat_limit", dict(c)
 
@@ -401,20 +437,20 @@ def unstrung_hunting(w):
     """A kid trying lots of numbers that aren't strung is stopped, and parents are told."""
     db.set_setting(w.conn, "unstrung_limit_count", 3)
     for n in ("0190", "0191", "0192"):
-        w.conn.execute("INSERT INTO call(started_at,caller_treehouse,dialed,state,result)"
-                       " VALUES(?,?,?,?,?)", (db.iso(), w.house["sam"], n, "ended", "not_in_service"))
+        w.conn.execute("INSERT INTO call(started_at,caller_treehouse,dialed,state,result,logged)"
+                       " VALUES(?,?,?,?,?,1)", (db.iso(), w.house["sam"], n, "ended", "not_in_service"))
     c = call_and_check(w, "sam", "0102", ["alex"])
-    notes = w.conn.execute("SELECT * FROM notice WHERE treehouse_id=? AND kind='unstrung_dials'",
-                           (w.house["sam"],)).fetchall()
-    return c["result"] == "repeat_limit" and c["reason"] == "unstrung_limit" and len(notes) == 1, dict(c)
+    notes = w.notes("sam", "unstrung_dials")
+    return (c["result"] == "repeat_limit" and c["reason"] == "unstrung_limit" and len(notes) == 1
+            and w.copies("alex") == []), dict(c)
 
 
 def daily_minutes(w):
     """Sam used up today's minutes: blocked."""
     w.set("sam", daily_minutes=1)
-    w.conn.execute("INSERT INTO call(started_at,caller_treehouse,callee_treehouse,dialed,state,result,talk_sec)"
-                   " VALUES(?,?,?,?,?,?,?)", (db.iso(), w.house["sam"], w.house["alex"], "0102",
-                                              "ended", "connected", 120))
+    w.conn.execute("INSERT INTO call(started_at,caller_treehouse,callee_treehouse,dialed,state,result,talk_sec,logged)"
+                   " VALUES(?,?,?,?,?,?,?,1)", (db.iso(), w.house["sam"], w.house["alex"], "0102",
+                                                "ended", "connected", 120))
     c = call_and_check(w, "sam", "0102", ["alex"])
     return c["result"] == "daily_limit", dict(c)
 

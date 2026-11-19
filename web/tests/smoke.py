@@ -395,6 +395,17 @@ def main():
         a.keyboard.press("Escape")
         # A released number is free to claim again at once, so nothing should talk about it resting.
         a.goto(f"{BASE}/parent/#/settings"); a.wait_for_selector("text=Leave Treeline")
+        # Shortening how long call records are kept deletes the older ones at once, so the page says so before it is saved.
+        a.wait_for_selector("#set-keep")
+        warn = a.locator("[data-keep-warning]")
+        check(warn.is_hidden(), "the retention warning is hidden while the time is unchanged")
+        was = a.input_value("#set-keep")
+        a.select_option("#set-keep", "7")
+        check(warn.is_visible() and "7 days" in warn.inner_text() and "right away" in warn.inner_text() and "backups" in warn.inner_text()
+              and "tl-alert--warning" in (warn.locator(".tl-alert").get_attribute("class") or ""), "a shorter time shows a warning: removed right away, backups take up to a week")
+        a.select_option("#set-keep", "365")
+        check(warn.is_hidden(), "a longer time shows no warning")
+        a.select_option("#set-keep", was)
         txt = a.inner_text("main").lower()
         check("year of rest" not in txt and "frees your number" not in txt and "ladder" not in txt, "the Leave Treeline card doesn't talk about a number resting (or ladder codes)")
         # ---- a sitter: pause, the quiet-hours switch, disconnect and ring a phone, today's calls. Nothing else.
@@ -481,19 +492,25 @@ def main():
         check("gradient" in day_bg, "a checked night is filled green")
 
         # ---- a 911 attempt: a danger alert first on Home, and a louder row and a summary in the log.
-        # (Real 911 dials are tested with real calls in testphones; here the call and its note go in the database the way
-        # the call engine writes them, and the screens are checked.)
+        # (Real 911 dials are tested with real calls in testphones; here the call and its note go in the way the call
+        # engine writes them: a ledger row copied into the family's own file by households.record_call, and a note in
+        # that file. This script runs on the host, so it uses the same code the server does, pointed at the same files.)
         ui_db = os.environ.get("TREELINE_UI_DB")
         if ui_db and os.path.exists(ui_db):
-            import sqlite3
             from datetime import datetime, timezone
+            os.environ["TREELINE_DB"] = ui_db                     # assigned, not setdefault: the households sit next to it
+            sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "controller"))
+            from treeline import db as tdb, households
             now_iso = datetime.now(timezone.utc).isoformat(timespec="seconds")
-            db = sqlite3.connect(ui_db, timeout=15)
-            tid = db.execute("SELECT id FROM treehouse WHERE name=?", ("Alex's house",)).fetchone()[0]
-            db.execute("INSERT INTO call(started_at,caller_treehouse,dialed,state,result,reason) VALUES(?,?,?,?,?,?)", (now_iso, tid, "911", "ended", "no_911", "911"))
-            db.execute("INSERT INTO notice(treehouse_id,kind,title,body,created_at,key) VALUES(?,?,?,?,?,?)",
-                       (tid, "no_911", "Someone tried to call 911", "Someone on Hall phone dialed 911 at Wed 3:42 pm. The call didn't go anywhere.", now_iso, "smoke-911"))
-            db.commit(); db.close()
+            central = tdb.connect(ui_db)
+            tid = central.execute("SELECT id FROM treehouse WHERE name=?", ("Alex's house",)).fetchone()[0]
+
+            def attempt(dialed="911", result="no_911", reason="911"):
+                cid = central.execute("INSERT INTO call(started_at,caller_treehouse,dialed,state,ended_at,result,reason) VALUES(?,?,?,?,?,?,?)",
+                                      (now_iso, tid, dialed, "ended", now_iso, result, reason)).lastrowid
+                households.record_call(central, cid)
+            attempt()
+            households.add_notice(tid, "no_911", "Someone tried to call 911", "Someone on Hall phone dialed 911 at Wed 3:42 pm. The call didn't go anywhere.", "smoke-911")
             a.goto(f"{BASE}/parent/#/home")
             a.wait_for_selector(".tl-alert--danger")
             first = a.locator(".tl-alert").first
@@ -513,6 +530,18 @@ def main():
             a.click(".tl-alert--danger [data-dismiss]")
             a.wait_for_function("() => !document.querySelector('.tl-alert--danger')", timeout=5000)
             check(True, "a parent can dismiss the note (the call stays in the log)")
+            # ---- a long history is paged: 50 at a time under "All", with a Show older button
+            for i in range(60):
+                attempt(dialed=f"{1000 + i}", result="not_in_service", reason="no_such_number")
+            a.goto(f"{BASE}/parent/#/calls"); a.wait_for_selector("input[name=calls-range]")
+            a.click("label:has(input[value=all])"); a.wait_for_selector("[data-show-older]")
+            check(a.locator(".tl-log").count() == 50, f"All shows the newest 50 calls ({a.locator('.tl-log').count()})")
+            a.click("[data-show-older]")
+            a.wait_for_function("() => document.querySelectorAll('.tl-log').length > 50")
+            check(a.locator(".tl-log").count() == 61 and a.locator("[data-show-older]").count() == 0,
+                  f"Show older loads the rest (all 61) and the button goes away ({a.locator('.tl-log').count()})")
+            a.click("label:has(input[value=week])"); a.wait_for_selector(".tl-log")
+            check(a.locator(".tl-log").count() == 61 and a.locator("[data-show-older]").count() == 0, "This week shows them all at once")
         else:
             print("skip  911 alert screens: run through ./dev ui smoke (it gives the test database's path)", flush=True)
 

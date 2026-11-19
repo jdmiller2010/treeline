@@ -10,7 +10,7 @@
 #   ./dev check              regenerate generated files, check syntax and the repo rules, fail if anything was stale
 #   ./dev rules [args]       scan the repo for secrets, addresses and other things that must not be public (docs/REPO_RULES.md)
 #   ./dev hooks              turn on the pre-commit hook that runs those rules on every commit
-#   ./dev clean              empty the dev database (refuses while a test run is going)
+#   ./dev clean              empty the dev database and every household file (refuses while a test run is going)
 #   ./dev all                check, unit, sip, web, ui smoke, ui pwa
 #
 # Anything that uses Asterisk or the dev database holds one lock, so two runs can't
@@ -98,7 +98,7 @@ ui_stop() {
   if ui_alive; then kill "$(ui_pid)"; for _ in $(seq 20); do ui_alive || break; sleep 0.2; done; fi
   rm -f "$STATE/ui.pid"; echo "stopped"
 }
-ui_reset() { ui_stop; rm -f "$STATE/ui/test.db"*; ui_start; }       # a fresh database, only ever while stopped
+ui_reset() { ui_stop; rm -f "$STATE/ui/test.db"*; rm -rf "$STATE/ui/households" "$STATE/ui/pre-migrate"; ui_start; }       # a fresh database and household files, only ever while stopped
 ui_test() {   # ui_test SCRIPT [VAR=value ...]: a throwaway local API, then a browser test against it
   local script="$1"; shift
   ui_reset
@@ -137,13 +137,40 @@ cmd_hooks() { git config core.hooksPath .githooks && echo "pre-commit hook on (.
 
 # ---------------------------------------------------------------- clean
 clean_run() {
+  # A current-layout database is emptied through the application: every household file goes through
+  # households.remove() (safe for the api and controller, which may have them open), then the central rows.
+  # An old-layout database (made before the data layer was split) is refused by the application, so that one
+  # is removed by hand, with the api and controller stopped first: never delete a database a process has open.
+  local rc=0
+  clean_py || rc=$?
+  if [ $rc -eq 3 ]; then
+    echo "old-layout dev database: stopping the api and controller, removing it, starting them again"
+    dc stop api controller >/dev/null
+    dc run --rm --no-deps -T --entrypoint sh controller -c \
+      'rm -f /data/treeline.db /data/treeline.db-wal /data/treeline.db-shm /data/treeline.db-journal; rm -rf /data/households /data/pre-migrate'
+    clean_py
+    dc start api controller >/dev/null
+    return 0
+  fi
+  return $rc
+}
+clean_py() {
   dc run --rm --no-deps -T -e TREELINE_PJSIP_FILE=/generated/pjsip_handsets.conf -v "$ROOT/data/generated:/generated" \
     --entrypoint python controller -c "
-from treeline import db, pjsip
-c = db.connect()
-for t in ['call_event','call','string','ladder_code','grown_up','login_code','session','handset','notice','parent_action','pairing','push_subscription','number_rest','treehouse','setting']:
+import os, re, sys
+from treeline import db, households, pjsip
+try:
+    c = db.connect()
+except db.OldLayoutDatabase:
+    sys.exit(3)
+for tid in households.ids():
+    households.remove(tid)
+for name in os.listdir(households.root()) if os.path.isdir(households.root()) else []:
+    if re.match(r'^\\d+\\.db-(wal|shm|journal)\$', name):           # leftovers of a household that is already gone
+        os.remove(os.path.join(households.root(), name))
+for t in ['call_event','call','string','ladder_code','grown_up','login_code','session','handset','pairing','push_subscription','treehouse','setting']:
     c.execute(f'DELETE FROM {t}')
-pjsip.write(c); print('dev database emptied')"
+pjsip.write(c); print('dev database emptied (central rows and every household file)')"
 }
 cmd_clean() {
   read -r -p "Empty the dev database (all families, calls, accounts)? [y/N] " a; [ "$a" = y ] || exit 1
