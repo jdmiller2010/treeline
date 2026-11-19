@@ -48,7 +48,7 @@ This plan turns the decisions on the Treeline planning whiteboard into phases. E
    - `grown_up`: id, email, treehouse, role (`parent`, `sitter`).
    - `call`: see [Call audit](#call-audit).
    - `parent_action`: who, what, target, before and after, when.
-2. **Numbers:** one per treehouse, assigned at random from 1000–9999 (0xxx is kept for the system, for example tests and recordings). A number rests for a year after a treehouse leaves before it's reused. Parents can change it.
+2. **Numbers:** one per treehouse, assigned at random from 1000–9999 (0xxx is kept for the system, for example tests and recordings). A number is free to claim again as soon as a treehouse lets it go (a call only connects over a string both families approved, so a stale number can't reach anyone). Parents can change it.
 3. **Dialing:** replace speed dials with 4-digit dialing in the dialplan. 911 goes to the 911 message; any other dial that isn't four digits "cannot be completed as dialed" (below).
 4. **Call flow in the control app**, checked in this order:
    1. Is the caller's own line in quiet hours or paused? Then fast busy (from Phase 3 on, the handset plays it on pickup).
@@ -83,7 +83,7 @@ This plan turns the decisions on the Treeline planning whiteboard into phases. E
 6. **Quiet hours and rules** (Settings form): quiet hours, call length, daily minutes, and pause now.
 7. **Our treehouse:** the number, who lives here, handsets (rename, ring test, remove instantly), grown-ups and sitters.
 8. **Phone book:** a printable card of every strung treehouse and its number, to keep by the phone.
-9. **Account** (Menu): settings, privacy and safety, the parent action log, sign out, leave the Treeline (strings end, the other families are told, the number rests a year), and delete the treehouse and all its data.
+9. **Account** (Menu): settings, privacy and safety, the parent action log, sign out, leave the Treeline (strings end, the other families are told, the number goes back to be claimed again), and delete the treehouse and all its data.
 10. **Alerts:** email first (strings waiting, a handset offline, repeated blocked attempts, an optional evening summary); push notifications in Phase 4.
 11. **Footer and about:** "© 2026 Jordan Miller · jdmiller2010@gmail.com · Support Treeline · Open-source licenses" at the bottom of every page. The licenses page is built from `THIRD_PARTY_NOTICES.md`.
 

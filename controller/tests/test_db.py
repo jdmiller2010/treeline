@@ -24,6 +24,20 @@ class Migrations(unittest.TestCase):
         conn.execute("UPDATE handset SET provision_secret='s'")                                 # and usable
         self.assertEqual(conn.execute("PRAGMA user_version").fetchone()[0], len(db.MIGRATIONS))
 
+    def test_the_old_number_rest_table_is_dropped_and_nothing_else_is_lost(self):
+        path = os.path.join(tempfile.mkdtemp(), "rest.db")
+        old = sqlite3.connect(path)
+        old.executescript("""CREATE TABLE number_rest (number TEXT PRIMARY KEY, available_after TEXT NOT NULL);
+          INSERT INTO number_rest VALUES('4321','2999-01-01T00:00:00+00:00');
+          CREATE TABLE treehouse (id INTEGER PRIMARY KEY, name TEXT NOT NULL, number TEXT, created_at TEXT NOT NULL);
+          INSERT INTO treehouse(name,number,created_at) VALUES('Keeps','1234','t');""")
+        old.close()
+        conn = db.connect(path)
+        tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        self.assertNotIn("number_rest", tables)
+        self.assertEqual(conn.execute("SELECT number FROM treehouse WHERE name='Keeps'").fetchone()[0], "1234")
+        self.assertTrue(db.number_is_free(conn, "4321"))                  # a number that was resting is simply free
+
     def test_running_migrations_twice_changes_nothing(self):
         conn = helpers.fresh_conn()
         db.migrate(conn)

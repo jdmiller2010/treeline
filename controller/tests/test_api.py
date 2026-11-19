@@ -174,13 +174,15 @@ class Treehouse(unittest.TestCase):
         self.assertTrue(p.patch("/api/treehouse", {"paused": True}).get_json()["paused"])
         self.assertTrue(p.get("/api/home").get_json()["treehouse"]["paused"])
 
-    def test_change_number_rests_the_old_one_and_tells_friends(self):
+    def test_change_number_frees_the_old_one_at_once_and_tells_friends(self):
         a, b = make_house("A"), make_house("B")
         string_up(a, b)
         old = a.house["number"]
         new = a.post("/api/treehouse/number").get_json()["number"]
         self.assertNotEqual(old, new)
-        self.assertFalse(db.number_is_free(helpers.db.connect(), old))
+        self.assertTrue(db.number_is_free(helpers.db.connect(), old))
+        taker = make_house("Taker")
+        self.assertEqual(taker.post("/api/treehouse/number", {"number": old}).status_code, 200)     # another family can take it now
         titles = [n["title"] for n in b.get("/api/home").get_json()["notices"]]
         self.assertIn("A has a new number", titles)
         self.assertEqual(a.post("/api/treehouse/number", {"number": b.house["number"]}).status_code, 409)
@@ -207,7 +209,7 @@ class Treehouse(unittest.TestCase):
         a, b = make_house(), make_house()
         self.assertEqual(a.post("/api/grown-ups", {"email": b.email}).status_code, 409)
 
-    def test_leave_ends_strings_frees_nothing_and_tells_friends(self):
+    def test_leave_ends_strings_frees_the_number_and_tells_friends(self):
         a, b = make_house("Leaver"), make_house("Stayer")
         string_up(a, b)
         number = a.house["number"]
@@ -215,7 +217,7 @@ class Treehouse(unittest.TestCase):
         self.assertEqual(a.post("/api/treehouse/leave", {"confirm": "leaver"}).status_code, 200)
         self.assertEqual(b.get("/api/strings").get_json()["strings"], [])
         self.assertIn("Leaver left the Treeline", [n["title"] for n in b.get("/api/home").get_json()["notices"]])
-        self.assertFalse(db.number_is_free(helpers.db.connect(), number))
+        self.assertTrue(db.number_is_free(helpers.db.connect(), number))
         self.assertIsNone(a.get("/api/me").get_json()["treehouse"])
 
     def test_delete_removes_everything(self):

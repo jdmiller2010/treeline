@@ -548,8 +548,6 @@ def treehouse_number():
         new = wanted
     else:
         new = db.assign_number(conn())
-    conn().execute("INSERT OR REPLACE INTO number_rest(number, available_after) VALUES(?,?)",
-                   (th["number"], db.iso(now() + dt.timedelta(days=365))))
     conn().execute("UPDATE treehouse SET number=? WHERE id=?", (new, th["id"]))
     audit("changed_number", None, th["number"], new)
     for s in my_strings(th["id"]):

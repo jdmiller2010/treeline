@@ -243,5 +243,7 @@ export function setBusy(button, busy, label) {
   if (!button) return;
   button.disabled = busy;
   const l = button.querySelector(".tl-btn__label");
-  if (l && label) { if (busy) { button.dataset.label = l.textContent; l.textContent = label; } else { l.textContent = button.dataset.label || l.textContent; } }
+  if (!l) return;
+  if (busy) { if (label) { button.dataset.label = l.textContent; l.textContent = label; } }
+  else if (button.dataset.label) { l.textContent = button.dataset.label; delete button.dataset.label; }   // back to what it said, label or not
 }

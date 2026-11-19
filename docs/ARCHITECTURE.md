@@ -220,7 +220,7 @@ erDiagram
     }
 ```
 
-Other tables: `number_rest` (a leaving treehouse's number rests a year), `login_code` and `session` (email sign-in), `pairing` (tablet and device pairing codes), `setting` (knobs the tests change). Only the md5 digest of a handset's secret is stored for Asterisk; adapters, which fetch their settings by a private link, also keep the secret so that file can be made.
+Other tables: `login_code` and `session` (email sign-in), `pairing` (tablet and device pairing codes), `setting` (knobs the tests change). Only the md5 digest of a handset's secret is stored for Asterisk; adapters, which fetch their settings by a private link, also keep the secret so that file can be made.
 
 ## 6. Handset accounts and registration
 

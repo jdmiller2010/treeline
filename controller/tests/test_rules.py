@@ -361,13 +361,13 @@ class Numbers(unittest.TestCase):
             n = db.assign_number(c)
             self.assertRegex(n, r"^[1-9]\d{3}$")
 
-    def test_a_leaving_treehouses_number_rests_for_a_year(self):
+    def test_a_released_number_can_be_claimed_right_away(self):
         c = helpers.fresh_conn()
         tid = db.create_treehouse(c, "x", number="4321")
+        self.assertFalse(db.number_is_free(c, "4321"))                       # taken while it is someone's
         db.leave_treehouse(c, tid)
-        self.assertFalse(db.number_is_free(c, "4321"))
-        c.execute("UPDATE number_rest SET available_after=?", (db.iso(db.utcnow() - dt.timedelta(days=1)),))
-        self.assertTrue(db.number_is_free(c, "4321"))
+        self.assertTrue(db.number_is_free(c, "4321"))                        # and free the moment it is let go
+        self.assertEqual(db.create_treehouse(c, "y", number="4321") is not None, True)
 
 
 if __name__ == "__main__":

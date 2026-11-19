@@ -36,11 +36,6 @@ CREATE TABLE IF NOT EXISTS treehouse (
   left_at TEXT
 );
 
-CREATE TABLE IF NOT EXISTS number_rest (
-  number TEXT PRIMARY KEY,
-  available_after TEXT NOT NULL
-);
-
 CREATE TABLE IF NOT EXISTS handset (
   id INTEGER PRIMARY KEY,
   treehouse_id INTEGER NOT NULL REFERENCES treehouse(id),
@@ -222,6 +217,8 @@ MIGRATIONS = [
     lambda c: _add_column(c, "treehouse", "consent_version", "TEXT"),
     # 4: a parent can disconnect one phone: it stops ringing and calling, nothing else changes.
     lambda c: _add_column(c, "handset", "disabled", "INTEGER NOT NULL DEFAULT 0"),
+    # 5: a released number used to rest for a year before anyone could claim it. It no longer does.
+    lambda c: c.execute("DROP TABLE IF EXISTS number_rest"),
 ]
 
 
@@ -288,12 +285,8 @@ def hash_token(token):
 def assign_number(conn, rng=None):
     """A random free 4-digit number from 1000-9999 (0xxx is reserved)."""
     rng = rng or secrets.SystemRandom()
-    now = iso()
     taken = {r[0] for r in conn.execute("SELECT number FROM treehouse WHERE number IS NOT NULL")}
-    resting = {r[0] for r in conn.execute(
-        "SELECT number FROM number_rest WHERE available_after > ?", (now,))}
-    free = [n for n in (f"{i:04d}" for i in range(1000, 10000))
-            if n not in taken and n not in resting]
+    free = [n for n in (f"{i:04d}" for i in range(1000, 10000)) if n not in taken]
     if not free:
         raise RuntimeError("no free numbers")
     return rng.choice(free)
@@ -302,10 +295,7 @@ def assign_number(conn, rng=None):
 def number_is_free(conn, number):
     if not (len(number) == 4 and number.isdigit() and number[0] != "0"):
         return False
-    if conn.execute("SELECT 1 FROM treehouse WHERE number=?", (number,)).fetchone():
-        return False
-    return not conn.execute("SELECT 1 FROM number_rest WHERE number=? AND available_after>?",
-                            (number, iso())).fetchone()
+    return not conn.execute("SELECT 1 FROM treehouse WHERE number=?", (number,)).fetchone()
 
 
 # ------------------------------------------------------------- treehouses
@@ -332,12 +322,9 @@ def treehouse_by_number(conn, number):
 
 
 def leave_treehouse(conn, tid):
-    """The treehouse leaves the Treeline: strings end, number rests a year."""
-    th = conn.execute("SELECT * FROM treehouse WHERE id=?", (tid,)).fetchone()
+    """The treehouse leaves the Treeline: strings end, and its number goes back to be claimed again right away
+    (a call only connects over a string both families approved, so a stale number can't reach anyone)."""
     now = utcnow()
-    if th["number"]:
-        conn.execute("INSERT OR REPLACE INTO number_rest(number, available_after) VALUES(?,?)",
-                     (th["number"], iso(now + dt.timedelta(days=365))))
     conn.execute("UPDATE treehouse SET left_at=?, number=NULL WHERE id=?", (iso(now), tid))
     conn.execute("UPDATE string SET state='cut', updated_at=? WHERE (a_id=? OR b_id=?) AND state!='cut'",
                  (iso(now), tid, tid))

@@ -202,7 +202,7 @@ export function bindPhoneSwitches(root, refresh) {
 async function changeNumber(ctx) {
   const r = await formDialog({
     title: "Change your number",
-    intro: "Families you're strung with get a note with your new number. Calls only connect between families who've approved each other, so nobody can reach you just by dialing a number. Your old number isn't given to another family for a year, so a friend who still has it written down doesn't end up calling someone new.",
+    intro: "Families you're strung with get a note with your new number. Your old number goes back to be used again. Calls only connect between families who've approved each other, so nobody can reach you just by dialing a number.",
     submit: "Change number", danger: false,
     body: html`${radioGroup({ name: "how", legend: "New number", value: "random", options: [["random", "Pick one for me", "A random four-digit number."], ["own", "I'll choose", "Four digits, not starting with 0."]] })}
       <div data-for="own" hidden>${textField({ id: "newnum", name: "number", label: "Number", attrs: 'inputmode="numeric" maxlength="4"' })}</div>`,
