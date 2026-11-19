@@ -48,6 +48,7 @@ class Family:
         self.house = api("POST", "/api/treehouse", {"name": name, "ack_911": True, "consent": True}, self.token)["treehouse"]
         # Quiet hours would make results depend on the time of day.
         api("PATCH", "/api/treehouse", {"quiet": {"enabled": False}}, self.token)
+        api("PUT", "/api/treehouse/parent-code", {"code": "2468"}, self.token)      # a softphone can't be added without one
         self.number = self.house["number"]
 
     def call(self, method, path, body=None):

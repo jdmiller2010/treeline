@@ -42,8 +42,14 @@ class Person:
     def patch(self, path, json=None):
         return client.patch(path, headers=self.h(), json=json or {})
 
+    def put(self, path, json=None):
+        return client.put(path, headers=self.h(), json=json or {})
+
     def delete(self, path, json=None):
         return client.delete(path, headers=self.h(), json=json or {})
+
+
+PIN = "2468"
 
 
 def make_house(name="Bennett house", tz="America/Los_Angeles", email=None):
@@ -51,6 +57,7 @@ def make_house(name="Bennett house", tz="America/Los_Angeles", email=None):
     r = p.post("/api/treehouse", {"name": name, "timezone": tz, "ack_911": True, "consent": True, "your_name": "Pat"})
     assert r.status_code == 201, r.get_json()
     p.house = r.get_json()["treehouse"]
+    assert p.put("/api/treehouse/parent-code", {"code": PIN}).status_code == 200      # a softphone can't be added without one
     return p
 
 
@@ -916,3 +923,150 @@ class Hardening(unittest.TestCase):
         d = api.describe_call({"caller_treehouse": 1, "result": rules.QUIET_OR_PAUSED, "reason": "callee_daily_limit",
                                "talk_sec": 0, "dialed": "1"}, 2)
         self.assertEqual(d["detail"], "Out of minutes today")
+
+
+class ParentCode(unittest.TestCase):
+    """The parent code: set once by a parent, needed before a softphone, and the only way a softphone leaves phone mode."""
+
+    def bare_house(self):
+        p = Person()
+        r = p.post("/api/treehouse", {"name": "No code house", "ack_911": True, "consent": True})
+        self.assertEqual(r.status_code, 201)
+        return p
+
+    def softphone(self, p):
+        made = p.post("/api/handsets", {"kind": "softphone", "name": "Tablet"}).get_json()
+        c = made["credentials"]
+        basic = {"Authorization": "Basic " + base64.b64encode(f"{c['sip_user']}:{c['secret']}".encode()).decode()}
+        return made["handset"]["id"], basic
+
+    def leave(self, basic, code):
+        return client.post("/api/phone/leave", headers=basic, json={"code": code})
+
+    def test_a_softphone_needs_a_code_first_and_other_phones_do_not(self):
+        p = self.bare_house()
+        self.assertFalse(p.get("/api/me").get_json()["treehouse"]["has_parent_code"])
+        r = p.post("/api/handsets", {"kind": "softphone", "name": "Tablet"})
+        self.assertEqual((r.status_code, r.get_json()["code"]), (409, "needs_pin"))
+        self.assertEqual(p.post("/api/handsets", {"kind": "ata", "name": "Hall"}).status_code, 201)
+        # pairing a softphone by QR is held to the same rule
+        start = client.post("/api/pair/start").get_json()
+        r = p.post("/api/pair/claim", {"code": start["code"], "name": "Tab"})
+        self.assertEqual((r.status_code, r.get_json()["code"]), (409, "needs_pin"))
+        self.assertEqual(p.put("/api/treehouse/parent-code", {"code": "4821"}).status_code, 200)
+        self.assertTrue(p.get("/api/me").get_json()["treehouse"]["has_parent_code"])
+        self.assertEqual(p.post("/api/pair/claim", {"code": start["code"], "name": "Tab"}).status_code, 201)
+
+    def test_the_code_is_4_to_6_digits_and_stored_only_as_a_salted_hash(self):
+        p = self.bare_house()
+        for bad in ("123", "1234567", "12a4", "", " 1234", "12 34"):
+            self.assertEqual(p.put("/api/treehouse/parent-code", {"code": bad}).status_code, 400, bad)
+        self.assertEqual(p.put("/api/treehouse/parent-code", {"code": "13579"}).status_code, 200)
+        row = db.connect(os.environ["TREELINE_DB"]).execute("SELECT parent_pin_hash FROM treehouse WHERE name='No code house' ORDER BY id DESC").fetchone()
+        self.assertNotIn("13579", row[0])
+        self.assertTrue(row[0].startswith("scrypt$"))
+        self.assertTrue(db.check_pin(row[0], "13579") and not db.check_pin(row[0], "13580"))
+        self.assertNotIn("13579", p.get("/api/me").get_data(as_text=True))
+
+    def age(self, person, minutes=60):
+        """Make a person's session look like it started a while ago (a session lasts 30 days; its expiry tells when it began)."""
+        db.connect(os.environ["TREELINE_DB"]).execute("UPDATE session SET expires_at=? WHERE token_hash=?",
+            (db.iso(dt.datetime.now(dt.timezone.utc) + dt.timedelta(days=api.SESSION_DAYS) - dt.timedelta(minutes=minutes)), db.hash_token(person.token)))
+
+    def test_changing_the_code_needs_the_current_one_and_only_a_parent_can(self):
+        p = make_house()                                                 # make_house sets "2468"
+        self.age(p)
+        r = p.put("/api/treehouse/parent-code", {"code": "1111"})
+        self.assertEqual((r.status_code, r.get_json()["code"]), (403, "needs_current"))
+        self.assertEqual(p.put("/api/treehouse/parent-code", {"code": "1111", "current": "0000"}).status_code, 403)
+        self.assertEqual(p.put("/api/treehouse/parent-code", {"code": "1111", "current": PIN}).status_code, 200)
+        sitter = Person("pin-sitter@example.com")
+        self.age(sitter)
+        p.post("/api/grown-ups", {"email": sitter.email, "name": "Sit", "role": "sitter"})
+        self.assertEqual(sitter.put("/api/treehouse/parent-code", {"code": "9999", "current": "1111"}).status_code, 403)
+
+    def test_leaving_phone_mode_takes_the_code_and_removes_the_handset(self):
+        p = make_house()
+        hid, basic = self.softphone(p)
+        r = self.leave(basic, "0000")
+        self.assertEqual((r.status_code, r.get_json()["code"]), (403, "bad_pin"))
+        self.assertEqual(len(p.get("/api/handsets").get_json()["handsets"]), 1)            # still a phone
+        self.assertEqual(self.leave({"Authorization": "Basic " + base64.b64encode(b"nobody:x").decode()}, PIN).status_code, 401)
+        self.assertEqual(self.leave(basic, PIN).status_code, 200)
+        self.assertEqual(p.get("/api/handsets").get_json()["handsets"], [])
+        self.assertEqual(client.get("/api/line", headers=basic).status_code, 401)            # its sign-in no longer works
+        log = [a["action"] for a in p.get("/api/actions").get_json()["actions"]]
+        self.assertIn("handset_left", log)
+
+    def test_only_a_softphone_can_leave_this_way(self):
+        p = make_house()
+        made = p.post("/api/handsets", {"kind": "ata", "name": "Hall"}).get_json()
+        c = made["credentials"]
+        basic = {"Authorization": "Basic " + base64.b64encode(f"{c['sip_user']}:{c['secret']}".encode()).decode()}
+        self.assertEqual(self.leave(basic, PIN).status_code, 400)
+
+    def test_wrong_codes_lock_it_even_for_the_right_one_and_a_restart_does_not_forgive(self):
+        p = make_house()
+        _, basic = self.softphone(p)
+        for _ in range(4):
+            self.assertEqual(self.leave(basic, "0000").status_code, 403)
+        r = self.leave(basic, "0000")
+        self.assertEqual((r.status_code, r.get_json()["code"]), (429, "pin_locked"))
+        api._hits.clear()                                                                     # (the in-memory limit is not what holds)
+        r = self.leave(basic, PIN)
+        self.assertEqual((r.status_code, r.get_json()["code"]), (429, "pin_locked"))
+        self.assertIn("minute", r.get_json()["error"])
+        # the lock also stops a parent changing the code by guessing the current one
+        self.assertEqual(p.put("/api/treehouse/parent-code", {"code": "1111", "current": PIN}).status_code, 429)
+        # after the lock runs out, the right code works again and the count starts over
+        db.connect(os.environ["TREELINE_DB"]).execute("UPDATE treehouse SET pin_locked_until=?", (db.iso(dt.datetime.now(dt.timezone.utc) - dt.timedelta(minutes=1)),))
+        self.assertEqual(self.leave(basic, PIN).status_code, 200)
+
+    def test_a_right_code_forgives_earlier_wrong_ones(self):
+        p = make_house()
+        _, basic = self.softphone(p)
+        for _ in range(3):
+            self.leave(basic, "0000")
+        self.assertEqual(p.put("/api/treehouse/parent-code", {"code": "2222", "current": PIN}).status_code, 200)   # a right code resets the count
+        for _ in range(4):
+            self.assertEqual(self.leave(basic, "0000").status_code, 403)                      # four more is still not a lock
+
+    def test_leaving_without_a_code_set_says_so(self):
+        p = self.bare_house()
+        made = p.post("/api/handsets", {"kind": "ata", "name": "Hall"}).get_json()           # (a softphone can't exist without a code)
+        db.connect(os.environ["TREELINE_DB"]).execute("UPDATE handset SET kind='softphone' WHERE id=?", (made["handset"]["id"],))
+        c = made["credentials"]
+        basic = {"Authorization": "Basic " + base64.b64encode(f"{c['sip_user']}:{c['secret']}".encode()).decode()}
+        r = self.leave(basic, "1234")
+        self.assertEqual((r.status_code, r.get_json()["code"]), (409, "no_pin"))
+
+    def test_a_parent_who_forgot_the_code_can_set_a_new_one_right_after_signing_in_again(self):
+        p = make_house()
+        _, basic = self.softphone(p)
+        self.age(p)
+        self.assertEqual(p.put("/api/treehouse/parent-code", {"code": "7777"}).status_code, 403)      # an old session can't
+        again = Person(p.email)                                                                        # a fresh sign-in by emailed code can
+        self.assertEqual(again.put("/api/treehouse/parent-code", {"code": "7777"}).status_code, 200)
+        self.assertEqual(self.leave(basic, PIN).status_code, 403)                                      # the old code no longer works
+        self.assertEqual(self.leave(basic, "7777").status_code, 200)
+
+    def test_signing_a_phone_out_needs_no_code_and_opens_nothing(self):
+        p = make_house()
+        hid, basic = self.softphone(p)
+        self.assertEqual(client.post("/api/phone/sign-out", json={}).status_code, 401)                  # it has to be the phone itself
+        self.assertEqual(client.post("/api/phone/sign-out", headers=basic, json={}).status_code, 200)
+        self.assertEqual(p.get("/api/handsets").get_json()["handsets"], [])                             # the handset is removed
+        self.assertEqual(client.get("/api/line", headers=basic).status_code, 401)                       # and its sign-in is dead
+        self.assertEqual(p.get("/api/me").status_code, 200)                                              # nobody was signed in or out of a parent session by it
+        self.assertIn("handset_signed_out", [a["action"] for a in p.get("/api/actions").get_json()["actions"]])
+
+    def test_signing_out_is_only_for_softphones_and_a_session_cannot_stand_in_for_the_code(self):
+        p = make_house()
+        made = p.post("/api/handsets", {"kind": "ata", "name": "Hall"}).get_json()
+        c = made["credentials"]
+        ata = {"Authorization": "Basic " + base64.b64encode(f"{c['sip_user']}:{c['secret']}".encode()).decode()}
+        self.assertEqual(client.post("/api/phone/sign-out", headers=ata, json={}).status_code, 400)
+        hid, basic = self.softphone(p)
+        r = client.post("/api/phone/leave", headers=basic, json={"session": Person(p.email).token})   # a parent's sign-in is not the code
+        self.assertEqual((r.status_code, r.get_json()["code"]), (403, "bad_pin"))
+        self.assertEqual(len(p.get("/api/handsets").get_json()["handsets"]), 2)

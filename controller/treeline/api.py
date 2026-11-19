@@ -192,6 +192,7 @@ def th_json(t):
         "paused": bool(t["paused"]), "max_call_minutes": t["max_call_minutes"],
         "daily_minutes": t["daily_minutes"], "retention_days": t["retention_days"],
         "quiet_now": quiet_now(t), "created_at": t["created_at"],
+        "has_parent_code": bool(t["parent_pin_hash"]),
     }
 
 
@@ -838,6 +839,98 @@ def ws_url():
     return f"ws://{public_host()}:8088/ws"
 
 
+def need_parent_code(th):
+    """A softphone locks to its treehouse behind the parent code, so there has to be one first."""
+    if not th["parent_pin_hash"]:
+        raise ApiError("Set a parent code in Settings first. It is what lets a parent take a phone out of phone mode.", 409, "needs_pin")
+
+
+FRESH_SIGNIN_MINUTES = 15
+
+
+def fresh_signin():
+    """Did this session start in the last few minutes? A parent who has just proved they own the email may set a new parent code
+    without knowing the old one (they forgot it). Sessions don't store their start: it is the expiry minus the session's length."""
+    row = conn().execute("SELECT expires_at FROM session WHERE token_hash=?", (db.hash_token(bearer() or ""),)).fetchone()
+    return bool(row) and row["expires_at"] > db.iso(now() + dt.timedelta(days=SESSION_DAYS) - dt.timedelta(minutes=FRESH_SIGNIN_MINUTES))
+
+
+PIN_TRIES = 5                  # wrong codes before the treehouse's code is locked
+PIN_LOCK_MINUTES = 15
+
+
+def check_parent_code(th_id, code):
+    """Check a parent code for a treehouse. A wrong code counts; five in a row lock it for a while, whoever is trying
+    (the count is in the database, so a restart doesn't forgive it)."""
+    th = db.get_treehouse(conn(), th_id)
+    if not th or not th["parent_pin_hash"]:
+        raise ApiError("A parent needs to set a parent code in Settings first.", 409, "no_pin")
+    if th["pin_locked_until"] and th["pin_locked_until"] > db.iso():
+        left = max(1, int((dt.datetime.fromisoformat(th["pin_locked_until"]) - now()).total_seconds() // 60) + 1)
+        raise ApiError(f"Too many wrong codes. Try again in {left} minute{'s' if left != 1 else ''}.", 429, "pin_locked")
+    if db.check_pin(th["parent_pin_hash"], str(code or "")):
+        if th["pin_fails"] or th["pin_locked_until"]:
+            conn().execute("UPDATE treehouse SET pin_fails=0, pin_locked_until=NULL WHERE id=?", (th_id,))
+        return
+    fails = th["pin_fails"] + 1
+    if fails >= PIN_TRIES:
+        conn().execute("UPDATE treehouse SET pin_fails=0, pin_locked_until=? WHERE id=?",
+                       (db.iso(now() + dt.timedelta(minutes=PIN_LOCK_MINUTES)), th_id))
+        raise ApiError(f"Too many wrong codes. Try again in {PIN_LOCK_MINUTES} minutes.", 429, "pin_locked")
+    conn().execute("UPDATE treehouse SET pin_fails=? WHERE id=?", (fails, th_id))
+    raise ApiError("That isn't the parent code.", 403, "bad_pin")
+
+
+@app.put("/api/treehouse/parent-code")
+@auth(parent=True)
+def parent_code_set():
+    """Set the parent code, or change it (which needs the current one: a child on a signed-in device must not be able to)."""
+    data = body()
+    code = str(data.get("code", ""))
+    if not re.fullmatch(r"\d{4,6}", code):
+        raise ApiError("Use 4 to 6 digits for the parent code.")
+    rate_limit(f"pin-set:{g.email}", 20, 600)
+    if g.th["parent_pin_hash"] and not (data.get("current") in (None, "") and fresh_signin()):
+        if data.get("current") in (None, ""):
+            raise ApiError("Type the current parent code. If you forgot it, sign out and sign in again, then you can set a new one.", 403, "needs_current")
+        check_parent_code(g.th["id"], data.get("current"))
+    conn().execute("UPDATE treehouse SET parent_pin_hash=?, pin_fails=0, pin_locked_until=NULL WHERE id=?",
+                   (db.hash_pin(code), g.th["id"]))
+    audit("changed_parent_code")
+    return jsonify(th_json(db.get_treehouse(conn(), g.th["id"])))
+
+
+@app.post("/api/phone/leave")
+def phone_leave():
+    """A softphone stops being a phone: its own sign-in plus the parent code. The handset is removed, so this device
+    is just a device again (it can be added back with a new code)."""
+    rate_limit(f"leave:{client_ip()}", 30, 600)
+    h = softphone_auth()
+    check_parent_code(h["treehouse_id"], body().get("code"))
+    drop_handset(h)
+    db.log_action(conn(), h["treehouse_id"], None, "handset_left", h["name"], None, None)
+    return jsonify(ok=True)
+
+
+@app.post("/api/phone/sign-out")
+def phone_sign_out():
+    """A softphone is signed out of its treehouse without the parent code (the code was forgotten). Nothing opens: the handset is
+    removed, so the device is not a phone and rings no more, and the browser also forgets any parent session (the page does that),
+    so the dashboard asks for a login. A parent sees it in the action log and can add the device again with a code."""
+    rate_limit(f"leave:{client_ip()}", 30, 600)
+    h = softphone_auth()
+    drop_handset(h)
+    db.log_action(conn(), h["treehouse_id"], None, "handset_signed_out", h["name"], None, None)
+    return jsonify(ok=True)
+
+
+def softphone_auth():
+    h = handset_auth()
+    if h["kind"] != "softphone":
+        raise ApiError("Only a softphone can leave phone mode.", 400)
+    return h
+
+
 def handset_for(hid):
     h = conn().execute("SELECT * FROM handset WHERE id=? AND treehouse_id=? AND removed_at IS NULL",
                        (hid, g.th["id"])).fetchone()
@@ -867,6 +960,8 @@ def handset_create():
     name = clean_name(data.get("name"), "handset name")
     if len(db.handsets_of(conn(), g.th["id"])) >= 8:
         raise ApiError("A treehouse can have up to 8 handsets.", 409)
+    if kind == "softphone":
+        need_parent_code(g.th)
     hid, user, secret = db.create_handset(conn(), g.th["id"], kind, name)
     if kind in ("rotary", "ata"):
         # The adapter fetches its settings by a private link, so its secret is kept for that.
@@ -909,14 +1004,18 @@ def drop_registration(sip_user):
             client.request("DELETE", f"/channels/{ch['id']}")
 
 
+def drop_handset(h):
+    conn().execute("UPDATE handset SET removed_at=?, provision_secret=NULL, provision_token=NULL WHERE id=?",
+                   (db.iso(), h["id"]))
+    pjsip.write(conn())
+    drop_registration(h["sip_user"])
+
+
 @app.delete("/api/handsets/<int:hid>")
 @auth(parent=True)
 def handset_remove(hid):
     h = handset_for(hid)
-    conn().execute("UPDATE handset SET removed_at=?, provision_secret=NULL, provision_token=NULL WHERE id=?",
-                   (db.iso(), hid))
-    pjsip.write(conn())
-    drop_registration(h["sip_user"])
+    drop_handset(h)
     audit("handset_removed", h["name"])
     return jsonify(ok=True)
 
@@ -1065,6 +1164,8 @@ def pair_claim():
         raise ApiError("That code didn't work. Ask the softphone for a new one.", 400, "bad_pair")
     if len(db.handsets_of(conn(), g.th["id"])) >= 8:
         raise ApiError("A treehouse can have up to 8 handsets.", 409)
+    if kind == "softphone":
+        need_parent_code(g.th)
     hid, user, secret = db.create_handset(conn(), g.th["id"], kind, name)
     conn().execute("UPDATE pairing SET sip_user=?, sip_secret=?, handset_id=?, claimed_at=? WHERE code=?",
                    (user, secret, hid, db.iso(), code))

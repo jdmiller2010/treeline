@@ -5,6 +5,7 @@ import { time12, when } from "/shared/format.js";
 import { formDialog } from "./dialogs.js";
 import { privacyAccordion } from "./privacy-content.js";
 import { disablePush, enablePush, pushState } from "./push.js";
+import { hasParentCode, newCodeFields, parentCodeDialog, saveNewCode } from "./parentcode.js";
 import { redeemDialog, strings } from "./strings.js";
 
 const ZONES = [["America/New_York", "Eastern"], ["America/Chicago", "Central"], ["America/Denver", "Mountain"], ["America/Phoenix", "Arizona"],
@@ -46,6 +47,14 @@ export async function account(ctx) {
     <div class="tl-actions">${button({ label: "Save", variant: "primary", type: "submit" })}</div>
   </div></form>` : ""}
 
+  ${parent ? html`<section class="tl-card"><div class="tl-stack tl-stack--group">
+    <h2 class="tl-card__title">Parent code</h2>
+    <p class="tl-card__body">${hasParentCode(ctx)
+      ? "A parent code is set. It is what takes a device out of phone mode, so keep it to yourselves."
+      : "Set a code before you add a softphone. It is what takes a device out of phone mode: on a softphone, only someone who knows it can get back to the parent dashboard."}</p>
+    <div class="tl-actions">${button({ label: hasParentCode(ctx) ? "Change parent code" : "Set a parent code", variant: hasParentCode(ctx) ? "secondary" : "primary", attrs: "data-parent-code" })}</div>
+  </div></section>` : ""}
+
   <section class="tl-card"><div class="tl-stack tl-stack--group">
     <h2 class="tl-card__title">Notifications</h2>
     <p class="tl-card__body">We email you when a string needs an answer, a phone goes offline, or someone dials numbers that aren't strung. ${PUSH_TEXT[push]}</p>
@@ -71,6 +80,7 @@ export async function account(ctx) {
     title: "Settings", back: "#/home", nav: null, template: "settings", content,
     mount(root) {
       root.querySelector("[data-sign-out-btn]").addEventListener("click", () => root.querySelector("[data-sign-out]").click());
+      root.querySelector("[data-parent-code]")?.addEventListener("click", async () => { if (await parentCodeDialog(ctx)) ctx.render(); });
       root.querySelector("[data-push-on]")?.addEventListener("click", async () => {
         try { await enablePush(); toast("Notifications are on for this device", "success"); ctx.render(); } catch (e) { toast(e.message, "warning"); }
       });
@@ -144,6 +154,8 @@ const ACTIONS = {
   changed_quiet_end: (a) => `Changed quiet hours to end at ${time12(a.after)}`,
   changed_quiet_days: () => "Changed which nights are quiet",
   changed_quiet_enabled: (a) => (a.after === "1" ? "Turned quiet hours on" : "Turned quiet hours off"),
+  changed_parent_code: () => "Set or changed the parent code",
+  handset_left: (a) => `${a.target} left phone mode`,
   changed_number: (a) => `Changed the number from ${a.before} to ${a.after}`,
   ladder_code_created: () => "Made a ladder code",
   string_requested: (a) => `Asked to string with ${a.target}`,
@@ -179,6 +191,7 @@ export async function pairClaim(ctx, params) {
   const content = html`<form class="tl-card" id="pair-form" novalidate><div class="tl-stack tl-stack--group">
     <div class="tl-stack tl-stack--tight"><h2 class="tl-card__title">Add this softphone?</h2><p class="tl-card__body">The softphone is showing the code <strong class="tl-num">${code}</strong>. Check it matches, then add it to ${ctx.me.treehouse.name}.</p></div>
     ${textField({ id: "pair-name", name: "name", label: "Name for this softphone", placeholder: "Living room softphone", value: "" })}
+    ${hasParentCode(ctx) ? "" : html`<div class="tl-stack tl-stack--group">${newCodeFields("pair")}</div>`}
     <div data-error></div>
     <div class="tl-actions">${button({ label: "Not now", attrs: 'data-href="#/home"' })}${button({ label: "Add softphone", variant: "primary", type: "submit" })}</div>
   </div></form>`;
@@ -188,6 +201,7 @@ export async function pairClaim(ctx, params) {
       root.querySelector("#pair-form").addEventListener("submit", async (e) => {
         e.preventDefault();
         try {
+          if (!hasParentCode(ctx)) await saveNewCode(ctx, root.querySelector("#pair-form"));
           const r = await post("/api/pair/claim", { code, name: root.querySelector("#pair-name").value || "Softphone" });
           toast(`${r.handset.name} is connected`, "success"); ctx.go("#/home");
         } catch (err) { root.querySelector("[data-error]").innerHTML = String(alert({ tone: "danger", title: err.message })); }

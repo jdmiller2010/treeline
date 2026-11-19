@@ -16,7 +16,7 @@ Everything not yet fixed, from every review. Move a row to its review's "Remedia
 | R1-4 | Backups and the database are unencrypted at rest; backup file is `chmod`ed after creation | Low | 2026-11-19 | Open |
 | R1-5 | Provisioning and pairing tokens appear in the gunicorn access log | Low | 2026-11-19 | Open |
 | R1-6 | Push subscription endpoint accepts any `https://` host (blind SSRF) | Low | 2026-11-19 | Open |
-| R1-7 | Phone lock applies only to the installed app; a parent token can sit on a phone device | Informational | 2026-11-19 | Open, to be closed by the parent-code phase |
+| R1-7 | Phone lock applied only to the installed app; a parent token can sit on a phone device | Informational | 2026-11-19 | Mostly fixed (uncommitted at time of writing): the lock now applies in every tab, and leaving needs the server-checked parent code. The parent token still stays on the device; it is unusable there while the device is a phone. A person who clears the browser's site data can still escape it. Also by design: "Sign out of this browser" on the phone (no code needed, for a forgotten code) ends phone mode and the browser's parent session, so a child can take a phone out of phone mode that way, but it opens nothing and the parent sees `handset_signed_out` in the action log |
 | R1-8 | `ws://` fallback when `TREELINE_PUBLIC_WS_URL` is unset (dev stack only) | Informational | 2026-11-19 | Open |
 | R1-9 | Bearer token and SIP secret held in `localStorage` | Informational | 2026-11-19 | Accepted (standard for this design) |
 

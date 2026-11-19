@@ -30,8 +30,9 @@
 .ph__sub--dots { font-size: 18px; letter-spacing: .2em; color: var(--ink); }
 /* The treehouse's name and what the phone is doing are not shown: people know whose phone it is, and the phone's own light,
    handset and sounds say what it is doing. They stay in the page for screen readers (the one h1, and a live status line). */
-.ph__actions { display: flex; }
-.ph__bottom .ph__actions .tl-btn { width: 100%; }
+.ph__actions { display: flex; flex-wrap: wrap; gap: var(--space-3); }
+.ph__bottom .ph__actions { width: 100%; }
+.ph__bottom .ph__actions .tl-btn { flex: 1 1 auto; }
 
 .ph__phone { --ph-w: min(118vw, 700px, 72vh); position: relative; width: var(--ph-w); margin-top: calc(var(--ph-w) * -.2); }
 .ph__phone .tl-rotary { max-width: none; }
@@ -47,7 +48,8 @@
   .ph__cards { width: min(40vw, 260px); }
   .ph__foot { justify-content: space-between; font-size: 13px; }
   .ph__bottom { flex-direction: row; align-items: center; justify-content: center; gap: var(--space-4); }
-  .ph__bottom .ph__actions .tl-btn { width: auto; }
+  .ph__bottom .ph__actions { width: auto; }
+  .ph__bottom .ph__actions .tl-btn { flex: 0 0 auto; }
 }
 /* Landscape tablets and computers: the words, How to dial and the card file in a column on the left, so the phone has the
    whole right side to itself. */
@@ -91,3 +93,7 @@
 
 /* Older devices (see isSlow in phone.js): no painted texture, so the handset and dial redraw cheaply. Same shape and colors. */
 .ph--lite .tl-rotary__svg [filter] { filter: none; }
+
+/* Sheets (How to dial, For parents) are a bottom sheet on a phone and a centred dialog from tablet width up. The kit decides that from a container
+   named tl-app, which the parent app's shell provides; this page has no shell, so its root is the container. */
+#root { container: tl-app / inline-size; }

@@ -6,6 +6,7 @@ WAL mode lets both processes use it at once.
 
 import datetime as dt
 import hashlib
+import hmac
 import os
 import secrets
 import sqlite3
@@ -219,6 +220,11 @@ MIGRATIONS = [
     lambda c: _add_column(c, "handset", "disabled", "INTEGER NOT NULL DEFAULT 0"),
     # 5: a released number used to rest for a year before anyone could claim it. It no longer does.
     lambda c: c.execute("DROP TABLE IF EXISTS number_rest"),
+    # 6: the parent code: a 4 to 6 digit PIN (salted scrypt) that lets a phone stop being a phone. Wrong tries are counted
+    # here, not in memory, so a restart doesn't forgive them.
+    lambda c: _add_column(c, "treehouse", "parent_pin_hash", "TEXT"),
+    lambda c: _add_column(c, "treehouse", "pin_fails", "INTEGER NOT NULL DEFAULT 0"),
+    lambda c: _add_column(c, "treehouse", "pin_locked_until", "TEXT"),
 ]
 
 
@@ -278,6 +284,21 @@ def sip_digest(user, secret):
 
 def hash_token(token):
     return hashlib.sha256(token.encode()).hexdigest()
+
+
+def hash_pin(pin):
+    """A parent code, salted and slow (scrypt). It is short, so the real protection is the lockout in the API."""
+    salt = os.urandom(16)
+    return "scrypt$" + salt.hex() + "$" + hashlib.scrypt(pin.encode(), salt=salt, n=2 ** 14, r=8, p=1).hex()
+
+
+def check_pin(stored, pin):
+    try:
+        _, salt, digest = stored.split("$")
+        got = hashlib.scrypt(str(pin).encode(), salt=bytes.fromhex(salt), n=2 ** 14, r=8, p=1)
+    except (ValueError, AttributeError):
+        return False
+    return hmac.compare_digest(got, bytes.fromhex(digest))
 
 
 # ------------------------------------------------------------- numbers

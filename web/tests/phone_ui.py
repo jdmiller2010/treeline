@@ -35,6 +35,7 @@ def parent_session(api, email, house):
     token = api.post(f"{BASE}/api/auth/verify", data={"email": email, "code": code}).json()["token"]
     h = {"Authorization": f"Bearer {token}"}
     r = api.post(f"{BASE}/api/treehouse", headers=h, data={"name": house, "ack_911": True, "consent": True})
+    api.put(f"{BASE}/api/treehouse/parent-code", headers=h, data={"code": "2468"})      # a softphone can't be added without one
     return h, r.json()["treehouse"]
 
 
@@ -356,6 +357,74 @@ def main():
         tablet.reload()
         tablet.wait_for_selector(".ph-code", timeout=20000)
         check("removed" in tablet.inner_text("body"), "a removed tablet says so and offers to be added again")
+
+        # ---- leaving phone mode: "For parents" and the parent code
+        def become_phone(name):
+            tablet.wait_for_selector(".ph-code", timeout=20000)
+            c = re.sub(r"\D", "", tablet.inner_text(".ph-code"))
+            api.post(f"{BASE}/api/pair/claim", headers=h, data={"code": c, "name": name})
+            tablet.wait_for_selector(".tl-rotary", timeout=15000)
+        become_phone("Hall tablet")
+        opener = tablet.locator("#leave-open")
+        check(opener.count() == 1 and opener.inner_text().strip() == "For parents" and "tl-btn--primary" not in opener.get_attribute("class"),
+              "the phone has a secondary 'For parents' button next to How to dial")
+        check(tablet.locator("#guide-open").count() == 1, "and How to dial is still there")
+        opener.click(); tablet.wait_for_selector("#leave:not([hidden])")
+        go = tablet.locator("#leave-go")
+        check(tablet.locator("#leave-code").get_attribute("type") == "password" and tablet.locator("#leave-code").get_attribute("inputmode") == "numeric",
+              "the exit sheet asks for the parent code in a hidden numeric box")
+        check("tl-btn--primary" in go.get_attribute("class") and go.inner_text().strip() == "Leave phone mode", "with one main button: Leave phone mode")
+        tablet.screenshot(path=f"{SHOTS}/phone-leave.png")
+        tablet.fill("#leave-code", "0000"); go.click()
+        tablet.wait_for_selector("#leave-error .tl-alert")
+        check("isn't the parent code" in tablet.inner_text("#leave-error") and tablet.locator(".tl-rotary").count() == 1
+              and len(api.get(f"{BASE}/api/handsets", headers=h).json()["handsets"]) == 1, "a wrong code says so and the device stays a phone")
+        tablet.fill("#leave-code", ""); go.click()
+        tablet.wait_for_function("() => document.querySelector('#leave-error').innerText.includes('Type the parent code')")
+        check(True, "an empty code asks for the code and sends nothing")
+        tablet.fill("#leave-code", "2468"); go.click()
+        tablet.wait_for_selector(".ph-code", timeout=15000)
+        check(tablet.evaluate("() => location.pathname + location.search") == "/phone/" and "isn't a phone anymore" in tablet.inner_text("body"),
+              "the right code, with no parent signed in, goes back to the first screen (QR and Log in) and says it isn't a phone anymore (once: the address is cleaned, so a reload doesn't repeat it)")
+        check(tablet.evaluate("() => localStorage.getItem('treeline.phone')") is None, "this device forgot the phone's sign-in")
+        check(api.get(f"{BASE}/api/handsets", headers=h).json()["handsets"] == [], "and the handset is gone from the treehouse")
+        tablet.screenshot(path=f"{SHOTS}/phone-left.png", full_page=True)
+        become_phone("Porch tablet")                                       # a parent signed in on the same device goes to the dashboard instead
+        tablet.evaluate("(t) => localStorage.setItem('treeline.token', t)", h["Authorization"].split(" ", 1)[1])
+        tablet.reload(); tablet.wait_for_selector("#leave-open")
+        tablet.click("#leave-open"); tablet.wait_for_selector("#leave:not([hidden])")
+        check("parent dashboard" in tablet.inner_text("#leave"), "with a parent signed in the sheet says it goes to the dashboard")
+        tablet.fill("#leave-code", "2468"); tablet.click("#leave-go")
+        tablet.wait_for_url("**/parent/**", timeout=15000)
+        tablet.wait_for_selector("#app-title", timeout=15000)
+        check(tablet.evaluate("() => location.pathname + location.hash") == "/parent/#/home" and tablet.inner_text("#app-title") == house["name"],
+              "the right code goes straight to the signed-in parent dashboard")
+        check(tablet.evaluate("() => localStorage.getItem('treeline.phone')") is None, "and this device is not a phone anymore")
+
+        # ---- a parent who doesn't know the code can sign the device out (it signs nobody in)
+        tablet.goto(f"{BASE}/phone/?test=1"); become_phone("Shed tablet")      # (a parent is still signed in on this device)
+        tablet.reload(); tablet.wait_for_selector("#leave-open")
+        tablet.click("#leave-open"); tablet.wait_for_selector("#leave:not([hidden])")
+        tablet.click("[data-forgot]")
+        check(tablet.locator("#leave-form").is_hidden() and tablet.locator("#sign-out-go").is_visible() and tablet.locator("#leave-go").is_hidden()
+              and tablet.locator("#leave input").count() == 1, "'I don't know the code' swaps the code box for a sign-out, with no sign-in form")
+        check("signed out of the parent dashboard" in tablet.inner_text("#leave-forgot"), "and says what signing out does")
+        tablet.click("[data-use-code]")
+        check(tablet.locator("#leave-form").is_visible() and tablet.locator("#leave-forgot").is_hidden(), "'I have the parent code' goes back")
+        tablet.click("[data-forgot]"); tablet.click("#sign-out-go")
+        tablet.wait_for_selector(".ph-code", timeout=15000)
+        check(tablet.evaluate("() => location.pathname + location.search") == "/phone/" and "signed out" in tablet.inner_text("body"),
+              "signing out lands on the first screen and says so")
+        check(tablet.evaluate("() => [localStorage.getItem('treeline.phone'), localStorage.getItem('treeline.token')]") == [None, None],
+              "this browser is fully signed out: no phone, and no parent session either")
+        check(api.get(f"{BASE}/api/me", headers=h).status == 401, "the parent session that was on the device no longer works on the server")
+        again = f"{BASE}/api/auth/request"
+        code2 = api.post(again, data={"email": f"phone-parent-{stamp}@example.com"}).json()["dev_code"]
+        h2 = {"Authorization": "Bearer " + api.post(f"{BASE}/api/auth/verify", data={"email": f"phone-parent-{stamp}@example.com", "code": code2}).json()["token"]}
+        check(api.get(f"{BASE}/api/handsets", headers=h2).json()["handsets"] == [], "the handset is gone from the treehouse")
+        h = h2                                                                  # (the old session is gone; clean up with the new one)
+        tablet.goto(f"{BASE}/parent/#/home"); tablet.wait_for_selector("#email", timeout=10000)
+        check(tablet.evaluate("() => location.pathname") == "/parent/" and tablet.locator("#step-email").is_visible(), "so the dashboard asks for a login")
         api.delete(f"{BASE}/api/treehouse", headers=h, data={"confirm": house["name"]})     # leave the database as we found it
         api.delete(f"{BASE}/api/treehouse", headers=fh, data={"confirm": friend["name"]})
         browser.close()

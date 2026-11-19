@@ -362,6 +362,7 @@ body {
 
 /* Stack: vertical rhythm. Pick the gap by relationship, not by eye. */
 .tl-stack { display: flex; flex-direction: column; gap: var(--space-4); }
+.tl-stack[hidden] { display: none; }
 .tl-stack > * { margin: 0; }
 .tl-stack--tight { gap: var(--space-1); }    /* title + its meta line */
 .tl-stack--related { gap: var(--space-2); }  /* label + field, heading + one line */
@@ -386,6 +387,7 @@ body {
    The primary is written last in the markup and shows first (leftmost); the secondary follows it. Buttons keep their
    natural width and the row only wraps if it can't fit. Never right-aligned and never stacked as full-width bars. */
 .tl-actions { display: flex; flex-wrap: wrap; flex-direction: row-reverse; justify-content: flex-end; gap: var(--space-3); margin-top: var(--space-6); }
+.tl-actions[hidden] { display: none; }
 .tl-actions > .tl-btn { width: auto; }
 /* .tl-actions--stack is kept so existing markup still works; it no longer changes anything. */
 
@@ -607,6 +609,7 @@ body {
   box-shadow: var(--shadow-md), inset 0 0 0 1px var(--card-edge); animation: tl-menu-in .16s ease-out; }
 .tl-menu--start .tl-menu__panel { right: auto; left: 0; }
 .tl-menu__panel[hidden] { display: none; }
+.tl-menu__item[hidden] { display: none; }
 .tl-menu__head { padding: var(--space-2) var(--space-3) var(--space-3); margin-bottom: var(--space-1); border-bottom: 1px solid var(--line); }
 .tl-menu__name { display: block; font: 600 15px/22px var(--font-sans); color: var(--ink); }
 .tl-menu__meta { display: block; font: 400 13px/18px var(--font-sans); color: var(--ink-muted); }

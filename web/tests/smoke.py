@@ -36,11 +36,18 @@ def check(cond, what):
 def watch(page, label):
     # Browsers log every 4xx as a console error; the app shows those to the user, and some tests cause them on purpose.
     page.on("console", lambda m: errors.append(f"{label} console {m.type}: {m.text}")
-            if m.type in ("error", "warning") and "Failed to load resource" not in m.text else None)
+            if m.type in ("error", "warning") and "Failed to load resource" not in m.text
+            and "AudioContext was not allowed to start" not in m.text and "WebSocket" not in m.text else None)   # (the phone page, with no Asterisk here and no tap yet)
     page.on("pageerror", lambda e: errors.append(f"{label} page error: {e}"))
     # A request cut off by the next click or the page closing is not a failure.
     page.on("requestfailed", lambda r: errors.append(f"{label} request failed: {r.url} ({r.failure})")
             if r.failure != "net::ERR_ABORTED" else None)
+
+
+def api_get(page, path):
+    """A GET to the API as whoever is signed in on this page."""
+    return page.evaluate("""async (p) => { const t = localStorage.getItem('treeline.token').replace(/"/g, '');
+      return (await fetch(p, { headers: { Authorization: 'Bearer ' + t } })).json(); }""", path)
 
 
 def sign_in(page, email):
@@ -258,38 +265,35 @@ def main():
         a.goto(f"{BASE}/parent/#/home"); a.wait_for_selector("[data-this-device]")
         a.click("[data-this-device]")
         a.fill("#dev-name", "My laptop")
+        # no parent code yet: the dialog asks for one (twice), and checks it, before the phone is made
+        check(a.locator(".tl-sheet-scrim:not([hidden]) #dev-new").count() == 1 and a.locator(".tl-sheet-scrim:not([hidden]) #dev-new").get_attribute("type") == "password",
+              "with no parent code yet, making this device a phone asks for one (hidden, numeric)")
         a.click(".tl-sheet-scrim:not([hidden]) button[type=submit]")
-        a.wait_for_selector("text=My laptop is ready")
+        a.wait_for_selector(".tl-sheet-scrim:not([hidden]) [data-error] .tl-alert")
+        check("4 to 6 digits" in a.inner_text(".tl-sheet-scrim:not([hidden]) [data-error]"), "an empty code is refused with the rule")
+        a.fill("#dev-new", "2468"); a.fill("#dev-again", "2469")
+        a.click(".tl-sheet-scrim:not([hidden]) button[type=submit]")
+        a.wait_for_function("() => document.querySelector('.tl-sheet-scrim:not([hidden]) [data-error]').innerText.includes(\"don't match\")")
+        check(len(api_get(a, "/api/handsets")["handsets"]) == 1, "two codes that differ are refused, and no phone is made")
+        a.fill("#dev-new", "2468"); a.fill("#dev-again", "2468")
+        a.click(".tl-sheet-scrim:not([hidden]) button[type=submit]")
+        a.wait_for_url("**/phone/**", timeout=15000)
+        a.wait_for_selector(".tl-rotary", timeout=15000)
         saved = a.evaluate("() => JSON.parse(localStorage.getItem('treeline.phone'))")
         check(bool(saved and saved.get("handset_id") and saved.get("sip_user") and saved.get("secret")), "the browser keeps the new phone's sign-in")
-        sheet = ".tl-sheet-scrim:not([hidden])"
-        not_now, open_phone = a.locator(f"{sheet} button[data-tl-close]:has-text('Not now')"), a.locator(f"{sheet} a[href='/phone/']:has-text('Open the phone')")
-        check(not_now.count() == 1 and open_phone.count() == 1 and "tl-btn--primary" in (open_phone.get_attribute("class") or "")
-              and "tl-btn--primary" not in (not_now.get_attribute("class") or ""), "Open the phone is the main action and Not now the secondary one")
-        # The design system's rule: actions are one row, left-aligned as a group, the primary first, at every width.
-        sheet_box = a.locator(f"{sheet} .tl-sheet").bounding_box()
-        for width, label in ((390, "on a phone"), (1024, "on a tablet or computer")):
-            a.set_viewport_size({"width": width, "height": 800}); a.wait_for_timeout(300)
-            nb, ob, sb = not_now.bounding_box(), open_phone.bounding_box(), a.locator(f"{sheet} .tl-sheet").bounding_box()
-            check(abs(nb["y"] - ob["y"]) < 4 and ob["x"] < nb["x"], f"{label} the two buttons sit side by side, the main one first ({ob['x']:.0f}/{nb['x']:.0f}, {ob['y']:.0f}/{nb['y']:.0f})")
-            check(ob["x"] - sb["x"] < 64 and nb["x"] + nb["width"] < sb["x"] + sb["width"] - 24, f"{label} they are left-aligned as a group, not pushed to the right edge or full width")
-        a.set_viewport_size({"width": 390, "height": 844}); a.wait_for_timeout(200)
-        # The main action is a real link, and it opens the phone just made (not the pairing QR code page).
-        with a.context.expect_page(timeout=8000) as opened:
-            open_phone.click()
-        phone_tab = opened.value
-        phone_tab.wait_for_load_state(); phone_tab.wait_for_timeout(800)
-        check(phone_tab.locator(".tl-rotary").count() == 1 and phone_tab.locator(".ph-code").count() == 0,
-              "Open the phone opens the phone just made, not the pairing QR code page")
-        phone_tab.close()
-        check(a.locator(f"{sheet}").count() == 0, "and the dialog closes behind it")
-        a.wait_for_selector("text=(this device)")
-        check(a.locator("a:has-text('Open the phone on this device')").count() == 1, "it now offers to open the phone instead")
-        p2 = a.context.new_page()
-        p2.goto(f"{BASE}/phone/")
-        p2.wait_for_selector(".tl-rotary", timeout=15000)
-        check(p2.locator(".tl-rotary").count() == 1, "the phone opens straight away, with no QR code")
-        p2.close()
+        check(a.locator(".ph-code").count() == 0, "and goes straight to the phone it just made, with no QR code and no extra dialog")
+        # A device that is a phone can't get out by going somewhere else: the dashboard, in this tab or a new one, sends it back to the phone.
+        a.goto(f"{BASE}/parent/#/home"); a.wait_for_url("**/phone/**", timeout=8000)
+        a.wait_for_selector(".tl-rotary")
+        check(a.evaluate("() => location.pathname") == "/phone/", "going to the dashboard in the same tab lands back on the phone")
+        for path in ("/parent/#/settings", "/parent/#/strings", "/parent/"):
+            tab = a.context.new_page(); tab.goto(f"{BASE}{path}"); tab.wait_for_url("**/phone/**", timeout=8000); tab.wait_for_selector(".tl-rotary")
+            check(tab.evaluate("() => location.pathname") == "/phone/", f"a new tab on {path} lands on the phone, signed in as a parent or not")
+            tab.close()
+        # (The parent code on the phone is what ends this: phone_ui.py tests that. Here the browser just forgets the phone, to carry on with the dashboard.)
+        a.evaluate("() => localStorage.removeItem('treeline.phone')")
+        a.goto(f"{BASE}/parent/#/home"); a.wait_for_selector("[aria-label='Phones']")
+        check(a.evaluate("() => location.pathname") == "/parent/", "once it isn't a phone any more the dashboard opens again")
         a.goto(f"{BASE}/parent/#/actions"); a.wait_for_selector(".tl-row")
         check("Disconnected" in a.inner_text("main") and "again" in a.inner_text("main"), "disconnecting and reconnecting are in the action log")
 
@@ -359,6 +363,36 @@ def main():
                     if width in (390, 1280) or (name in ("home", "strings") and width in (360, 768, 1024, 1440)):
                         shoot(a, f"{name}-{width}-{theme}")
                 # the AppBar title lines up with the first card at wide widths
+        # ---- Settings: the parent code
+        a.goto(f"{BASE}/parent/#/settings"); a.wait_for_selector("[data-parent-code]")
+        pc = a.locator("section.tl-card:has([data-parent-code])")
+        check("A parent code is set" in pc.inner_text() and pc.locator(".tl-card__title").inner_text() == "Parent code" and pc.locator("[data-parent-code]").inner_text() == "Change parent code"
+              and "tl-btn--primary" not in pc.locator("[data-parent-code]").get_attribute("class"), "Settings has a Parent code card that says the code is set, with a Change button")
+        pc.locator("[data-parent-code]").click(); a.wait_for_selector(".tl-sheet-scrim:not([hidden]) #pc-current")
+        a.fill("#pc-current", "0000"); a.fill("#pc-new", "135790"); a.fill("#pc-again", "135790")
+        a.click(".tl-sheet-scrim:not([hidden]) button[type=submit]")
+        a.wait_for_selector(".tl-sheet-scrim:not([hidden]) [data-error] .tl-alert")
+        check("isn't the parent code" in a.inner_text(".tl-sheet-scrim:not([hidden]) [data-error]"), "changing it needs the current code: a wrong one is refused")
+        a.fill("#pc-current", "2468")
+        a.click(".tl-sheet-scrim:not([hidden]) button[type=submit]")
+        a.wait_for_selector("text=The parent code was changed")
+        check(True, "with the current code it changes")
+        check(a.locator(".tl-sheet-scrim:not([hidden])").count() == 0, "and the dialog closes")
+        shoot(a, "settings-parent-code-390")
+        # ---- the account menu offers to install the app, once the browser says it can
+        a.click("[data-tl-menu='account-menu']")
+        check(not a.locator("[data-install-app]").is_visible(), "the account menu has no Install the app while the browser hasn't offered it")
+        if browsers.CHROMIUM_FAMILY:
+            a.evaluate("""() => { window.__prompted = false; const e = new Event('beforeinstallprompt', { cancelable: true });
+              e.prompt = () => { window.__prompted = true; }; e.userChoice = Promise.resolve({ outcome: 'accepted' }); window.dispatchEvent(e); }""")
+            a.wait_for_selector("[data-install-app]:visible")
+            check("Install the app" in a.inner_text("#account-menu"), "once it can, the account menu shows Install the app")
+            a.click("[data-install-app]"); a.wait_for_function("() => window.__prompted === true")
+            check(True, "and choosing it asks the browser to install")
+            a.evaluate("() => window.dispatchEvent(new Event('appinstalled'))")
+            a.wait_for_function("() => document.querySelector('[data-install-app]').hidden")
+            check(True, "after it is installed the item goes away")
+        a.keyboard.press("Escape")
         # A released number is free to claim again at once, so nothing should talk about it resting.
         a.goto(f"{BASE}/parent/#/settings"); a.wait_for_selector("text=Leave Treeline")
         txt = a.inner_text("main").lower()

@@ -2,11 +2,11 @@
 // The screen is an ordinary Treeline page built from the design system: the brand and tagline, the treehouse's name
 // with what the phone is doing, the RotaryPhone on a soft glow with the CardFile of approved strings beside it, the
 // plain no-911 line, a "How to dial" sheet with the guide's pictures, and the footer.
-import { api } from "/shared/api.js";
+import { api, token } from "/shared/api.js";
 import { CARDFILE, ROTARY } from "/shared/assets.js";
-import { brandLine, button, footerLinks, html, icon, presence, raw, sheet, steps, str, tag } from "/shared/ui.js";
+import { alert, brandLine, button, footerLinks, html, icon, presence, raw, setBusy, sheet, steps, str, tag, textField } from "/shared/ui.js";
 import { forgetPhone, pairScreen, savedPhone } from "./pair.js";
-import { registerApp } from "/shared/pwa.js";
+import { loggedIn, registerApp } from "/shared/pwa.js";
 import * as tones from "./tones.js";
 
 const root = document.getElementById("root");
@@ -85,7 +85,7 @@ function draw() {
     <div class="ph__cards">${raw(CARDFILE)}</div>
     <div class="ph__notice"></div>
     <div class="ph__bottom">
-      <div class="ph__actions">${button({ label: "How to dial", icon: "phone", attrs: { "data-tl-open": "guide", id: "guide-open" } })}</div>
+      <div class="ph__actions">${button({ label: "How to dial", icon: "phone", attrs: { "data-tl-open": "guide", id: "guide-open" } })}${button({ label: "For parents", icon: "key", attrs: { "data-tl-open": "leave", id: "leave-open" } })}</div>
     </div>
   </main>
   <footer class="tl-footer ph__foot">${footerLinks("/phone/licenses.html")}</footer>
@@ -93,6 +93,19 @@ function draw() {
 </div>
 ${sheet({ id: "guide", title: "How to call a friend", body: html`<div id="guide-step"></div>`,
   actions: html`${button({ label: "Back", attrs: { id: "guide-back" } })}${button({ label: "Next", variant: "primary", iconAfter: "chevron-right", attrs: { id: "guide-next" } })}` })}
+${sheet({ id: "leave", title: "For parents", body: html`
+  <form id="leave-form" class="tl-stack tl-stack--group" novalidate>
+    <p class="tl-sheet__body">Enter the parent code to stop using this device as a phone. ${loggedIn() ? "You'll go to the parent dashboard." : "You'll go back to the start screen, where you can add a phone or log in."}</p>
+    ${textField({ id: "leave-code", name: "code", label: "Parent code", type: "password", attrs: { inputmode: "numeric", pattern: "[0-9]*", maxlength: "6", autocomplete: "off" } })}
+    <div id="leave-error"></div>
+    <p class="body" style="margin:0"><a href="#" data-forgot style="color:var(--ink-muted);text-decoration:underline;font-size:14px;display:inline-block;padding:var(--space-2) 0">I don't know the code</a></p></form>
+  <div id="leave-forgot" class="tl-stack tl-stack--group" hidden>
+    <p class="tl-sheet__body">Without the parent code you can still sign this device out. It stops being a phone and this browser is signed out of the parent dashboard, so the dashboard asks for a login. A parent can add the phone again with the code on the start screen.</p>
+    <div id="forgot-error"></div>
+    <div class="tl-actions">${button({ label: "Cancel", attrs: "data-tl-close" })}${button({ label: "Sign out of this browser", variant: "primary", attrs: { id: "sign-out-go" } })}</div>
+    <p class="body" style="margin:0"><a href="#" data-use-code style="color:var(--ink-muted);text-decoration:underline;font-size:14px;display:inline-block;padding:var(--space-2) 0">I have the parent code</a></p>
+  </div>`,
+  actions: html`${button({ label: "Cancel", attrs: "data-tl-close" })}${button({ label: "Leave phone mode", variant: "primary", type: "submit", attrs: { form: "leave-form", id: "leave-go" } })}` })}
 <div class="ph-wake" id="wake" hidden><div class="tl-card" style="max-width:var(--sheet-max);text-align:center"><div class="tl-stack tl-stack--group">
   <h2 class="tl-card__title">Tap to turn the phone on</h2>
   <p class="tl-card__body">Your device needs one tap before it can ring.</p>
@@ -141,6 +154,29 @@ ${sheet({ id: "guide", title: "How to call a friend", body: html`<div id="guide-
     if (e.target.closest?.(".tl-rotary__svg") || !ui.guide.hidden) return;
     if (/^[0-9]$/.test(e.key) && !e.metaKey && !e.ctrlKey && !e.altKey && !/input|textarea|select/i.test(e.target.tagName)) S.dial?.(Number(e.key));
   }, { signal: life.signal });
+  // For parents: the parent code takes this device out of phone mode. The server checks it (and removes the handset).
+  const leaveForm = root.querySelector("#leave-form"), forgot = root.querySelector("#leave-forgot"), leaveActions = root.querySelector("#leave .tl-sheet > .tl-actions");
+  const showForgot = (on) => { leaveForm.hidden = on; forgot.hidden = !on; leaveActions.hidden = on; };
+  const oops = (sel, m) => { root.querySelector(sel).innerHTML = m ? str(alert({ tone: "danger", title: m })) : ""; };
+  root.querySelector("#leave-open").addEventListener("click", () => {
+    leaveForm.reset(); showForgot(false); oops("#leave-error", ""); oops("#forgot-error", "");
+    setTimeout(() => leaveForm.querySelector("input")?.focus(), 50);
+  });
+  leaveForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const btn = root.querySelector("#leave-go");
+    setBusy(btn, true, "Checking");
+    try { await leavePhoneMode(leaveForm.querySelector("[name=code]").value.trim()); }
+    catch (err) { oops("#leave-error", err.message || "That didn't work. Try again."); setBusy(btn, false); }
+  });
+  // Forgot the code: sign the device out. No sign-in happens here, and nothing opens: it just stops being a phone and forgets any parent session.
+  root.querySelector("[data-forgot]").addEventListener("click", (e) => { e.preventDefault(); showForgot(true); });
+  root.querySelector("[data-use-code]").addEventListener("click", (e) => { e.preventDefault(); showForgot(false); leaveForm.querySelector("input").focus(); });
+  root.querySelector("#sign-out-go").addEventListener("click", async (e) => {
+    const btn = e.currentTarget;
+    setBusy(btn, true, "Signing out");
+    try { await signOutDevice(); } catch (err) { oops("#forgot-error", err.message || "That didn't work. Try again."); setBusy(btn, false); }
+  });
   ui.wake.querySelector("#wake-btn").addEventListener("click", async () => { await tones.unlock(); ui.wake.hidden = true; });
   showLine();
   render();
@@ -271,6 +307,30 @@ function removed() {
   pairScreen(root, "This softphone was removed from its treehouse. Add it again to keep using it.")
     .then((c) => { S.pairing = false; return start(c); })
     .catch(() => { S.pairing = false; });
+}
+
+/** Stop being a phone: the server checks the parent code and removes this handset; then this device forgets its sign-in. A parent who is
+ *  signed in on this device lands in the dashboard, anyone else on the start screen. */
+async function leavePhoneMode(code) {
+  if (!code) throw new Error("Type the parent code.");
+  try { await api("POST", "/api/phone/leave", { code }, { basic: `${S.creds.sip_user}:${S.creds.secret}` }); }
+  catch (e) { if (e.code !== "removed") throw e; }       // already removed by a parent: it is a plain device now
+  goodbye(loggedIn() ? "/parent/#/home" : "/phone/?left=1");
+}
+
+/** The parent code is forgotten: sign this device out. It stops being a phone (the server drops the handset; nothing is opened by this) and the
+ *  browser forgets any parent session, so any dashboard page now asks for a login. */
+async function signOutDevice() {
+  try { await api("POST", "/api/phone/sign-out", {}, { basic: `${S.creds.sip_user}:${S.creds.secret}` }); }
+  catch (e) { if (e.code !== "removed") throw e; }
+  if (token.get()) { try { await api("POST", "/api/auth/signout", {}); } catch { /* signing out anyway */ } }
+  token.clear();
+  goodbye("/phone/?left=out");
+}
+
+function goodbye(where) {
+  forgetPhone(); stopUa(); tones.stop(); life.abort(); clearInterval(S.timers.refresh);
+  location.replace(where);
 }
 
 // ------------------------------------------------------------------ hook
@@ -521,7 +581,10 @@ async function start(creds) {
 async function boot() {
   const saved = savedPhone();
   if (saved && saved.sip_user) return start(saved);
-  start(await pairScreen(root));
+  const left = new URLSearchParams(location.search).get("left");
+  if (left) history.replaceState(null, "", location.pathname + location.hash);   // a reload or a later visit shouldn't show it again
+  start(await pairScreen(root, left === "out" ? "You're signed out, and this device isn't a phone anymore. You can add it again any time."
+    : left ? "This device isn't a phone anymore. You can add it again any time." : undefined));
 }
 
 // ?debug=1 on the phone's address shows a small readout of the call audio, to say what the browser is doing when a call is silent.

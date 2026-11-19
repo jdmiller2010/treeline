@@ -136,34 +136,102 @@ def main():
         page.goto(BASE + "/parent/"); page.wait_for_url("**/phone/*", timeout=8000)
         check(page.evaluate("() => location.pathname") == "/phone/", "an installed app that is a phone can't be opened as the dashboard: it stays the phone")
         ctx.close()
-        ctx, page = new_page(browser, FAKE_PHONE)
+        for label, init in (("in a browser tab", FAKE_PHONE), ("in a browser tab with a parent signed in too", FAKE_PHONE + FAKE_TOKEN)):
+            ctx, page = new_page(browser, init)
+            page.goto(BASE + "/parent/#/settings"); page.wait_for_url("**/phone/*", timeout=8000)
+            check(page.evaluate("() => location.pathname") == "/phone/", f"a phone can't open the dashboard {label} either: a new tab doesn't get it out of phone mode")
+            ctx.close()
+        ctx, page = new_page(browser, FAKE_TOKEN)
         page.goto(BASE + "/parent/"); page.wait_for_selector("#email, #app-title", timeout=8000)
-        check(page.evaluate("() => location.pathname") == "/parent/", "in a browser tab, the dashboard still opens (nothing is locked there)")
+        check(page.evaluate("() => location.pathname") == "/parent/", "a device that is not a phone opens the dashboard as usual")
+        other = ctx.new_page(); other.goto(BASE + "/phone/"); other.wait_for_selector(".ph-code")
+        other.evaluate(FAKE_PHONE.replace("localStorage.setItem", "localStorage.setItem"))      # this device becomes a phone, in another tab
+        page.wait_for_url("**/phone/*", timeout=8000)
+        check(page.evaluate("() => location.pathname") == "/phone/", "and a dashboard tab that was already open is sent to the phone the moment the device becomes one")
         ctx.close()
 
-        # ---- install: an iPhone is told how, Android gets the prompt, an installed app gets neither
-        ctx, page = new_page(browser, ua="Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1")
-        page.goto(BASE + "/phone/"); page.wait_for_selector(".ph-code")
-        txt = page.inner_text("#install-slot")
-        check("Add to Home Screen" in txt and page.locator("[data-install]").count() == 0, "an iPhone is told to use Share, then Add to Home Screen", txt[:80])
+        # ---- install: a phone or tablet in a browser tab is asked to install first; a computer is not
+        IPHONE = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1"
+        ANDROID = "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Mobile Safari/537.36"
+        IPAD_DESKTOP = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15"
+        ctx, page = new_page(browser, ua=IPHONE)
+        page.goto(BASE + "/phone/"); page.wait_for_selector("#install-page")
+        btn = page.locator("[data-install]")
+        check(page.inner_text("h1") == "Install Treeline" and btn.count() == 1 and "tl-btn--primary" in btn.get_attribute("class") and btn.inner_text() == "Show me how to install"
+              and page.locator("#install-steps").count() == 0, "an iPhone gets one main button, honestly labelled (Apple lets no page install an app), and nothing else")
+        btn.click(); page.wait_for_selector("#install-steps")
+        txt = page.inner_text("#install-steps")
+        check("Apple" in page.inner_text("#install-why"), "and says why there is no one-tap install on an iPhone")
+        check("Share" in txt and "Add to Home Screen" in txt, "which shows Share, then Add to Home Screen")
+        check(page.locator(".ph-code").count() == 0 and page.locator("[data-parent-login]").count() == 0, "and sees nothing else first: no QR code, no login")
+        link = page.locator("[data-browser]")
+        check(link.count() == 1 and "tl-btn" not in (link.get_attribute("class") or "") and link.inner_text() == "Use Treeline in your browser instead",
+              "with a quiet link, not a button, to use Treeline in the browser instead")
+        link.click(); page.wait_for_selector(".ph-code")
+        check(page.inner_text("h1") == "Welcome to Treeline" and page.locator("[data-parent-login]").count() == 1 and page.locator(".ph-qr svg").count() == 1,
+              "which opens the first screen: the QR code to add a phone, and Log in")
         ctx.close()
-        ctx, page = new_page(browser, ua="Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Mobile Safari/537.36")
-        page.goto(BASE + "/phone/"); page.wait_for_selector(".ph-code")
-        check(page.inner_text("#install-slot").strip() == "", "Android shows nothing until the browser says Treeline can be installed")
+        ctx, page = new_page(browser, ua=IPAD_DESKTOP, has_touch=True)      # an iPad asking for the desktop site
+        page.add_init_script("Object.defineProperty(navigator, 'maxTouchPoints', { get: () => 5 });")
+        page.goto(BASE + "/phone/"); page.wait_for_selector("#install-page")
+        check(page.inner_text("h1") == "Install Treeline", "an iPad that asks for the desktop site is still treated as a tablet")
+        ctx.close()
+        ctx, page = new_page(browser, ua=ANDROID)
+        page.goto(BASE + "/phone/"); page.wait_for_selector("#install-page")
+        btn = page.locator("[data-install]")
+        check(page.inner_text("h1") == "Install Treeline" and btn.count() == 1 and btn.inner_text() == "Install Treeline" and page.locator("#install-steps").count() == 0,
+              "Android shows the Install Treeline button straight away")
+        btn.click(); page.wait_for_selector("#install-steps")
+        check("Install app" in page.inner_text("#install-steps") and len(page.inner_text("#install-why")) > 20,
+              "and if the browser doesn't offer to install within a moment, pressing it shows the menu steps and says why there is no one-tap install")
         if not browsers.CHROMIUM_FAMILY:
             print("skip  the install prompt: only Chromium-family browsers fire beforeinstallprompt (Safari installs through Share)", flush=True)
             ctx.close()
         else:
             page.evaluate("""() => { window.__prompted = false; const e = new Event('beforeinstallprompt', { cancelable: true });
               e.prompt = () => { window.__prompted = true; }; e.userChoice = Promise.resolve({ outcome: 'accepted' }); window.dispatchEvent(e); }""")
-            page.wait_for_selector("[data-install]")
-            page.click("[data-install]"); page.wait_for_function("() => window.__prompted === true")
-            page.wait_for_function("() => document.querySelector('#install-slot').innerText.trim() === ''")
-            check(True, "then it offers Install Treeline, and asks the browser to install it when tapped")
+            page.wait_for_function("() => !document.querySelector('#install-steps')")
+            btn = page.locator("[data-install]")
+            check("tl-btn--primary" in btn.get_attribute("class") and btn.inner_text() == "Install Treeline", "once the browser offers to install, the same button is the one main button")
+            btn.click(); page.wait_for_function("() => window.__prompted === true")
+            check(True, "and tapping it asks the browser to install the app, with no steps")
+            page.evaluate("() => window.dispatchEvent(new Event('appinstalled'))")
+            page.wait_for_function("() => document.querySelector('#install-page').innerText.includes('is installed')")
+            check(page.locator("[data-browser]").count() == 1, "once installed it says so, and the browser link is still there")
             ctx.close()
-        ctx, page = new_page(browser, STANDALONE, ua="Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 Version/17.4 Mobile/15E148 Safari/604.1")
-        page.goto(BASE + "/phone/"); page.wait_for_selector(".ph-code")
-        check(page.inner_text("#install-slot").strip() == "", "an installed app shows no install prompt")
+        # the steps name the right buttons for each device and browser
+        ctx, page = new_page(browser)
+        page.goto(BASE + "/phone/"); page.wait_for_load_state("networkidle")
+        UAS = [
+            ("iPhone, Safari", IPHONE, 5, "Safari on your iPhone", ["Share", "bottom of the screen", "Add to Home Screen"]),
+            ("iPad, Safari", "Mozilla/5.0 (iPad; CPU OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1", 5, "Safari on your iPad", ["top of the screen", "Add to Home Screen"]),
+            ("iPad asking for the desktop site", IPAD_DESKTOP, 5, "Safari on your iPad", ["top of the screen"]),
+            ("iPhone, Chrome", "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/124.0 Mobile/15E148 Safari/604.1", 5, "Chrome on your iPhone", ["Share", "Add to Home Screen"]),
+            ("iPhone, Firefox", "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) FxiOS/124.0 Mobile/15E148 Safari/605.1.15", 5, "Firefox on your iPhone", ["menu", "Share"]),
+            ("iPhone, Instagram's own browser", "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Instagram 320.0", 5, "A browser inside another app on your iPhone", ["Open in browser", "Safari"]),
+            ("Android phone, Chrome", ANDROID, 5, "Chrome on your Android phone", ["Install app", "Add to Home screen"]),
+            ("Android tablet, Chrome", "Mozilla/5.0 (Linux; Android 14; SM-X710) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36", 5, "Chrome on your Android tablet", ["Install app"]),
+            ("Android, Samsung Internet", "Mozilla/5.0 (Linux; Android 14; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/24.0 Chrome/117.0 Mobile Safari/537.36", 5, "Samsung Internet on your Android phone", ["Add page to", "Home screen"]),
+            ("Android, Firefox", "Mozilla/5.0 (Android 14; Mobile; rv:125.0) Gecko/125.0 Firefox/125.0", 5, "Firefox on your Android phone", ["Install"]),
+            ("Android, Edge", "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Mobile Safari/537.36 EdgA/124.0", 5, "Edge on your Android phone", ["Add to phone"]),
+            ("Android, Facebook's own browser", "Mozilla/5.0 (Linux; Android 14; Pixel 8; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/124.0 Mobile Safari/537.36 [FB_IAB/FB4A;FBAV/450.0]", 5, "A browser inside another app on your Android phone", ["Chrome"]),
+        ]
+        for label, ua, touch, who, words in UAS:
+            r = page.evaluate("""async ([ua, touch]) => { const { device } = await import('/shared/pwa.js'); const { installRecipe } = await import('/shared/install.js');
+              const rec = installRecipe(device(ua, touch)); return { who: rec.who, text: rec.items.join(' ').replace(/<[^>]+>/g, '') + ' ' + (rec.note || '') }; }""", [ua, touch])
+            check(r["who"] == who and all(w in r["text"] for w in words), f"the steps for {label} name {who} and the right buttons", str(r))
+        ctx.close()
+
+        for label, ua in (("an installed app on an iPhone", IPHONE), ("an installed app on Android", ANDROID)):
+            ctx, page = new_page(browser, STANDALONE, ua=ua)
+            page.goto(BASE + "/phone/"); page.wait_for_selector(".ph-code")
+            check(page.locator("#install-page").count() == 0 and page.inner_text("#install-slot").strip() == "", f"{label} skips the install page and shows no install prompt")
+            ctx.close()
+        ctx = browser.new_context(viewport={"width": 1440, "height": 900})
+        page = ctx.new_page()
+        page.goto(BASE + "/"); page.wait_for_selector(".ph-code")
+        check(page.locator("#install-page").count() == 0 and page.inner_text("h1") == "Welcome to Treeline",
+              "a computer skips the install page and opens straight on adding a phone or logging in")
         ctx.close()
 
         # ---- a parent who had alerts on keeps them: the old worker's push subscription is carried over, not lost
