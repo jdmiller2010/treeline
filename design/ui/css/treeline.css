@@ -859,11 +859,11 @@ body {
 .tl-desk__art > .tl-desk__l--portrait { display: block; }
 .tl-desk__stage { width: min(100cqw, 76.687cqh); aspect-ratio: 1000 / 1304; }
 .tl-desk__phone { left: 17.000%; top: 3.758%; width: 66.000%; }
-.tl-desk__hot--guide { left: 33.800%; top: 87.776%; width: 53.600%; height: 8.850%; }
+.tl-desk__hot--guide { left: 39.600%; top: 87.776%; width: 48.600%; height: 8.850%; }
 .tl-desk__hot--licenses { left: 59.000%; top: 68.558%; width: 11.200%; height: 7.055%; }
 .tl-desk__hot--coffee { left: 77.160%; top: 14.686%; width: 19.300%; height: 9.164%; }
 .tl-desk__hot--card { left: 77.160%; top: 23.850%; width: 17.280%; height: 8.390%; }
-.tl-desk__hot--cardfile { left: 10.110%; top: 83.827%; width: 20.740%; height: 11.265%; }
+.tl-desk__hot--cardfile { left: 15.310%; top: 83.827%; width: 20.740%; height: 11.265%; }
 .tl-desk__slot { left: 2%; right: 79%; top: 46%; }
 }
 @container (aspect-ratio < 0.65) {

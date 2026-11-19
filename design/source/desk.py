@@ -505,9 +505,9 @@ LAYOUTS = {
                   "drawer": (286, 978, 428, 100), "knob": (324, 1028)},
         "phone": {"x": 170, "y": 49, "w": 660},
         "sticker": (466, 1030, .78, .78, -3),
-        "bookspine": (346, 1252, 520), "peek": (624, 978),
+        "bookspine": (404, 1252, 520, 470), "peek": (624, 978),
         "place": {"sticky": (72, 150, 20, 60, 1), "sketch": (92, 360, 30, 290, .9), "cork": (676, 64, 763, 180, .72),
-                  "cardfile": (684, 674, 104, 1240, .72), "spines": (0, 0, 196, 440, .8), "plant": (0, 0, 172, 453, .8)},
+                  "cardfile": (684, 674, 156, 1240, .72), "spines": (0, 0, 196, 440, .8), "plant": (0, 0, 172, 453, .8)},
         "shelf": ["cardfile"], "table_items": [], "sketch": True},
     # Phones: a narrow nightstand, the phone across nearly the whole width, the wall things above it,
     # the book and the card file on the shelf.
