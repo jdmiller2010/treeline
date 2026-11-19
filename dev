@@ -7,7 +7,9 @@
 #   ./dev sip [scenario...]  scripted SIP phones (real calls)
 #   ./dev web [script.py]    browser tablets on real calls: phone_calls.py (default), phone_ui.py
 #   ./dev ui start|stop|status|reset|smoke|pwa   a local API on a throwaway database, the parent-app browser test, and the installable-app test
-#   ./dev check              regenerate generated files, check syntax, fail if anything was stale
+#   ./dev check              regenerate generated files, check syntax and the repo rules, fail if anything was stale
+#   ./dev rules [args]       scan the repo for secrets, addresses and other things that must not be public (docs/REPO_RULES.md)
+#   ./dev hooks              turn on the pre-commit hook that runs those rules on every commit
 #   ./dev clean              empty the dev database (refuses while a test run is going)
 #   ./dev all                check, unit, sip, web, ui smoke, ui pwa
 #
@@ -124,10 +126,14 @@ cmd_check() {
     node --check --input-type=module < "$f" 2>/dev/null || { echo "JS syntax error: $f"; bad=1; }
   done
   for f in $(git ls-files '*.py'); do python3 -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "$f" || { echo "Python syntax error: $f"; bad=1; }; done
+  python3 scripts/check_repo_rules.py || bad=1
   dc config -q >/dev/null || { echo "docker-compose.yml is invalid"; bad=1; }
   docker compose -f deploy/docker-compose.prod.yml --env-file deploy/env.example config -q >/dev/null 2>&1 || { echo "deploy/docker-compose.prod.yml is invalid"; bad=1; }
   [ $bad -eq 0 ] && echo "check ok"; return $bad
 }
+
+cmd_rules() { python3 scripts/check_repo_rules.py "$@"; }
+cmd_hooks() { git config core.hooksPath .githooks && echo "pre-commit hook on (.githooks/pre-commit): commits are scanned by scripts/check_repo_rules.py"; }
 
 # ---------------------------------------------------------------- clean
 clean_run() {
@@ -149,6 +155,6 @@ cmd_all() { cmd_check; cmd_unit; cmd_sip; cmd_web phone_ui.py; cmd_web phone_cal
 case "${1:-help}" in
   up) shift; cmd_up "$@" ;; restart) cmd_restart ;; unit) shift; cmd_unit "$@" ;;
   sip) shift; cmd_sip "$@" ;; web) shift; cmd_web "$@" ;; ui) shift; cmd_ui "$@" ;;
-  check) cmd_check ;; clean) cmd_clean ;; all) cmd_all ;;
-  *) sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//' ;;
+  check) cmd_check ;; rules) shift; cmd_rules "$@" ;; hooks) cmd_hooks ;; clean) cmd_clean ;; all) cmd_all ;;
+  *) sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//' ;;
 esac

@@ -124,7 +124,7 @@ This plan turns the decisions on the Treeline planning whiteboard into phases. E
 4. **Push notifications** for the parent app.
 5. **Records:** call records kept 90 days by default, adjustable per treehouse; parent actions kept a year.
 6. **Privacy before inviting anyone:** parent consent at setup, a short plain-language privacy policy (what's stored, for how long, who sees it, nothing recorded), and real deletion. The US kids' privacy law (COPPA) may apply once families beyond friends join; get advice before then.
-7. **Pilot:** 2–3 families from the neighborhood, each with a dedicated tablet running the rotary softphone. Collect what confuses kids and parents and fix it before adding real phones in Phase 5.
+7. **Pilot:** 2–3 friend families from the neighborhood, each with a dedicated tablet running the rotary softphone. Collect what confuses kids and parents and fix it before adding real phones in Phase 5.
 
 **Done when:** the pilot families have used it for two weeks with no lost calls, no surprises in the audit, and every parent able to manage their treehouse alone.
 

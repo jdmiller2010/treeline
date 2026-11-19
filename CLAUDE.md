@@ -18,7 +18,9 @@ Treeline: a house-to-house phone network for kids, with parents holding the keys
 ./dev web [script.py]    # browser softphones on real WebRTC calls (phone_calls.py default, phone_ui.py)
 ./dev ui smoke           # parent-app browser test on a local API with a throwaway DB (./dev ui start|stop|reset)
 ./dev ui pwa             # the installable app: manifest, one service worker, the launcher and the install prompts (BROWSER=webkit|msedge|firefox to change engine)
-./dev check              # regenerate generated files, syntax-check Python/JS/compose; fails if something was stale
+./dev check              # regenerate generated files, syntax-check Python/JS/compose, run the repo rules; fails if something was stale
+./dev rules              # scan for secrets, addresses and other things that must not be in this public repo (docs/REPO_RULES.md)
+./dev hooks              # once per clone: run those rules on every commit
 ./dev all                # everything
 ```
 
@@ -35,6 +37,7 @@ On Docker Desktop, host-networked ports aren't reachable from the host, which is
 - **Generated files**: after touching `design/ui` icons/illustrations or `THIRD_PARTY_NOTICES.md`, run `./dev check` and commit what it regenerates. A markdown table with a blank line inside it silently breaks the licenses page.
 - **Long runs** (scenarios take ~7 minutes): run in the background to a log file and wait with a Monitor; don't poll, and don't start other stack work meanwhile.
 - **Test what's real, not what you assume.** Three serious bugs (tones never played, browser phones unable to sign in, a missing DB column) only showed up with real calls, real browsers and an upgraded database. Config for a third-party component (Caddy's certificate path, ARI's comma-split `media`, POST vs PUT to reload a module) must be checked against that component, not recalled. Prefer a test that exercises the audio/registration/upgrade path over one that checks a row.
+- **This repo is public: read [docs/REPO_RULES.md](docs/REPO_RULES.md) before committing.** No secrets, no real people (names, emails, addresses, IPs, the places kids play), no account IDs, no database or backup files, no allowlists; placeholders only. `./dev rules` checks it, `./dev hooks` makes git check it on every commit, and CI checks every PR. A finding is never "fixed" by editing history: remove it, and rotate it if it was real.
 - **Third-party code**: don't run `npm install` or execute downloaded files. Vendor a pinned download, read it as text, record it in `THIRD_PARTY_NOTICES.md`.
 - **Playwright**: strings passed to `wait_for_function` are `eval`ed and blocked by our CSP; pass arrow functions (`"(d) => ..."` with `arg=`). Screenshots of full pages show the bottom tab bar mid-page; that's the capture, not a bug.
 

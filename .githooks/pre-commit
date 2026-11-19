@@ -1,0 +1,4 @@
+#!/bin/sh
+# Refuses a commit that would add something that must not be public (docs/REPO_RULES.md).
+# Turn it on once per clone:  ./dev hooks
+exec python3 "$(git rev-parse --show-toplevel)/scripts/check_repo_rules.py" --staged

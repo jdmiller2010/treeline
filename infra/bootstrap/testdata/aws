@@ -1,0 +1,112 @@
+#!/usr/bin/env python3
+"""A fake `aws` CLI, just enough for test_bootstrap.sh. It keeps its "account" in a JSON file
+($FAKE_AWS_STATE) and logs every command line it is given ($FAKE_AWS_STATE.argv) so the test can
+check that no secret ever appears in an argument. Nothing here is real or secret."""
+
+import json
+import os
+import sys
+
+STATE = os.environ["FAKE_AWS_STATE"]
+ARGV_LOG = STATE + ".argv"
+ACCOUNT = os.environ.get("FAKE_AWS_ACCOUNT", "123456789012")
+ARN = os.environ.get("FAKE_AWS_ARN", f"arn:aws:iam::{ACCOUNT}:user/admin")
+
+
+def load():
+    try:
+        with open(STATE) as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return {"params": {}, "users": {}, "keys": {}, "counter": 0}
+
+
+def save(st):
+    with open(STATE, "w") as f:
+        json.dump(st, f)
+
+
+def fail(code, msg):
+    sys.stderr.write(f"An error occurred ({code}) when calling the operation: {msg}\n")
+    sys.exit(254)
+
+
+def opt(args, name):
+    return args[args.index(name) + 1] if name in args else None
+
+
+def main():
+    args = sys.argv[1:]
+    with open(ARGV_LOG, "a") as f:
+        f.write(" ".join(args) + "\n")
+    st = load()
+    svc, cmd = args[0], args[1]
+    rest = args[2:]
+
+    if (svc, cmd) == ("sts", "get-caller-identity"):
+        print(ACCOUNT if opt(rest, "--query") == "Account" else ARN)
+
+    elif (svc, cmd) == ("ssm", "get-parameter"):
+        p = st["params"].get(opt(rest, "--name"))
+        if p is None:
+            fail("ParameterNotFound", "Parameter not found.")
+        print(p["Type"])
+
+    elif (svc, cmd) == ("ssm", "put-parameter"):
+        assert opt(rest, "--cli-input-json") == "file:///dev/stdin", rest
+        req = json.loads(sys.stdin.read())
+        if req["Name"] in st["params"] and not req["Overwrite"]:
+            fail("ParameterAlreadyExists", "The parameter already exists.")
+        st["params"][req["Name"]] = {"Type": req["Type"], "Value": req["Value"]}
+        save(st)
+
+    elif (svc, cmd) == ("iam", "get-user"):
+        if opt(rest, "--user-name") not in st["users"]:
+            fail("NoSuchEntity", "The user cannot be found.")
+        print("{}")
+
+    elif (svc, cmd) == ("iam", "create-user"):
+        st["users"].setdefault(opt(rest, "--user-name"), {"policy": None})
+        save(st)
+
+    elif (svc, cmd) == ("iam", "put-user-policy"):
+        st["users"][opt(rest, "--user-name")]["policy"] = json.loads(opt(rest, "--policy-document"))
+        save(st)
+
+    elif (svc, cmd) == ("iam", "get-user-policy"):
+        pol = st["users"].get(opt(rest, "--user-name"), {}).get("policy")
+        if pol is None:
+            fail("NoSuchEntity", "The user policy cannot be found.")
+        print(json.dumps(pol))
+
+    elif (svc, cmd) == ("iam", "list-access-keys"):
+        keys = st["keys"].get(opt(rest, "--user-name"), [])
+        q = opt(rest, "--query")
+        if q.startswith("AccessKeyMetadata[].[AccessKeyId"):
+            print(json.dumps([[k["id"], k["created"]] for k in keys]))
+        elif q.startswith("length("):
+            print(len(keys))
+        elif q.startswith("sort_by"):
+            ordered = sorted(keys, key=lambda k: k["created"])[:-1]
+            print("\t".join(k["id"] for k in ordered) or "None")
+        else:
+            print("\t".join(k["id"] for k in keys))
+
+    elif (svc, cmd) == ("iam", "create-access-key"):
+        st["counter"] += 1
+        n = st["counter"]
+        key = {"id": "AK" + "IAFAKE%012d" % n, "secret": "fakeSecret%030d" % n, "created": "2026-11-19T20:%02d:00+00:00" % (n % 60)}
+        st["keys"].setdefault(opt(rest, "--user-name"), []).append(key)
+        save(st)
+        print(key["id"] + "\t" + key["secret"])
+
+    elif (svc, cmd) == ("iam", "delete-access-key"):
+        u, kid = opt(rest, "--user-name"), opt(rest, "--access-key-id")
+        st["keys"][u] = [k for k in st["keys"].get(u, []) if k["id"] != kid]
+        save(st)
+
+    else:
+        fail("Unsupported", "fake aws does not implement: " + " ".join(args))
+
+
+main()

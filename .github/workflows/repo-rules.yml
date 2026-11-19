@@ -1,0 +1,46 @@
+# Checks every change against docs/REPO_RULES.md, and runs the tests for the checking and bootstrap scripts.
+#
+# This repo is PUBLIC, so this workflow follows its own rules:
+#   - it runs on `pull_request`, never `pull_request_target` (which would give a fork's code our secrets);
+#   - it only reads the repo (permissions: contents: read) and has no deploy credentials;
+#   - it uses first-party actions and our own scripts only; GitHub-provided values go through env:,
+#     never straight into a shell command.
+name: repo rules
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  rules:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Scan every tracked file
+        env:
+          # Names of places and people that must stay out of the repo; kept as a repository secret so they
+          # are not written here. Empty on pull requests from forks (GitHub does not pass secrets to them).
+          REPO_RULES_EXTRA: ${{ secrets.REPO_RULES_EXTRA }}
+        run: python3 scripts/check_repo_rules.py
+
+      - name: Scan every line the pull request adds, in every commit
+        if: github.event_name == 'pull_request'
+        env:
+          REPO_RULES_EXTRA: ${{ secrets.REPO_RULES_EXTRA }}
+          BASE_REF: ${{ github.base_ref }}
+        run: python3 scripts/check_repo_rules.py --range "origin/${BASE_REF}..HEAD"
+
+      - name: Tests for the scanner
+        run: python3 -m unittest scripts/test_check_repo_rules.py
+
+      - name: Tests for the AWS bootstrap script (against a fake aws; no account involved)
+        run: bash infra/bootstrap/test_bootstrap.sh

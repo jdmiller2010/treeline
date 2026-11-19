@@ -6,3 +6,26 @@ node_modules/
 dist/
 .env
 .venv-dev/
+
+# Never commit these (docs/REPO_RULES.md). scripts/check_repo_rules.py enforces the same list.
+.env.*
+!.env.example
+!deploy/env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.agekey
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+id_rsa*
+id_ed25519*
+.repo-rules.local
+infra/.local/
+cdk.out/
+cdk.context.json
+*.tfstate
+*.tfstate.backup
