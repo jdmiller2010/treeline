@@ -1,6 +1,6 @@
 # Treeline
 
-*A safe phone line for neighborhood kids.*
+*Safe calls for neighborhood kids.*
 
 A house-to-house phone for kids who live near each other, with parents holding
 the keys. Every household is a **treehouse** with one phone line and one

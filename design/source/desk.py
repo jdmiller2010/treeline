@@ -154,7 +154,7 @@ def certificate(turn=3):
 
 LOGO_INNER = None
 CARD_BOX = (690, 250, 234, 132)     # the business card on the corkboard: x, y, w, h
-TAGLINE = "A safe phone line for neighborhood kids"
+TAGLINE = "Safe calls for neighborhood kids"
 def business_card(turn=-3):
     """Treeline's business card: logo, name and tagline, then Jordan's name, email and the copyright,
     with a generous white border all round."""
@@ -167,8 +167,8 @@ def business_card(turn=-3):
          f'<path d="{d}" fill="{INK}" opacity=".15" transform="translate(3 5)" filter="url(#tls-edge)"/>',
          shape(d, PAPER), logo,
          f'<text x="{x+m+60}" y="{y+m+17}" {SERIF} font-size="21" font-weight="600" fill="{INK}">Treeline</text>',
-         f'<text x="{x+m+60}" y="{y+m+30}" {SERIF} font-size="8.6" font-style="italic" fill="#5e5546">A safe phone line</text>',
-         f'<text x="{x+m+60}" y="{y+m+40}" {SERIF} font-size="8.6" font-style="italic" fill="#5e5546">for neighborhood kids</text>',
+         f'<text x="{x+m+60}" y="{y+m+30}" {SERIF} font-size="8.6" font-style="italic" fill="#5e5546">Safe calls for</text>',
+         f'<text x="{x+m+60}" y="{y+m+40}" {SERIF} font-size="8.6" font-style="italic" fill="#5e5546">neighborhood kids</text>',
          f'<path d="M{x+m} {y+m+54} L{x+w-m} {y+m+54}" stroke="{INK}" stroke-width=".8" opacity=".3"/>',
          f'<text x="{x+m}" y="{y+m+73}" {SANS} font-size="12.5" font-weight="600" fill="{INK}">Jordan Miller</text>',
          f'<text x="{x+m}" y="{y+m+87}" {SANS} font-size="11" fill="#5e5546">jdmiller2010@gmail.com</text>',
@@ -406,9 +406,13 @@ def moved(box, pl):
 
 # ---------------------------------------------------------------- the guide book, spine out
 BOOK_W, BOOK_T = 200, 30          # length of the spine, thickness of the book
-def book_spine(x0, by, w=BOOK_W, t=BOOK_T, depth=26):
+def book_t(w): return max(BOOK_T, w * .11)          # a 6 x 9 book about an inch thick
+def book_depth(w): return max(26, w * .085)
+def book_spine(x0, by, w=BOOK_W, t=None, depth=None, vis=None):
     """The guide lying flat on its back cover, spine toward you: the title reads across the spine. Seen from
     the side of the table, only a sliver of the front cover shows on top: its blue band and cream, no words."""
+    t = book_t(w) if t is None else t; depth = book_depth(w) if depth is None else depth
+    vis = w if vis is None else vis                              # how much of it shows (the phone may sit in front of the rest)
     x1 = x0 + w; top = by - t - depth; k = depth * .55          # the far edge is a little shorter, like the table top
     face = f"M{x0+k:.1f} {top} L{x1-k:.1f} {top} L{x1} {top+depth} L{x0} {top+depth} Z"
     band = f"M{x0+k:.1f} {top} L{x0+k+w*.3:.1f} {top} L{x0+w*.3:.1f} {top+depth} L{x0} {top+depth} Z"
@@ -419,11 +423,12 @@ def book_spine(x0, by, w=BOOK_W, t=BOOK_T, depth=26):
          f'<path d="M{x0+w*.3:.1f} {top+depth} L{x0+k+w*.3:.1f} {top}" stroke="{SUN}" stroke-width="2.4"/></g>',
          f'<g {WOB}><path d="{face}" {LN}/></g>',
          shape(spine, SKY, edge="#0f2c40"),
-         f'<path d="M{x0+30} {top+depth+4} L{x0+30} {by-4} M{x0+34} {top+depth+4} L{x0+34} {by-4} M{x1-34} {top+depth+4} L{x1-34} {by-4} M{x1-30} {top+depth+4} L{x1-30} {by-4}" stroke="{SUN}" stroke-width="1.6"/>',
-         f'<text x="{x0+42}" y="{by-t/2+1}" {SERIF} font-size="{15*min(1, (w-84)/116):.1f}" font-weight="700" letter-spacing="1.2" fill="#fff" textLength="{w-84}" lengthAdjust="spacingAndGlyphs">ROTARY PHONES</text>',
-         f'<text x="{x0+42}" y="{by-t/2+15}" {SERIF} font-size="10.5" font-style="italic" fill="#fff" opacity=".92">the easy way</text>',
-         f'<text x="{x0+15}" y="{by-t/2+4}" text-anchor="middle" {SANS} font-size="9" font-weight="800" fill="{SUN}">2</text>',
-         f'<g transform="translate({x1-15} {by-t/2})"><path d="M0 -8 C5 -4 5 4 0 8 C-5 4 -5 -4 0 -8Z" fill="#7fc49a"/></g>',]
+         f'<path d="M{x0+30} {top+depth+4} L{x0+30} {by-4} M{x0+34} {top+depth+4} L{x0+34} {by-4} M{x1-34} {top+depth+4} L{x1-34} {by-4} M{x1-30} {top+depth+4} L{x1-30} {by-4}" stroke="{SUN}" stroke-width="1.6"/>']
+    fs = min(t * .42, 22); tw = min(vis - 70, fs * 9.2)          # the title, on the part of the spine you can see
+    g += [f'<text x="{x0+44}" y="{by-t/2+fs*.12:.1f}" {SERIF} font-size="{fs:.1f}" font-weight="700" letter-spacing="1.2" fill="#fff" textLength="{tw:.0f}" lengthAdjust="spacingAndGlyphs">ROTARY PHONES</text>',
+          f'<text x="{x0+44}" y="{by-t/2+fs*.12+fs*.8:.1f}" {SERIF} font-size="{fs*.62:.1f}" font-style="italic" fill="#fff" opacity=".92">the easy way</text>',
+          f'<text x="{x0+16}" y="{by-t/2+4}" text-anchor="middle" {SANS} font-size="{max(9, fs*.55):.1f}" font-weight="800" fill="{SUN}">2</text>',
+          f'<g transform="translate({x1-16} {by-t/2})"><path d="M0 -8 C5 -4 5 4 0 8 C-5 4 -5 -4 0 -8Z" fill="#7fc49a"/></g>']
     return "".join(g)
 
 # The book's real cover, exactly as it is when you pick the book up (desk_pages page 0, with its fonts),
@@ -462,8 +467,9 @@ def cover_top():
             f'<text x="274" y="344" text-anchor="end" {SANS} font-size="10" font-weight="700" letter-spacing="1.6" fill="{SKY}">2ND EDITION</text>'
             f'<rect width="300" height="356" fill="none" stroke="{INK}" stroke-width="2" opacity=".5"/>')
 
-def book_box(x0, by, w=BOOK_W, t=BOOK_T, depth=26):
-    return (x0 - 8, by - t - depth - 6, w + 16, t + depth + 14)
+def book_box(x0, by, w=BOOK_W, vis=None):
+    t, depth = book_t(w), book_depth(w); vis = w if vis is None else vis
+    return (x0 - 8, by - t - depth - 6, vis + 16, t + depth + 14)
 
 # ---------------------------------------------------------------- the warranty card, sticking out of the drawer
 def warranty_face(turn=0):
@@ -489,7 +495,7 @@ LAYOUTS = {
                   "drawer": (336, 768, 428, 100), "knob": (374, 818)},
         "phone": {"x": 270, "y": 2, "w": 560},
         "sticker": (510, 820, .78, .78, -3),
-        "bookspine": (70, 692, 228), "peek": (668, 768),
+        "bookspine": (78, 664, 440, 262), "peek": (668, 768),
         "place": {"sticky": (72, 150, 34, 40, 1), "sketch": (92, 360, 46, 252, .92), "cork": (676, 64, 768, 40, 1),
                   "cardfile": (684, 674, 786, 652, .78)},
         "shelf": [], "table_items": ["cardfile"], "sketch": True},
@@ -499,10 +505,10 @@ LAYOUTS = {
                   "drawer": (286, 978, 428, 100), "knob": (324, 1028)},
         "phone": {"x": 170, "y": 49, "w": 660},
         "sticker": (466, 1030, .78, .78, -3),
-        "bookspine": (64, 898, 168), "peek": (624, 978),
+        "bookspine": (346, 1252, 520), "peek": (624, 978),
         "place": {"sticky": (72, 150, 20, 60, 1), "sketch": (92, 360, 30, 290, .9), "cork": (676, 64, 763, 180, .72),
-                  "cardfile": (684, 674, 196, 1240, .72), "spines": (0, 0, 196, 440, .8), "plant": (0, 0, 172, 453, .8)},
-        "shelf": ["spines", "plant", "cardfile"], "table_items": [], "sketch": True},
+                  "cardfile": (684, 674, 104, 1240, .72), "spines": (0, 0, 196, 440, .8), "plant": (0, 0, 172, 453, .8)},
+        "shelf": ["cardfile"], "table_items": [], "sketch": True},
     # Phones: a narrow nightstand, the phone across nearly the whole width, the wall things above it,
     # the book and the card file on the shelf.
     "tall": {"W": 600, "H": 1340,
@@ -510,9 +516,9 @@ LAYOUTS = {
                   "drawer": (70, 990, 460, 118), "knob": (108, 1049)},
         "phone": {"x": 28, "y": 245, "w": 544},
         "sticker": (290, 1050, .85, .85, -3),
-        "bookspine": (126, 1290, 150), "peek": (452, 990),
+        "bookspine": (84, 1290, 262), "peek": (452, 990),
         "place": {"sticky": (72, 150, 12, 28, .96), "sketch": (92, 360, 14, 214, .85), "cork": (676, 64, 350, 12, .82),
-                  "cardfile": (684, 674, 308, 1286, .6)},
+                  "cardfile": (684, 674, 360, 1286, .56)},
         "shelf": ["cardfile"], "table_items": [], "sketch": True},
 }
 
@@ -521,8 +527,8 @@ def scene(name):
     back, sfront, front = table(L["table"])
     draw = {"book": book, "warranty": warranty, "spines": spines, "plant": plant, "cardfile": card_file}
     item = lambda k: placed(draw[k](), pl[k])
-    bx, by, bw = L["bookspine"]; px, py = L["peek"]; dx, dy, dw, dh = L["table"]["drawer"]
-    book_here = book_spine(bx, by, bw)
+    bx, by, bw, *bv = L["bookspine"]; px, py = L["peek"]; dx, dy, dw, dh = L["table"]["drawer"]
+    book_here = book_spine(bx, by, bw, vis=(bv or [None])[0])
     on_shelf = by > L["table"]["sy"]
     body = (wall(W_, H_) + placed(sticky_note(), pl["sticky"]) + (placed(kid_drawing(), pl["sketch"]) if L["sketch"] else "")
             + placed(corkboard(), pl["cork"]) + back + "".join(item(k) for k in L["shelf"]) + (book_here if on_shelf else "") + sfront + front
@@ -563,8 +569,8 @@ def turned_box(b):
     return (min(xs), min(ys), max(xs) - min(xs) + 6, max(ys) - min(ys))
 def geometry(name):
     L = LAYOUTS[name]; pl = L["place"]
-    bx, by, bw = L["bookspine"]; px, py = L["peek"]
-    hot = {"guide": book_box(bx, by, bw), "licenses": peek_box(px, py),
+    bx, by, bw, *bv = L["bookspine"]; px, py = L["peek"]
+    hot = {"guide": book_box(bx, by, bw, (bv or [None])[0]), "licenses": peek_box(px, py),
            "coffee": moved(BOX["coffee"], pl["cork"]), "card": moved(BOX["card"], pl["cork"]), "cardfile": moved(turned_box(BOX["cardfile"]), pl["cardfile"])}
     return {"w": L["W"], "h": L["H"], "phone": L["phone"], "hotspots": hot}
 

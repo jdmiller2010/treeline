@@ -114,7 +114,7 @@ export async function about(ctx) {
   const content = html`
   <section class="tl-card"><div class="tl-stack tl-stack--group">
     <h2 class="tl-card__title">Treeline</h2>
-    <p class="tl-tagline">A safe phone line for neighborhood kids</p>
+    <p class="tl-tagline">Safe calls for neighborhood kids</p>
     <p class="tl-card__body">A house-to-house phone for kids who live near each other, with parents holding the keys.</p>
     <dl class="tl-dl">
       <div class="tl-dl__row"><dt>Made by</dt><dd>Jordan Miller</dd></div>

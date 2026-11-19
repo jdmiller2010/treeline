@@ -6,7 +6,7 @@ export async function signIn(ctx) {
   const content = html`
   <div class="tl-stack tl-stack--related">
     <img src="/ui/logo/treeline-lockup.svg" width="220" height="auto" alt="Treeline" style="max-width:100%;height:auto">
-    <p class="tl-tagline">A safe phone line for neighborhood kids</p>
+    <p class="tl-tagline">Safe calls for neighborhood kids</p>
   </div>
   <section class="tl-stack">
     <div style="max-width:240px">${art("treeline")}</div>
