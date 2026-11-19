@@ -78,6 +78,8 @@ def _cors(resp):
         resp.headers.setdefault("Referrer-Policy", "no-referrer")
     if request.path.startswith("/api/"):
         resp.headers["Cache-Control"] = "no-store"
+    elif request.path in ("/sw.js", "/", "/index.html", "/launch.js", "/manifest.webmanifest"):
+        resp.headers["Cache-Control"] = "no-cache"      # the worker, the launcher and the manifest are checked every time
     return resp
 
 
@@ -1291,5 +1293,5 @@ def site_files(path):
     root = os.path.join(WEB, "site")
     target = path or "parent/"
     if path in ("", "index.html"):
-        return redirect("/parent/", 302)
+        return _send(root, "index.html")          # the launcher: it opens whichever mode this device is in
     return _send(root, target)

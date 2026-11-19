@@ -8,7 +8,7 @@ export async function pushState() {
   if (!("serviceWorker" in navigator && "PushManager" in window && "Notification" in window)) return "unsupported";
   try { await get("/api/push/key"); } catch (e) { if (e instanceof ApiError && e.status === 404) return "unconfigured"; throw e; }
   if (Notification.permission === "denied") return "denied";
-  const reg = await navigator.serviceWorker.getRegistration("/parent/");
+  const reg = await navigator.serviceWorker.getRegistration("/");
   const sub = reg && (await reg.pushManager.getSubscription());
   if (!sub) return "off";
   // The browser keeps its subscription when someone signs out. Tie it to whoever is signed in
@@ -31,7 +31,7 @@ export async function forgetPushQuietly() {
 }
 
 export async function disablePush() {
-  const reg = await navigator.serviceWorker.getRegistration("/parent/");
+  const reg = await navigator.serviceWorker.getRegistration("/");
   const sub = reg && (await reg.pushManager.getSubscription());
   if (!sub) return;
   await del("/api/push/subscribe", { endpoint: sub.endpoint });

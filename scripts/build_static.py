@@ -30,12 +30,12 @@ def build(api, out):
     out.mkdir(parents=True)
     for app in ("parent", "phone", "shared"):
         shutil.copytree(ROOT / "web" / app, out / app)
+    for f in ("index.html", "launch.js", "sw.js", "manifest.webmanifest"):          # the launcher, the one worker and the one manifest
+        shutil.copy(ROOT / "web" / f, out / f)
     for part in UI_KEEP:
         shutil.copytree(ROOT / "design" / "ui" / part, out / "ui" / part)
     shutil.copy(ROOT / "design" / "LICENSE-ASSETS.txt", out / "ui" / "LICENSE-ASSETS.txt")
     (out / "config.js").write_text(f'// Written by scripts/build_static.py\nwindow.TREELINE_API_BASE = {json.dumps(api)};\n')
-    (out / "index.html").write_text('<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url=/parent/">'
-                                    '<title>Treeline</title><a href="/parent/">Open Treeline</a>\n')
     (out / "404.html").write_text('<!doctype html><meta charset="utf-8"><title>Not here</title>'
                                   '<p style="font-family:sans-serif;padding:2rem">That page isn\'t here. <a href="/parent/">Open Treeline</a></p>\n')
     (out / ".nojekyll").write_text("")

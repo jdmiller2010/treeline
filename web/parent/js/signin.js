@@ -32,6 +32,7 @@ export async function signIn(ctx) {
       </form>
     </div>
   </section>
+  <p class="caption"><a class="tl-footer__link" href="/phone/" data-to-phone>Set this device up as a phone instead</a></p>
   <p class="caption" style="color:var(--ink-muted)">${NO_911}</p>`;
 
   return {

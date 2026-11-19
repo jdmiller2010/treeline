@@ -6,7 +6,7 @@
 #   ./dev unit [module]      unit tests (never touch the dev database)
 #   ./dev sip [scenario...]  scripted SIP phones (real calls)
 #   ./dev web [script.py]    browser tablets on real calls: phone_calls.py (default), phone_ui.py
-#   ./dev ui start|stop|status|reset|smoke   a local API on a throwaway database, and the parent-app browser test
+#   ./dev ui start|stop|status|reset|smoke|pwa   a local API on a throwaway database, the parent-app browser test, and the installable-app test
 #   ./dev check              regenerate generated files, check syntax, fail if anything was stale
 #   ./dev clean              empty the dev database (refuses while a test run is going)
 #   ./dev all                check, unit, sip, web, ui smoke
@@ -97,6 +97,11 @@ ui_stop() {
   rm -f "$STATE/ui.pid"; echo "stopped"
 }
 ui_reset() { ui_stop; rm -f "$STATE/ui/test.db"*; ui_start; }       # a fresh database, only ever while stopped
+ui_pwa() {
+  ui_reset
+  ui_py
+  BASE="http://127.0.0.1:$UI_PORT" "$VENV/bin/python" web/tests/pwa.py
+}
 ui_smoke() {
   ui_reset
   ui_py
@@ -104,9 +109,9 @@ ui_smoke() {
 }
 cmd_ui() {
   case "${1:-status}" in
-    start) ui_start ;; stop) ui_stop ;; reset) ui_reset ;; smoke) ui_smoke ;;
+    start) ui_start ;; stop) ui_stop ;; reset) ui_reset ;; smoke) ui_smoke ;; pwa) ui_pwa ;;
     status) ui_alive && echo "running (pid $(ui_pid)) on :$UI_PORT" || echo "not running" ;;
-    *) echo "ui start|stop|status|reset|smoke" >&2; exit 2 ;;
+    *) echo "ui start|stop|status|reset|smoke|pwa" >&2; exit 2 ;;
   esac
 }
 

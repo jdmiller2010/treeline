@@ -1,5 +1,6 @@
 // The screen a softphone shows until a parent adds it to a treehouse: a QR code and six digits.
 import { alert, art, footer, html, raw, str } from "/shared/ui.js";
+import { mountInstall } from "/shared/install.js";
 import { get, post } from "/shared/api.js";
 
 export function savedPhone() {
@@ -59,9 +60,12 @@ export function pairScreen(root, notice) {
           <p class="ph-code" aria-label="Code ${start.code.split("").join(" ")}">${start.code.slice(0, 3)} ${start.code.slice(3)}</p>
           <p class="tl-card__body">Waiting for a parent. This code changes every few minutes.</p>
         </div></section>` : ""}
+        <section class="tl-stack"><div class="tl-actions"><a class="tl-btn tl-btn--primary tl-btn--md" href="/parent/" data-parent-login><span class="tl-btn__label">Log in to the parent dashboard</span></a></div></section>
+        <div id="install-slot"></div>
         <p class="caption" style="color:var(--ink-muted)">Treeline can't call 911 or any outside number.</p>
         ${footer("/phone/licenses.html")}
       </div></main>`);
+      mountInstall(root.querySelector("#install-slot"));
     }
     newCode();
   });

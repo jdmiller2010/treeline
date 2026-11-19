@@ -2,6 +2,7 @@
 import { get, post, patch, token, ApiError } from "/shared/api.js";
 import { avatar, brand, footer, TAGLINE, html, icon, iconButton, button, loader, raw, str, alert, toast } from "/shared/ui.js";
 import { plural } from "/shared/format.js";
+import { lockedToPhone, registerApp } from "/shared/pwa.js";
 import { signIn } from "./signin.js";
 import { setup } from "./setup.js";
 import { home } from "./home.js";
@@ -180,5 +181,5 @@ async function signOut() {
 
 window.addEventListener("hashchange", render);
 window.addEventListener("tl-signed-out", () => { ctx.me = null; render(); });
-if ("serviceWorker" in navigator) navigator.serviceWorker.register("/parent/sw.js").catch(() => {});
-render();
+if (lockedToPhone()) location.replace("/phone/");     // an installed app that is a phone stays a phone until a parent code is entered there
+else { registerApp(); render(); }

@@ -6,6 +6,7 @@ import { api } from "/shared/api.js";
 import { CARDFILE, ROTARY } from "/shared/assets.js";
 import { brandLine, button, footerLinks, html, icon, presence, raw, sheet, steps, str, tag } from "/shared/ui.js";
 import { forgetPhone, pairScreen, savedPhone } from "./pair.js";
+import { registerApp } from "/shared/pwa.js";
 import * as tones from "./tones.js";
 
 const root = document.getElementById("root");
@@ -547,4 +548,4 @@ if (location.search.includes("test=1") && ["localhost", "127.0.0.1"].includes(lo
 }
 
 boot();
-if ("serviceWorker" in navigator) navigator.serviceWorker.register("/phone/sw.js").catch(() => {});
+registerApp();

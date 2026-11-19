@@ -14,6 +14,9 @@ import sys
 
 from playwright.sync_api import sync_playwright
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import browsers
+
 BASE = os.environ.get("BASE", "http://127.0.0.1:8080")
 SHOTS = os.environ.get("SHOTS", "/tmp/treeline-shots")
 CHROME = os.environ.get("CHROME") or next(iter(glob.glob(os.path.expanduser(
@@ -84,7 +87,7 @@ def make_family(browser, email, name, tz="America/Los_Angeles"):
 
 def main():
     with sync_playwright() as p:
-        browser = p.chromium.launch(executable_path=CHROME)
+        browser = browsers.launch(p)
 
         # ---- sign-in
         anon = browser.new_context(viewport={"width": 390, "height": 844})
