@@ -168,6 +168,11 @@ def run(families):
         sa, ss = a.stats(), s.stats()
         check(sa and sa["rx"] > 1000 and sa["tx"] > 1000, "audio flows both ways (called side)", str(sa))
         check(ss and ss["rx"] > 1000 and ss["tx"] > 1000, "audio flows both ways (calling side)", str(ss))
+        # Packets arriving isn't hearing them: the page's audio element must actually be playing (a browser can refuse to start it).
+        playing = "() => { const e = document.getElementById('remote-audio'); return !!e.srcObject && !e.paused && e.currentTime > 0.5; }"
+        state = "() => { const e = document.getElementById('remote-audio'); return { src: !!e.srcObject, paused: e.paused, time: Math.round(e.currentTime * 10) / 10, ready: e.readyState, muted: e.muted, vol: e.volume, tracks: e.srcObject ? e.srcObject.getAudioTracks().map((t) => t.readyState + '/' + (t.muted ? 'muted' : 'live') + '/' + t.enabled) : null }; }"
+        check(a.page.evaluate(playing) and s.page.evaluate(playing), "and both tablets are really playing what they receive, not just receiving it",
+              f"callee {a.page.evaluate(state)} | caller {s.page.evaluate(state)}")
 
         # ---- someone else on the line joins mid-call
         s2 = Tablet(browser, sam, "Sam second tablet")
@@ -211,14 +216,16 @@ def run(families):
         s.lift()
         s.wait_phase("dialtone")
         s.dial("0199")
-        heard = 0
-        for _ in range(12):                                      # the tones and the message are real audio
+        heard, played = 0, False
+        for _ in range(16):                                      # the tones and the message are real audio, and it plays
             st = s.stats()
             heard = max(heard, (st or {}).get("rx", 0))
-            if heard > 2000:
+            played = played or s.page.evaluate("() => { const e = document.getElementById('remote-audio'); return !!e.srcObject && !e.paused && e.currentTime > 0.5; }")
+            if heard > 2000 and played:
                 break
             time.sleep(0.3)
         check(heard > 2000, "the caller hears the three tones and the message", str(heard))
+        check(played, "and the operator's message is really playing in the caller's browser, not just arriving")
         check(s.wait_phase("after", 20000) or s.wait_phase("dialtone", 20000), "an unknown number gets a message, then the line is free again")
         check(newest_call(sam)["result"] == "not_in_service", "unknown numbers are blocked and audited")
         s.lift()

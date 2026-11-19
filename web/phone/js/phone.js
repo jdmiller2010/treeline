@@ -330,10 +330,37 @@ function onDigit(d) {
   later("inter", INTERDIGIT, () => place(S.digits));
 }
 
-function hookAudio(session) {
-  session.on("peerconnection", (e) => {
-    e.peerconnection.addEventListener("track", (ev) => { remoteAudio.srcObject = ev.streams[0]; remoteAudio.play?.().catch(() => {}); });
+/** Play what the other end (or the operator) says. A browser may refuse to start playback until the person has tapped the page
+ *  (its autoplay rules); that used to fail silently and the audio began only after some later tap. Now the refusal is
+ *  remembered, playback is retried at the next tap or key press and when the call connects, and ?debug=1 shows what happened. */
+const audioState = { error: "", tries: 0 };
+function playRemote() {
+  if (!remoteAudio.srcObject) return;
+  remoteAudio.muted = false; remoteAudio.volume = 1;
+  audioState.tries++;
+  const p = remoteAudio.play?.();
+  if (p && p.catch) p.then(() => { audioState.error = ""; }, (err) => {
+    audioState.error = (err && err.name) || "blocked";
+    console.warn("The browser wouldn't start the call audio yet:", audioState.error);
+    const retry = () => playRemote();
+    ["pointerdown", "keydown", "touchend"].forEach((t) => window.addEventListener(t, retry, { once: true, capture: true }));
   });
+}
+const hooked = new WeakSet();
+function hookAudio(session) {
+  // A call's audio arrives as a "track" on its peer connection. Two things used to leave the calling phone with nothing to play:
+  // the track can come with no stream attached (so streams[0] is undefined), and an outgoing call can create its connection
+  // before we are listening for it. Handle both: wrap a lone track in a stream, and attach to a connection that already exists.
+  const attach = (pc) => {
+    if (!pc || hooked.has(pc)) return;
+    hooked.add(pc);
+    pc.addEventListener("track", (ev) => {
+      remoteAudio.srcObject = ev.streams && ev.streams[0] ? ev.streams[0] : new MediaStream([ev.track]);
+      playRemote();
+    });
+  };
+  attach(session.connection);
+  session.on("peerconnection", (e) => attach(e.peerconnection));
 }
 
 function callOptions(extra = {}) {
@@ -352,7 +379,7 @@ function place(number) {
       eventHandlers: {
         progress: mine(() => { if (S.phase === "calling") tones.play("ringback"); }),
         accepted: mine(() => { tones.stop(); S.phase = "talking"; say("Talking", ""); render(); }),
-        confirmed: mine(() => { tones.stop(); S.phase = "talking"; say("Talking", ""); render(); }),
+        confirmed: mine(() => { tones.stop(); playRemote(); S.phase = "talking"; say("Talking", ""); render(); }),
         failed: mine(() => ended()),
         ended: mine(() => ended()),
       },
@@ -370,7 +397,7 @@ function joinCall() {
   try {
     session = S.ua.call(`sip:${JOIN}@${S.creds.server}`, callOptions({
       eventHandlers: {
-        confirmed: mine(() => { S.phase = "talking"; say("Talking", ""); render(); }),
+        confirmed: mine(() => { playRemote(); S.phase = "talking"; say("Talking", ""); render(); }),
         failed: mine(() => { S.noJoinUntil = Date.now() + 10000; ended(); }),   // don't try again at once: fall back to dial tone
         ended: mine(() => { if (Date.now() - startedAt < 3000) S.noJoinUntil = Date.now() + 10000; ended(); }),
       },
@@ -466,6 +493,20 @@ async function boot() {
   const saved = savedPhone();
   if (saved && saved.sip_user) return start(saved);
   start(await pairScreen(root));
+}
+
+// ?debug=1 on the phone's address shows a small readout of the call audio, to say what the browser is doing when a call is silent.
+if (location.search.includes("debug=1")) {
+  const box = document.createElement("pre");
+  box.id = "audio-debug";
+  box.style.cssText = "position:fixed;left:8px;bottom:72px;z-index:9999;margin:0;padding:6px 8px;border-radius:8px;background:#000c;color:#9f9;font:11px/15px monospace;pointer-events:none;white-space:pre-wrap;max-width:92vw";
+  document.body.appendChild(box);
+  setInterval(() => {
+    const t = remoteAudio.srcObject && remoteAudio.srcObject.getAudioTracks ? remoteAudio.srcObject.getAudioTracks()[0] : null;
+    box.textContent = [`call audio: ${remoteAudio.srcObject ? (remoteAudio.paused ? "NOT playing" : "playing") : "no call"}${audioState.error ? "  (browser said " + audioState.error + ")" : ""}`,
+      `  track: ${t ? t.readyState + (t.muted ? ", muted" : ", live") : "none"}   time: ${remoteAudio.currentTime.toFixed(1)}s   tries: ${audioState.tries}`,
+      `  phase: ${S.phase}   tones: ${tones.audioReady?.() ? "sound on" : "sound OFF (tap the page)"}`].join("\n");
+  }, 400);
 }
 
 // A hook for the browser tests, on this machine only, and without the SIP secret.
