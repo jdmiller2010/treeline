@@ -13,7 +13,7 @@ The tablet softphone's phone: a 1960s desk rotary drawn in Treeline's hand (ink 
 - Digits only count while the handset is lifted, as on a real phone. Collect four, then call.
 - **Always shows "Can't call 911 or outside numbers"** under the phone. Turn `notice` off only where the same screen already says it.
 - Colors come from `--tlp-l`, `--tlp-m`, `--tlp-d`, `--tlp-s` on the wrapper. The phone keeps its own colors in Lantern; it's an object on the page, not part of the UI chrome.
-- **The softphone screen** (`web/phone`) is an ordinary page: this phone, berry, with its notice off, on a soft glow with the `CardFile` beside it, and the page's own quiet lock-icon line saying it can't call 911. Anywhere else, keep the notice on. No number pad, no caller ID, no screen of digits.
+- **The softphone screen** (`web/phone`) is an ordinary page: this phone, berry, on a soft glow with the `CardFile` beside it, keeping its own notice under it. Keep the notice on everywhere. No number pad, no caller ID, no screen of digits.
 - Each phone on a page needs its own `id` (React does this for you; in plain HTML give each copy's `id="tlp-…"` and `url(#tlp-…)` references their own prefix).
 - Motion respects reduced-motion settings: the wheel and handset jump instead of animating.
 

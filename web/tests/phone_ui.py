@@ -114,10 +114,10 @@ def main():
         check(tablet.locator(".tl-rotary[data-colorway='berry'], .tl-rotary--berry").count() == 1 or "berry" in (tablet.get_attribute(".tl-rotary", "class") or "") + (tablet.get_attribute(".tl-rotary", "data-colorway") or ""),
               "the phone is the berry one")
         check(tablet.locator(".ph__glow").count() == 1, "it sits on a soft glow")
-        check(tablet.locator(".tl-rotary__notice").count() == 0, "the phone's own notice is off: the page's line says it")
-        no911 = tablet.locator(".ph__no911")
-        check(no911.count() == 1 and "can’t call 911" in no911.inner_text() and no911.locator(".tl-icon").count() == 1, "a plain line with a lock says it can't call 911")
-        check(tablet.locator(".tl-alert").count() == 0 and no911.evaluate("(e) => parseFloat(getComputedStyle(e).fontSize)") <= 14, "and it's quiet: small muted text, not an alert box")
+        notice = tablet.locator(".tl-rotary__notice")
+        check(notice.count() == 1 and "911" in notice.inner_text() and notice.locator(".tl-icon").count() == 1,
+              "the phone's own notice says under it that it can't call 911")
+        check(tablet.locator(".tl-alert").count() == 0, "and it's the design system's notice, not an alert box")
         check(tablet.locator("h1").count() == 1, "one page title")
         tablet.wait_for_function("(n) => document.querySelector('h1').textContent === n", arg=house["name"], timeout=15000)
         check(True, "the page title is the treehouse's name")

@@ -14,9 +14,6 @@
 .ph__sub { margin: 0; font: 400 14px/22px var(--font-sans); color: var(--ink-muted); }
 .ph__sub:empty { display: none; }
 .ph__sub--dots { font-size: 18px; letter-spacing: .2em; color: var(--ink); }
-/* The plain no-911 line: always there, quiet, never a warning. */
-.ph__no911 { margin: 0; display: flex; align-items: flex-start; gap: var(--space-2); font: 400 13px/20px var(--font-sans); color: var(--ink-muted); }
-.ph__no911 .tl-icon { flex: none; margin-top: 1px; }
 .ph__actions { display: flex; }
 .ph__bottom { display: flex; flex-direction: column; gap: var(--space-3); }
 .ph__bottom .ph__actions .tl-btn { width: 100%; }

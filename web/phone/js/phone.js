@@ -84,7 +84,6 @@ function draw() {
       <div class="ph__cards">${raw(CARDFILE)}</div>
     </section>
     <div class="ph__bottom">
-      <p class="ph__no911">${icon("lock", 16)}<span>This phone can’t call 911 or outside numbers. In an emergency, use a grown-up’s phone.</span></p>
       <div class="ph__actions">${button({ label: "How to dial", icon: "phone", attrs: { "data-tl-open": "guide", id: "guide-open" } })}</div>
     </div>
   </main>

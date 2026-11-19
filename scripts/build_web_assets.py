@@ -39,12 +39,12 @@ def brand():
 
 
 def rotary():
-    """The softphone's drawing, from components/RotaryPhone.html (berry, on the hook), without its notice."""
+    """The softphone's drawing, from components/RotaryPhone.html (berry, on the hook), notice included."""
     text = (UI / "components" / "RotaryPhone.html").read_text()
     m = re.search(r"<!-- Berry, on the hook -->\s*(<div class=\"tl-rotary .*?</p>\s*</div>)", text, re.S)
-    # The page says the no-911 line itself, quietly, under the phone; drop the phone's own warning notice.
-    markup = re.sub(r"\s*<p class=\"tl-rotary__notice\">.*?</p>", "", m.group(1), flags=re.S)
-    assert "tl-rotary__notice" not in markup and "tlp-wheel" in markup
+    # The phone keeps its own "can't call 911" notice under it: that is the design system's answer.
+    markup = m.group(1)
+    assert "tl-rotary__notice" in markup and "tlp-wheel" in markup
     return markup
 
 
