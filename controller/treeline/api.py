@@ -272,8 +272,9 @@ def describe_call(c, tid):
         return {"label": "Couldn't complete", "tone": "berry", "icon": "lock",
                 "detail": "The number dialed wasn't four digits"}
     if r == rules.NO_911:
-        return {"label": "Can't call 911", "tone": "berry", "icon": "lock",
-                "detail": "Outside numbers aren't available"}
+        # The one entry in the log that is about safety: marked urgent, so the screen draws it louder than the rest.
+        return {"label": "Tried to call 911", "tone": "berry", "icon": "alert", "urgent": True,
+                "detail": "Treeline can't call 911. If it was an emergency, use another phone."}
     if r == rules.QUIET_OR_PAUSED:
         if why == "caller_quiet":
             return {"label": "Quiet hours", "tone": "sky", "icon": "moon", "detail": "During your quiet hours"}

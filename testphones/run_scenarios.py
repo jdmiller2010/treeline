@@ -278,9 +278,16 @@ def not_strung(w):
 
 
 def no_911(w):
-    """Dialing 911 gets the message that this phone can't call 911."""
+    """Dialing 911 gets the message that this phone can't call 911, and the parents get a note on Home at once
+    (the alert job then emails them and pushes). A second try in the same hour doesn't pile up a second note."""
+    w.conn.execute("DELETE FROM notice WHERE treehouse_id=? AND kind='no_911'", (w.house["sam"],))
     c = call_and_check(w, "sam", "911")
-    return c["result"] == "no_911", dict(c)
+    c2 = call_and_check(w, "sam", "911")
+    notes = w.conn.execute("SELECT * FROM notice WHERE treehouse_id=? AND kind='no_911' AND dismissed_at IS NULL",
+                           (w.house["sam"],)).fetchall()
+    ok = (c["result"] == "no_911" and c2["result"] == "no_911" and len(notes) == 1
+          and "911" in notes[0]["title"] and "dialed 911" in notes[0]["body"])
+    return ok, {"calls": [dict(c), dict(c2)], "notes": [dict(n) for n in notes]}
 
 
 def incomplete_number(w):

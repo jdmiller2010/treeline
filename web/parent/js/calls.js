@@ -1,6 +1,6 @@
 // Calls: the full audit of every attempt, allowed or not. Never any audio.
 import { api, apiUrl, get, token } from "/shared/api.js";
-import { button, emptyState, html, icon, raw, segmented, tag, toast } from "/shared/ui.js";
+import { alert, button, emptyState, html, icon, raw, segmented, tag, toast } from "/shared/ui.js";
 import { plural, when } from "/shared/format.js";
 
 let range = "week";
@@ -13,7 +13,7 @@ function title(c) {
 function logRow(c, ctx, selected) {
   const tz = ctx.me.treehouse.timezone;
   const connected = c.result === "connected";
-  return html`<div class="tl-row tl-log tl-log--${c.tone}" role="link" tabindex="0" data-href="#/calls/${c.id}" data-tl-detail ${selected ? raw('aria-current="true"') : ""}>
+  return html`<div class="tl-row tl-log tl-log--${c.tone}${c.urgent ? " tl-log--urgent" : ""}" role="link" tabindex="0" data-href="#/calls/${c.id}" data-tl-detail ${selected ? raw('aria-current="true"') : ""}>
   <span class="tl-log__icon" aria-hidden="true">${icon(c.icon)}</span>
   <div class="tl-row__main"><div class="tl-row__title">${title(c)}</div>
     <div class="tl-row__meta"><span>${when(c.started_at, tz)}</span>${connected ? "" : html`<span>${c.detail}</span>`}</div></div>
@@ -63,7 +63,10 @@ export async function calls(ctx, params) {
   const detail = selected ? html`<button class="tl-btn tl-btn--quiet tl-btn--sm tl-listdetail__back" type="button" data-back-list><span class="tl-btn__label">‹ All calls</span></button>${await detailCard(selected, ctx)}`
     : emptyState({ art: "connection", title: "Pick a call", body: "Choose a call to see how it went, minute by minute." });
 
+  const tries911 = list.filter((c) => c.urgent);
   const content = html`
+  ${tries911.length ? alert({ tone: "danger", title: tries911.length === 1 ? "Someone tried to call 911" : `Someone tried to call 911 ${tries911.length} times`,
+    body: "Treeline can't call 911, so those calls went nowhere. If anyone needs emergency help, call 911 from another phone. They're marked in red below." }) : ""}
   ${segmented({ name: "calls-range", label: "Show calls from", value: range, options: [["today", "Today"], ["week", "This week"], ["all", "All"]] })}
   ${list.length ? html`<div class="tl-listdetail${selected ? " is-detail" : ""}">
     <section class="tl-listdetail__list tl-stack"><div class="tl-card tl-card--list">${list.map((c) => logRow(c, ctx, selected && selected.id === c.id))}</div></section>

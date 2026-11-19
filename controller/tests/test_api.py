@@ -633,6 +633,33 @@ class PairingOrigin(unittest.TestCase):
             self.assertIsNone(api.public_origin())
 
 
+class Urgent911(unittest.TestCase):
+    def test_a_911_attempt_is_marked_urgent_in_the_log_and_nothing_else_is(self):
+        for r in (rules.CONNECTED, rules.NO_ANSWER, rules.BUSY, rules.NOT_IN_SERVICE, rules.NOT_STRUNG, rules.QUIET_OR_PAUSED,
+                  rules.OFFLINE, rules.INCOMPLETE, rules.TIME_LIMIT, rules.REPEAT_LIMIT, rules.DAILY_LIMIT, rules.CALLER_HUNG_UP,
+                  rules.DISCONNECTED):
+            d = api.describe_call({"caller_treehouse": 1, "result": r, "reason": "", "talk_sec": 90, "dialed": "1234"}, 1)
+            self.assertFalse(d.get("urgent"), r)
+        d = api.describe_call({"caller_treehouse": 1, "result": rules.NO_911, "reason": "911", "talk_sec": 0, "dialed": "911"}, 1)
+        self.assertTrue(d["urgent"])
+        self.assertIn("911", d["label"])
+
+    def test_the_note_reaches_home_and_the_log_marks_the_call_urgent(self):
+        a = make_house("Pat's house")
+        c = helpers.db.connect()
+        hid, _, _ = db.create_handset(c, a.house["id"], "ata", "Hall phone")
+        handset = c.execute("SELECT * FROM handset WHERE id=?", (hid,)).fetchone()
+        d = rules.decide(c, handset, "911", db.utcnow())
+        c.execute("INSERT INTO call(started_at,caller_treehouse,caller_handset,dialed,state,result,reason) VALUES(?,?,?,?,?,?,?)",
+                  (db.iso(), a.house["id"], hid, "911", "ended", d.result, d.reason))
+        db.add_notice(c, a.house["id"], *d.notify_caller_parents)
+        notes = [n for n in a.get("/api/home").get_json()["notices"] if n["kind"] == "no_911"]
+        self.assertEqual(len(notes), 1)
+        self.assertIn("Hall phone", notes[0]["body"])
+        row = [x for x in a.get("/api/calls?range=all").get_json()["calls"] if x["result"] == rules.NO_911][0]
+        self.assertTrue(row["urgent"])
+
+
 class Alerts(unittest.TestCase):
     def test_dismiss_only_your_own_notices(self):
         a, b = make_house(), make_house()

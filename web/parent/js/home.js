@@ -7,7 +7,7 @@ import { KIND } from "./house.js";
 import { approvalCard, bindStringActions, showLadderCode } from "./strings.js";
 
 const NOTICE_TONE = { string_request: "info", string_live: "success", string_ended: "info", number_changed: "info",
-  handset_offline: "warning", not_strung_attempt: "warning", unstrung_dials: "warning" };
+  handset_offline: "warning", not_strung_attempt: "warning", unstrung_dials: "warning", no_911: "danger" };
 
 function tonedCard(d, tz) {
   const th = d.treehouse;
@@ -39,9 +39,11 @@ export async function home(ctx) {
     <h3 class="tl-card__title">${t.calls ? `${plural(t.calls, "call")}, ${t.minutes} min` : "No calls yet"}</h3></div></header>
     <p class="tl-card__body">${t.calls ? "Time on the phone with friends today." : "Calls show up here as they happen."}</p></section>`;
 
-  const alerts = d.notices.map((n) => alert({
-    tone: NOTICE_TONE[n.kind] || "info", title: n.title, body: n.body, dismiss: String(n.id),
-    actions: n.kind === "string_request" ? button({ label: "Review", size: "sm", attrs: 'data-href="#/strings"' }) : null }));
+  // A 911 attempt is the one thing a parent must not miss, so it goes above everything else, with a way to the log.
+  const noticeActions = (n) => n.kind === "string_request" ? button({ label: "Review", size: "sm", attrs: 'data-href="#/strings"' })
+    : n.kind === "no_911" ? button({ label: "See the call log", size: "sm", attrs: 'data-href="#/calls"' }) : null;
+  const alerts = [...d.notices].sort((x, y) => (y.kind === "no_911") - (x.kind === "no_911")).map((n) => alert({
+    tone: NOTICE_TONE[n.kind] || "info", title: n.title, body: n.body, dismiss: String(n.id), actions: noticeActions(n) }));
 
   const setupCards = [];
   if (!d.handsets.length) setupCards.push(emptyState({ art: "treehouse", title: "Add your first phone",

@@ -109,6 +109,26 @@ class Decide(unittest.TestCase):
         d = self.decide("911")
         self.assertEqual((d.result, d.sound), (rules.NO_911, rules.SOUND_NO_911))
 
+    def test_911_tells_the_parents_at_once_with_the_phone_and_the_time(self):
+        kind, title, body, key = self.decide("911").notify_caller_parents
+        self.assertEqual(kind, "no_911")
+        self.assertIn("911", title)
+        self.assertIn(self.sam_h["name"], body)
+        self.assertIn("call 911 from another phone", body)
+        self.assertRegex(body, r"\d{1,2}:\d\d (am|pm)")
+
+    def test_911_notes_are_one_per_phone_per_hour(self):
+        same = {self.decide("911").notify_caller_parents[3], self.decide("911").notify_caller_parents[3]}
+        self.assertEqual(len(same), 1)                                       # pressing it again doesn't pile up notes
+        later = self.decide("911", now=self.NOON + dt.timedelta(hours=2)).notify_caller_parents[3]
+        self.assertNotIn(later, same)                                        # but a new hour is a new note
+        other = self.decide("911", caller=self.alex_h).notify_caller_parents[3]
+        self.assertNotIn(other, same)                                        # and another phone is its own
+
+    def test_911_note_is_even_raised_when_the_line_is_paused_or_the_phone_is_off(self):
+        self.set(self.sam, paused=1)
+        self.assertEqual(self.decide("911").notify_caller_parents[0], "no_911")
+
     def test_any_other_wrong_length_cannot_be_completed_as_dialed(self):
         for dialed in ("0", "12", "20", "20021", "abcd", "", "91"):
             d = self.decide(dialed)

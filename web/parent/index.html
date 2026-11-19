@@ -15,6 +15,10 @@
 <style>
   /* Empty message slots take no room, so they don't add a gap in a form. */
   [data-error]:empty, [id$="-error"]:empty, #dev-note:empty { display: none; }
+  /* A call to 911 is the one entry in the log about safety: a red edge, a soft red wash and bold text. */
+  .tl-log--urgent { background: var(--berry-soft); box-shadow: inset 4px 0 0 var(--berry); }
+  .tl-log--urgent .tl-row__title { font-weight: 700; }
+  .tl-log--urgent .tl-tag { background: var(--berry); color: var(--canvas); }
   /* Printing the phone book: only the card. */
   @media print {
     .tl-appbar, .tl-nav, .tl-toasts, .tl-footer, .tl-noprint { display: none !important; }

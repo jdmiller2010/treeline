@@ -100,7 +100,7 @@ ui_reset() { ui_stop; rm -f "$STATE/ui/test.db"*; ui_start; }       # a fresh da
 ui_smoke() {
   ui_reset
   ui_py
-  BASE="http://127.0.0.1:$UI_PORT" SHOTS="${SHOTS:-$STATE/shots}" "$VENV/bin/python" web/tests/smoke.py
+  BASE="http://127.0.0.1:$UI_PORT" SHOTS="${SHOTS:-$STATE/shots}" TREELINE_UI_DB="$STATE/ui/test.db" "$VENV/bin/python" web/tests/smoke.py
 }
 cmd_ui() {
   case "${1:-status}" in

@@ -159,7 +159,18 @@ def decide(conn, caller_handset, dialed, now=None, online=None):
 
     # 0. 911 gets its own message. Any other number that isn't four digits "cannot be completed as dialed".
     if dialed == "911":
-        return Decision(NO_911, "911", SOUND_NO_911)
+        # Someone tried to call for help and Treeline can't connect it: the parents must hear about it right away
+        # (a note on Home, and by email and push through the usual alert job), not find it later in the log.
+        # One note per phone per hour, so a child pressing the numbers over and over doesn't bury it.
+        local = local_now(caller, now)
+        return Decision(
+            NO_911, "911", SOUND_NO_911,
+            notify_caller_parents=(
+                "no_911", "Someone tried to call 911",
+                f"Someone on {caller_handset['name']} dialed 911 at {local.strftime('%a %-I:%M %p').replace('AM', 'am').replace('PM', 'pm')}. "
+                "The call didn't go anywhere: Treeline can't reach 911. If anyone needs emergency help, "
+                "call 911 from another phone.",
+                f"no_911:{caller_handset['id']}:{local.strftime('%Y%m%d%H')}"))
     if not (len(dialed) == 4 and dialed.isdigit()):
         return Decision(INCOMPLETE, "wrong_length", SOUND_CANNOT_COMPLETE)
 
