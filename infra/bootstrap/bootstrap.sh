@@ -183,9 +183,14 @@ vm_policy() {
       { Sid: "DecryptViaSsmOnly", Effect: "Allow", Action: "kms:Decrypt",
         Resource: "arn:aws:kms:\($r):\($a):key/*",
         Condition: { StringEquals: { "kms:ViaService": "ssm.\($r).amazonaws.com" } } },
-      { Sid: "WriteBackupsOnly", Effect: "Allow",
+      { Sid: "WriteBackups", Effect: "Allow",
         Action: ["s3:PutObject", "s3:AbortMultipartUpload"],
-        Resource: ["arn:aws:s3:::\($b)/hourly/*", "arn:aws:s3:::\($b)/daily/*"] }
+        Resource: ["arn:aws:s3:::\($b)/central/*", "arn:aws:s3:::\($b)/households/*"] },
+      { Sid: "TagHouseholdBackupsForPurge", Effect: "Allow", Action: "s3:PutObjectTagging",
+        Resource: "arn:aws:s3:::\($b)/households/*" },
+      { Sid: "ListHouseholdBackups", Effect: "Allow", Action: "s3:ListBucket",
+        Resource: "arn:aws:s3:::\($b)",
+        Condition: { StringLike: { "s3:prefix": ["households/*"] } } }
     ] }'
 }
 
