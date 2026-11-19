@@ -48,10 +48,6 @@ CREATE TABLE treehouse (
   parent_pin_hash TEXT,
   pin_fails INTEGER NOT NULL DEFAULT 0,
   pin_locked_until TEXT,
-  retention_days INTEGER NOT NULL DEFAULT 90,
-  ack_911 INTEGER NOT NULL DEFAULT 0,
-  consent_at TEXT,
-  consent_version TEXT,
   system INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL,
   left_at TEXT
@@ -146,30 +142,6 @@ CREATE TABLE call_event (
   handset_id INTEGER,
   event TEXT NOT NULL
 );
-
-CREATE TABLE parent_action (
-  id INTEGER PRIMARY KEY,
-  at TEXT NOT NULL,
-  treehouse_id INTEGER,
-  email TEXT,
-  action TEXT NOT NULL,
-  target TEXT,
-  before TEXT,
-  after TEXT
-);
-
-CREATE TABLE notice (
-  id INTEGER PRIMARY KEY,
-  treehouse_id INTEGER NOT NULL REFERENCES treehouse(id),
-  kind TEXT NOT NULL,
-  title TEXT NOT NULL,
-  body TEXT,
-  created_at TEXT NOT NULL,
-  dismissed_at TEXT,
-  emailed_at TEXT,
-  key TEXT
-);
-CREATE INDEX notice_house ON notice(treehouse_id, created_at);
 
 CREATE TABLE pairing (
   code TEXT PRIMARY KEY,
@@ -474,11 +446,12 @@ def number_is_free(conn, number):
 
 # ------------------------------------------------------------- treehouses
 
-def create_treehouse(conn, name, number=None, timezone="America/Los_Angeles",
-                     system=False, ack_911=False, **fields):
+def create_treehouse(conn, name, number=None, timezone="America/Los_Angeles", system=False, **fields):
+    """The central row only. A treehouse's own records (consent, retention, history, notes) live in its
+    household file: households.create() makes it (api.treehouse_create has the order)."""
     number = number or assign_number(conn)
     cols = {"name": name, "number": number, "timezone": timezone,
-            "system": int(system), "ack_911": int(ack_911), "created_at": iso()}
+            "system": int(system), "created_at": iso()}
     cols.update(fields)
     keys = ",".join(cols)
     cur = conn.execute(f"INSERT INTO treehouse({keys}) VALUES({','.join('?' * len(cols))})",
@@ -543,23 +516,3 @@ def get_string(conn, x, y):
 def live_string(conn, x, y):
     s = get_string(conn, x, y)
     return s if s and s["state"] == "live" else None
-
-
-# ------------------------------------------------------------- audit
-
-def log_action(conn, treehouse_id, email, action, target=None, before=None, after=None):
-    conn.execute("INSERT INTO parent_action(at,treehouse_id,email,action,target,before,after) "
-                 "VALUES(?,?,?,?,?,?,?)",
-                 (iso(), treehouse_id, email, action, target,
-                  None if before is None else str(before), None if after is None else str(after)))
-
-
-def add_notice(conn, treehouse_id, kind, title, body=None, key=None):
-    """Add a note for a treehouse's parents. A repeated `key` is ignored while
-    an undismissed note with that key exists."""
-    if key and conn.execute("SELECT 1 FROM notice WHERE treehouse_id=? AND key=? AND dismissed_at IS NULL",
-                            (treehouse_id, key)).fetchone():
-        return None
-    cur = conn.execute("INSERT INTO notice(treehouse_id,kind,title,body,created_at,key) VALUES(?,?,?,?,?,?)",
-                       (treehouse_id, kind, title, body, iso(), key))
-    return cur.lastrowid

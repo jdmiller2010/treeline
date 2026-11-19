@@ -317,3 +317,73 @@ def behind():
         finally:
             c.close()
     return out
+
+
+# ------------------------------------------------------------- meta
+
+def meta(tid):
+    """The household's own settings (retention, consent, 911 acknowledgement), or None if it has no file."""
+    try:
+        return conn(tid).execute("SELECT * FROM meta WHERE id=1").fetchone()
+    except HouseholdGone:
+        return None
+
+
+def retention_days(tid):
+    m = meta(tid)
+    return m["retention_days"] if m else DEFAULT_RETENTION_DAYS
+
+
+def set_retention(tid, days):
+    conn(tid).execute("UPDATE meta SET retention_days=? WHERE id=1", (int(days),))
+
+
+# ------------------------------------------------------------- notes for the parents and the audit log
+
+def add_notice(tid, kind, title, body=None, key=None):
+    """Add a note for a treehouse's parents. A repeated `key` is ignored while an undismissed note with
+    that key exists. A household with no file (deleted) has no one to tell: nothing is written."""
+    try:
+        c = conn(tid)
+    except HouseholdGone:
+        return None
+    if key and c.execute("SELECT 1 FROM notice WHERE key=? AND dismissed_at IS NULL", (key,)).fetchone():
+        return None
+    return c.execute("INSERT INTO notice(kind,title,body,created_at,key) VALUES(?,?,?,?,?)",
+                     (kind, title, body, db.iso(), key)).lastrowid
+
+
+def notices(tid, limit=20):
+    try:
+        return conn(tid).execute("SELECT * FROM notice WHERE dismissed_at IS NULL ORDER BY id DESC LIMIT ?",
+                                 (limit,)).fetchall()
+    except HouseholdGone:
+        return []
+
+
+def dismiss_notice(tid, nid, at=None):
+    with contextlib.suppress(HouseholdGone):
+        conn(tid).execute("UPDATE notice SET dismissed_at=? WHERE id=? AND dismissed_at IS NULL", (at or db.iso(), nid))
+
+
+def dismiss_key(tid, key, at=None):
+    with contextlib.suppress(HouseholdGone):
+        conn(tid).execute("UPDATE notice SET dismissed_at=? WHERE key=? AND dismissed_at IS NULL", (at or db.iso(), key))
+
+
+def log_action(tid, email, action, target=None, before=None, after=None):
+    """Record what a grown-up (or a phone) changed, in the household's own file."""
+    if tid is None:
+        return
+    with contextlib.suppress(HouseholdGone):
+        conn(tid).execute(
+            "INSERT INTO parent_action(at,email,action,target,before,after) VALUES(?,?,?,?,?,?)",
+            (db.iso(), email, action, target, None if before is None else str(before),
+             None if after is None else str(after)))
+
+
+def actions(tid, limit=200):
+    try:
+        return conn(tid).execute("SELECT * FROM parent_action ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+    except HouseholdGone:
+        return []

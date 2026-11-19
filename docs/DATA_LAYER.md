@@ -111,7 +111,8 @@ holds both sides' raw facts; a copy holds only what that family may see:
 | Delete all data | **one central transaction** (strings cut, sessions and grown-ups removed, ledger rows scrubbed as today, name set to "(deleted)", `deleted_at` set; today these are separate autocommits); then the notices to the other families; then delete the household file, its `-wal`/`-shm` and its `pre-migrate/` backups | an orphan file is removed by reconcile; the notice is lost, which is harmless (the other way round would announce a string that still exists) |
 | Leave but keep records | the household's action-log entry first; then one central transaction as today (`left_at`, strings cut, handsets removed, grown-ups removed); then the notices to the other families. The file stays until its newest record (or `left_at`) is past retention, then the purge job deletes it with its `pre-migrate/` backups (action log included: nobody is left to read it) | n/a |
 
-Notices for a treehouse that has left or been deleted are not written (nobody will read them).
+A notice for a treehouse that was deleted is not written (it has no file). One for a treehouse that has left is still
+written to its file and goes with it (cheaper than a second copy of the `left` fact in `meta`, which would break rule 1).
 
 Both the API and the controller (and its jobs thread and timer threads) write household files, as separate
 processes and threads. A household file is therefore never opened with SQLite's create-if-missing mode except

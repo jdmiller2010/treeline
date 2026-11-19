@@ -6,7 +6,7 @@ import logging
 import os
 import time
 
-from . import db, mail
+from . import db, households, mail
 
 log = logging.getLogger("treeline")
 
@@ -24,19 +24,17 @@ def check_handsets(conn, ari, now=None):
     for h in rows.fetchall():
         key = f"offline:{h['id']}"
         if h["disabled"]:                    # switched off on purpose: nothing to worry about
-            conn.execute("UPDATE notice SET dismissed_at=? WHERE treehouse_id=? AND key=? AND dismissed_at IS NULL",
-                         (db.iso(now), h["treehouse_id"], key))
+            households.dismiss_key(h["treehouse_id"], key, db.iso(now))
             continue
         if h["sip_user"] in online:
             conn.execute("UPDATE handset SET online=1, last_seen=? WHERE id=?", (db.iso(now), h["id"]))
-            conn.execute("UPDATE notice SET dismissed_at=? WHERE treehouse_id=? AND key=? "
-                         "AND dismissed_at IS NULL", (db.iso(now), h["treehouse_id"], key))
+            households.dismiss_key(h["treehouse_id"], key, db.iso(now))
             continue
         conn.execute("UPDATE handset SET online=0 WHERE id=?", (h["id"],))
         since = db.parse(h["last_seen"]) or db.parse(h["created_at"])
         if now - since >= wait:
-            db.add_notice(
-                conn, h["treehouse_id"], "handset_offline", f"{h['name']} is offline",
+            households.add_notice(
+                h["treehouse_id"], "handset_offline", f"{h['name']} is offline",
                 "It hasn't checked in for a while, so calls can't reach it.", key)
 
 
@@ -81,18 +79,24 @@ def send_alert_emails(conn, push=push_to):
     """Tell a treehouse's parents about each new note, by email and, where they've turned it on,
     push. Each note is sent once: it's marked before anything goes out, so a slow or failing mail
     or push service can't make a parent get the same alert every 20 seconds. (The note stays on
-    Home either way.)"""
-    rows = conn.execute("SELECT * FROM notice WHERE emailed_at IS NULL AND dismissed_at IS NULL "
-                        "AND created_at >= ?", (db.iso(db.utcnow() - dt.timedelta(days=1)),)).fetchall()
-    for n in rows:
-        conn.execute("UPDATE notice SET emailed_at=? WHERE id=?", (db.iso(), n["id"]))
-        parents = conn.execute("SELECT email FROM grown_up WHERE treehouse_id=? AND role='parent'",
-                               (n["treehouse_id"],)).fetchall()
-        for p in parents:
-            if not mail.send(p["email"], f"Treeline: {n['title']}",
-                             f"{n['title']}\n\n{n['body'] or ''}\n\nOpen the Treeline app to see more."):
-                log.warning("couldn't email %s about %r", p["email"], n["title"])
-            push(conn, p["email"], n["title"], n["body"])
+    Home either way.) The notes are in each household's own file, so this visits each in turn."""
+    since = db.iso(db.utcnow() - dt.timedelta(days=1))
+    for tid in [r["id"] for r in conn.execute("SELECT id FROM treehouse WHERE left_at IS NULL")]:
+        try:
+            hc = households.conn(tid)
+        except households.HouseholdGone:
+            continue
+        rows = hc.execute("SELECT * FROM notice WHERE emailed_at IS NULL AND dismissed_at IS NULL "
+                          "AND created_at >= ?", (since,)).fetchall()
+        for n in rows:
+            hc.execute("UPDATE notice SET emailed_at=? WHERE id=?", (db.iso(), n["id"]))
+            parents = conn.execute("SELECT email FROM grown_up WHERE treehouse_id=? AND role='parent'",
+                                   (tid,)).fetchall()
+            for p in parents:
+                if not mail.send(p["email"], f"Treeline: {n['title']}",
+                                 f"{n['title']}\n\n{n['body'] or ''}\n\nOpen the Treeline app to see more."):
+                    log.warning("couldn't email %s about %r", p["email"], n["title"])
+                push(conn, p["email"], n["title"], n["body"])
 
 
 def purge(conn, now=None):
@@ -101,15 +105,20 @@ def purge(conn, now=None):
     (the other family still sees the call, without a name) and delete the row once
     neither side is left. Parent actions go after a year, expired logins sooner."""
     now = now or db.utcnow()
-    for th in conn.execute("SELECT id, retention_days FROM treehouse").fetchall():
-        cutoff = db.iso(now - dt.timedelta(days=th["retention_days"]))
+    for th in conn.execute("SELECT id FROM treehouse").fetchall():
+        cutoff = db.iso(now - dt.timedelta(days=households.retention_days(th["id"])))
         conn.execute("UPDATE call SET caller_treehouse=NULL, caller_handset=NULL WHERE caller_treehouse=? "
                      "AND started_at < ? AND state='ended'", (th["id"], cutoff))
         conn.execute("UPDATE call SET callee_treehouse=NULL, answered_handset=NULL WHERE callee_treehouse=? "
                      "AND started_at < ? AND state='ended'", (th["id"], cutoff))
     conn.execute("DELETE FROM call WHERE state='ended' AND caller_treehouse IS NULL AND callee_treehouse IS NULL")
-    conn.execute("DELETE FROM parent_action WHERE at < ?", (db.iso(now - dt.timedelta(days=365)),))
-    conn.execute("DELETE FROM notice WHERE created_at < ?", (db.iso(now - dt.timedelta(days=90)),))
+    for tid in households.ids():                       # notes and the action log age out inside each household's own file
+        try:
+            hc = households.conn(tid)
+        except households.HouseholdGone:
+            continue
+        hc.execute("DELETE FROM parent_action WHERE at < ?", (db.iso(now - dt.timedelta(days=365)),))
+        hc.execute("DELETE FROM notice WHERE created_at < ?", (db.iso(now - dt.timedelta(days=90)),))
     for table in ("session", "login_code", "pairing"):
         conn.execute(f"DELETE FROM {table} WHERE expires_at < ?", (db.iso(now),))
 

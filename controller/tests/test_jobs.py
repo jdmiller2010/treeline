@@ -2,7 +2,7 @@ import datetime as dt
 import unittest
 
 from tests import helpers
-from treeline import db, jobs
+from treeline import db, households, jobs
 
 
 class FakeAri:
@@ -16,12 +16,13 @@ class FakeAri:
 class Jobs(unittest.TestCase):
     def setUp(self):
         self.c = helpers.fresh_conn()
-        self.tid = db.create_treehouse(self.c, "Sam's", number="2001")
+        self.tid = helpers.house(self.c, "Sam's", number="2001")
         self.hid, self.user, _ = db.create_handset(self.c, self.tid, "ata", "Hall phone")
         db.set_setting(self.c, "offline_alert_minutes", 10)
 
     def notes(self):
-        return self.c.execute("SELECT * FROM notice WHERE kind='handset_offline' AND dismissed_at IS NULL").fetchall()
+        return households.conn(self.tid).execute(
+            "SELECT * FROM notice WHERE kind='handset_offline' AND dismissed_at IS NULL").fetchall()
 
     def test_offline_for_a_while_raises_one_note_and_recovery_clears_it(self):
         t0 = db.utcnow()
@@ -62,8 +63,7 @@ class Jobs(unittest.TestCase):
 
     def test_purge_keeps_each_treehouses_retention(self):
         old = db.iso(db.utcnow() - dt.timedelta(days=100))
-        self.c.execute("UPDATE treehouse SET retention_days=90")
-        other = db.create_treehouse(self.c, "Alex's", number="2002", retention_days=200)
+        other = helpers.house(self.c, "Alex's", number="2002", retention_days=200)
         for caller in (self.tid, other):
             self.c.execute("INSERT INTO call(started_at,caller_treehouse,state,result) VALUES(?,?,?,?)",
                            (old, caller, "ended", "connected"))
@@ -73,15 +73,15 @@ class Jobs(unittest.TestCase):
 
     def test_one_familys_short_retention_does_not_erase_the_others_history(self):
         old = db.iso(db.utcnow() - dt.timedelta(days=30))
-        a = db.create_treehouse(self.c, "A", number="2003", retention_days=7)
-        b = db.create_treehouse(self.c, "B", number="2004", retention_days=365)
+        a = helpers.house(self.c, "A", number="2003", retention_days=7)
+        b = helpers.house(self.c, "B", number="2004", retention_days=365)
         cur = self.c.execute("INSERT INTO call(started_at,caller_treehouse,callee_treehouse,state,result) "
                              "VALUES(?,?,?,?,?)", (old, a, b, "ended", "connected"))
         jobs.purge(self.c)
         row = self.c.execute("SELECT * FROM call WHERE id=?", (cur.lastrowid,)).fetchone()
         self.assertIsNone(row["caller_treehouse"])         # A's side is gone
         self.assertEqual(row["callee_treehouse"], b)       # B still has its record
-        self.c.execute("UPDATE treehouse SET retention_days=7 WHERE id=?", (b,))
+        households.set_retention(b, 7)
         jobs.purge(self.c)                                  # now both are past retention
         self.assertIsNone(self.c.execute("SELECT 1 FROM call WHERE id=?", (cur.lastrowid,)).fetchone())
 
@@ -113,7 +113,7 @@ class Jobs(unittest.TestCase):
     def test_a_failing_mail_service_does_not_repeat_the_alert_every_pass(self):
         self.c.execute("INSERT INTO grown_up(email,treehouse_id,role,created_at) VALUES(?,?,?,?)",
                        ("mom@example.com", self.tid, "parent", db.iso()))
-        db.add_notice(self.c, self.tid, "x", "Something happened", "Details")
+        households.add_notice(self.tid, "x", "Something happened", "Details")
         tries, pushes = [], []
         real = jobs.mail.send
         jobs.mail.send = lambda to, subj, body: tries.append(to) or False        # SMTP is down
@@ -130,7 +130,7 @@ class Jobs(unittest.TestCase):
                        ("mom@example.com", self.tid, "parent", db.iso()))
         self.c.execute("INSERT INTO grown_up(email,treehouse_id,role,created_at) VALUES(?,?,?,?)",
                        ("sitter@example.com", self.tid, "sitter", db.iso()))
-        db.add_notice(self.c, self.tid, "x", "Something happened", "Details")
+        households.add_notice(self.tid, "x", "Something happened", "Details")
         sent = []
         real = jobs.mail.send
         jobs.mail.send = lambda to, subj, body: sent.append(to) or True

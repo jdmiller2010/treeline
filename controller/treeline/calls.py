@@ -15,7 +15,7 @@ import time
 import uuid
 
 from . import ari as ari_mod
-from . import db, rules
+from . import db, households, rules
 
 log = logging.getLogger("treeline")
 
@@ -178,7 +178,7 @@ class Engine:
             self.conn.execute("UPDATE call SET ended_at=? WHERE id=?", (db.iso(now), call_id))
             if decision.notify_caller_parents:
                 kind, title, body, key = decision.notify_caller_parents
-                db.add_notice(self.conn, handset["treehouse_id"], kind, title, body, key)
+                households.add_notice(handset["treehouse_id"], kind, title, body, key)
             log.info("blocked %s -> %s: %s", handset["sip_user"], dialed, decision.reason)
             self.ari.request("POST", f"/channels/{chan_id}/answer")
             self.play_plan(chan_id, sound_plan(decision.sound))

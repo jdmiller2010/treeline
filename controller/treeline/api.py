@@ -23,7 +23,7 @@ from zoneinfo import ZoneInfo, available_timezones
 from flask import Flask, Response, g, jsonify, redirect, request, send_from_directory
 
 from . import ari as ari_mod
-from . import db, mail, pjsip, rules
+from . import db, households, mail, pjsip, rules
 
 log = logging.getLogger("treeline")
 app = Flask(__name__, static_folder=None)
@@ -171,7 +171,7 @@ def auth(parent=False, house=True):
 
 
 def audit(action, target=None, before=None, after=None):
-    db.log_action(conn(), g.th["id"] if g.th else None, g.email, action, target, before, after)
+    households.log_action(g.th["id"] if g.th else None, g.email, action, target, before, after)
 
 
 def now():
@@ -190,7 +190,7 @@ def th_json(t):
         "quiet": {"enabled": bool(t["quiet_enabled"]), "start": t["quiet_start"],
                   "end": t["quiet_end"], "days": t["quiet_days"]},
         "paused": bool(t["paused"]), "max_call_minutes": t["max_call_minutes"],
-        "daily_minutes": t["daily_minutes"], "retention_days": t["retention_days"],
+        "daily_minutes": t["daily_minutes"], "retention_days": households.retention_days(t["id"]),
         "quiet_now": quiet_now(t), "created_at": t["created_at"],
         "has_parent_code": bool(t["parent_pin_hash"]),
     }
@@ -462,11 +462,24 @@ def treehouse_create():
     name = clean_name(data.get("name"), "treehouse name")
     tz = valid_tz(data.get("timezone") or "America/Los_Angeles")
     who = " ".join(str(data.get("your_name") or "").split())[:60] or None
-    tid = db.create_treehouse(conn(), name, timezone=tz, ack_911=True,
-                              consent_at=db.iso(), consent_version=PRIVACY_VERSION)
-    conn().execute("INSERT INTO grown_up(email,name,treehouse_id,role,created_at) VALUES(?,?,?,?,?)",
-                   (g.email, who, tid, "parent", db.iso()))
-    db.log_action(conn(), tid, g.email, "treehouse_created", name)
+    # Two files, so not one transaction: the central rows are written inside a transaction that also makes the
+    # household file (with the consent and the 911 acknowledgement). If anything fails the rows roll back and
+    # the file is removed; if the process dies in between, the leftover file is replaced by the next create of that id.
+    c, tid = conn(), None
+    c.execute("BEGIN IMMEDIATE")
+    try:
+        tid = db.create_treehouse(c, name, timezone=tz)
+        households.create(tid, ack_911=True, consent_at=db.iso(), consent_version=PRIVACY_VERSION)
+        c.execute("INSERT INTO grown_up(email,name,treehouse_id,role,created_at) VALUES(?,?,?,?,?)",
+                  (g.email, who, tid, "parent", db.iso()))
+        c.execute("COMMIT")
+    except BaseException:
+        if c.in_transaction:
+            c.execute("ROLLBACK")
+        if tid is not None:
+            households.remove(tid)
+        raise
+    households.log_action(tid, g.email, "treehouse_created", name)
     g.gu = conn().execute("SELECT * FROM grown_up WHERE email=?", (g.email,)).fetchone()
     g.th = db.get_treehouse(conn(), tid)
     return jsonify(me_json()), 201
@@ -537,6 +550,12 @@ def treehouse_update():
             changes["quiet_days"] = q["days"]
         if "enabled" in q:
             changes["quiet_enabled"] = int(bool(q["enabled"]))
+    keep = changes.pop("retention_days", None)                 # a household setting: it lives in the household's file
+    if keep is not None:
+        was = households.retention_days(th["id"])
+        if was != keep:
+            audit("changed_retention_days", None, was, keep)
+            households.set_retention(th["id"], keep)
     for k, v in changes.items():
         if th[k] != v:
             audit(f"changed_{k}", None, th[k], v)
@@ -562,7 +581,7 @@ def treehouse_number():
     for s in my_strings(th["id"]):
         if s["state"] in ("live", "paused"):
             other = s["b_id"] if side_of(s, th["id"]) == "a" else s["a_id"]
-            db.add_notice(conn(), other, "number_changed", f"{th['name']} has a new number",
+            households.add_notice(other, "number_changed", f"{th['name']} has a new number",
                           f"You can reach them at {new} now.")
     return jsonify(th_json(db.get_treehouse(conn(), th["id"])))
 
@@ -572,7 +591,7 @@ def end_all_strings(tid, left_title):
         other = s["b_id"] if side_of(s, tid) == "a" else s["a_id"]
         conn().execute("UPDATE string SET state='cut', updated_at=? WHERE id=?", (db.iso(), s["id"]))
         if s["state"] in ("live", "paused"):
-            db.add_notice(conn(), other, "string_ended", left_title,
+            households.add_notice(other, "string_ended", left_title,
                           "The string between your treehouses has ended.")
 
 
@@ -614,12 +633,12 @@ def treehouse_delete():
     for e in emails:
         c.execute("DELETE FROM session WHERE email=?", (e,))
         c.execute("DELETE FROM push_subscription WHERE email=?", (e,))
-    for sql in ("DELETE FROM grown_up WHERE treehouse_id=?", "DELETE FROM notice WHERE treehouse_id=?",
-                "DELETE FROM parent_action WHERE treehouse_id=?", "DELETE FROM ladder_code WHERE treehouse_id=?",
+    for sql in ("DELETE FROM grown_up WHERE treehouse_id=?", "DELETE FROM ladder_code WHERE treehouse_id=?",
                 "DELETE FROM handset WHERE treehouse_id=?",
                 "DELETE FROM string WHERE a_id=? OR b_id=?"):
         c.execute(sql, (tid,) * sql.count("?"))
     c.execute("UPDATE treehouse SET name='(deleted)' WHERE id=?", (tid,))
+    households.remove(tid)
     pjsip.write(c)
     return jsonify(ok=True)
 
@@ -636,9 +655,7 @@ def home():
     waiting_on_them = [s for s in strings if s["state"] == "waiting" and s["mine_approved"]]
     live = [s for s in strings if s["state"] == "live"]
     handsets = db.handsets_of(conn(), tid)
-    notices = conn().execute(
-        "SELECT * FROM notice WHERE treehouse_id=? AND dismissed_at IS NULL ORDER BY id DESC LIMIT 20",
-        (tid,)).fetchall()
+    notices = households.notices(tid)
 
     def tally(since):
         rows = [c for c in calls_for(th, since) if c["result"] in (rules.CONNECTED, rules.TIME_LIMIT)]
@@ -665,8 +682,7 @@ def home():
 @app.post("/api/notices/<int:nid>/dismiss")
 @auth()
 def notice_dismiss(nid):
-    conn().execute("UPDATE notice SET dismissed_at=? WHERE id=? AND treehouse_id=?",
-                   (db.iso(), nid, g.th["id"]))
+    households.dismiss_notice(g.th["id"], nid)
     return jsonify(ok=True)
 
 
@@ -732,7 +748,7 @@ def string_redeem():
         "VALUES(?,?,?,?,?,?,?)", (a, b, "waiting", g.gu["id"], g.gu["id"], db.iso(), db.iso()))
     conn().execute("UPDATE ladder_code SET used_by=?, used_at=? WHERE code=?",
                    (me["id"], db.iso(), code))
-    db.add_notice(conn(), them["id"], "string_request", f"{me['name']} would like to string with you",
+    households.add_notice(them["id"], "string_request", f"{me['name']} would like to string with you",
                   "Open Strings to approve. Calls connect once both families say yes.")
     audit("string_requested", them["name"])
     return jsonify(string_json(conn().execute("SELECT * FROM string WHERE id=?",
@@ -763,7 +779,7 @@ def string_approve(sid):
     conn().execute(f"UPDATE string SET {me}_approved_by=?, state='live', updated_at=? WHERE id=?",
                    (g.gu["id"], db.iso(), sid))
     other = db.get_treehouse(conn(), other_id_of(s))
-    db.add_notice(conn(), other["id"], "string_live", f"{g.th['name']} approved",
+    households.add_notice(other["id"], "string_live", f"{g.th['name']} approved",
                   f"Your kids can call {g.th['name']} on {g.th['number']} now.")
     audit("string_approved", other["name"])
     return jsonify(string_json(string_for(sid), g.th["id"]))
@@ -801,7 +817,7 @@ def string_cut(sid):
     other = db.get_treehouse(conn(), other_id_of(s))
     conn().execute("UPDATE string SET state='cut', updated_at=? WHERE id=?", (db.iso(), sid))
     if s["state"] in ("live", "paused"):
-        db.add_notice(conn(), other["id"], "string_ended", f"{g.th['name']} ended the string",
+        households.add_notice(other["id"], "string_ended", f"{g.th['name']} ended the string",
                       "Calls between your treehouses won't connect anymore.")
     audit("string_cut", other["name"], s["state"], "cut")
     return jsonify(ok=True)
@@ -908,7 +924,7 @@ def phone_leave():
     h = softphone_auth()
     check_parent_code(h["treehouse_id"], body().get("code"))
     drop_handset(h)
-    db.log_action(conn(), h["treehouse_id"], None, "handset_left", h["name"], None, None)
+    households.log_action(h["treehouse_id"], None, "handset_left", h["name"], None, None)
     return jsonify(ok=True)
 
 
@@ -920,7 +936,7 @@ def phone_sign_out():
     rate_limit(f"leave:{client_ip()}", 30, 600)
     h = softphone_auth()
     drop_handset(h)
-    db.log_action(conn(), h["treehouse_id"], None, "handset_signed_out", h["name"], None, None)
+    households.log_action(h["treehouse_id"], None, "handset_signed_out", h["name"], None, None)
     return jsonify(ok=True)
 
 
@@ -1268,8 +1284,7 @@ def calls_csv():
 @app.get("/api/actions")
 @auth(parent=True)                          # the action log is for parents
 def actions_list():
-    rows = conn().execute("SELECT * FROM parent_action WHERE treehouse_id=? ORDER BY id DESC LIMIT 200",
-                          (g.th["id"],)).fetchall()
+    rows = households.actions(g.th["id"])
     return jsonify(actions=[{"at": r["at"], "at_local": local_str(r["at"], g.th["timezone"]),
                              "email": r["email"], "action": r["action"], "target": r["target"],
                              "before": r["before"], "after": r["after"]} for r in rows])

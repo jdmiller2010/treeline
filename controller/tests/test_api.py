@@ -2,9 +2,10 @@ import base64
 import datetime as dt
 import os
 import unittest
+from unittest import mock
 
 from tests import helpers
-from treeline import api, db, rules
+from treeline import api, db, households, rules
 
 client = api.app.test_client()
 _n = [0]
@@ -133,10 +134,10 @@ class Treehouse(unittest.TestCase):
         self.assertEqual((r.status_code, r.get_json()["code"]), (400, "consent"))
         r = p.post("/api/treehouse", {"name": "Pine house", "ack_911": True, "consent": True})
         self.assertEqual(r.status_code, 201)
-        row = helpers.db.connect().execute("SELECT consent_at, consent_version FROM treehouse WHERE id=?",
-                                           (r.get_json()["treehouse"]["id"],)).fetchone()
-        self.assertTrue(row["consent_at"])
-        self.assertEqual(row["consent_version"], api.PRIVACY_VERSION)
+        meta = households.meta(r.get_json()["treehouse"]["id"])          # consent lives in the household's own file
+        self.assertTrue(meta["consent_at"])
+        self.assertEqual(meta["consent_version"], api.PRIVACY_VERSION)
+        self.assertEqual(meta["ack_911"], 1)
 
     def test_setup_gives_a_number_and_safe_defaults(self):
         p = make_house()
@@ -280,14 +281,76 @@ class Treehouse(unittest.TestCase):
                   "VALUES(?,?,?,?,?,?)", (db.iso(), a.house["id"], b.house["id"], b.house["number"], "ended", "connected"))
         a.post("/api/handsets", {"kind": "softphone", "name": "Tablet"})
         self.assertEqual(a.delete("/api/treehouse", {"confirm": "gone"}).status_code, 200)
-        for table, col in (("grown_up", "treehouse_id"), ("handset", "treehouse_id"), ("notice", "treehouse_id"),
-                           ("parent_action", "treehouse_id")):
+        for table, col in (("grown_up", "treehouse_id"), ("handset", "treehouse_id")):
             self.assertEqual(c.execute(f"SELECT COUNT(*) n FROM {table} WHERE {col}=?",
                                        (a.house["id"],)).fetchone()["n"], 0, table)
+        self.assertFalse(households.exists(a.house["id"]))               # notes, action log and history went with the file
+        self.assertTrue(households.exists(b.house["id"]))
         # The other family's log keeps its side of the call, without the deleted house's identity.
         calls = b.get("/api/calls?range=all").get_json()["calls"]
         self.assertEqual(len(calls), 1)
         self.assertEqual(a.get("/api/me").status_code, 401)  # sessions are gone
+
+
+class Ownership(unittest.TestCase):
+    """Each family's notes, audit log and consent are in its own file, and nowhere else."""
+
+    def titles(self, tid):
+        return [n["title"] for n in households.conn(tid).execute("SELECT * FROM notice")]
+
+    def test_central_has_no_notes_audit_log_consent_or_retention(self):
+        c = helpers.db.connect()
+        tables = {r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        self.assertTrue({"notice", "parent_action"}.isdisjoint(tables))
+        cols = {r[1] for r in c.execute("PRAGMA table_info(treehouse)")}
+        self.assertTrue({"retention_days", "ack_911", "consent_at", "consent_version"}.isdisjoint(cols))
+
+    def test_a_string_request_lands_in_the_other_familys_file_only(self):
+        a, b = make_house("Alex's"), make_house("Sam's")
+        code = a.post("/api/ladder-codes").get_json()["code"]
+        b.post("/api/strings/redeem", {"code": code})                      # Sam's asks Alex's for a string
+        self.assertIn("Sam's would like to string with you", self.titles(a.house["id"]))
+        self.assertNotIn("Sam's would like to string with you", self.titles(b.house["id"]))
+        actions = lambda t: [r["action"] for r in households.conn(t).execute("SELECT * FROM parent_action")]    # noqa: E731
+        self.assertIn("string_requested", actions(b.house["id"]))          # the asker's action is the asker's record
+        self.assertNotIn("string_requested", actions(a.house["id"]))
+        self.assertIn("treehouse_created", actions(a.house["id"]))
+        self.assertEqual(b.get("/api/actions").get_json()["actions"][0]["action"], "string_requested")
+
+    def test_changing_retention_is_logged_and_kept_in_the_household(self):
+        a = make_house("Alex's")
+        r = a.patch("/api/treehouse", {"retention_days": 30})
+        self.assertEqual(r.get_json()["retention_days"], 30)
+        self.assertEqual(households.retention_days(a.house["id"]), 30)
+        self.assertEqual(a.get("/api/me").get_json()["treehouse"]["retention_days"], 30)
+        last = households.conn(a.house["id"]).execute(
+            "SELECT * FROM parent_action WHERE action='changed_retention_days'").fetchone()
+        self.assertEqual((last["before"], last["after"]), ("90", "30"))
+
+    def test_a_failure_while_making_the_household_leaves_no_central_rows_and_no_file(self):
+        p = Person()
+        before = set(households.ids())
+        with mock.patch.object(households, "create", side_effect=RuntimeError("disk full")):
+            r = p.post("/api/treehouse", {"name": "Fails house", "ack_911": True, "consent": True})
+        self.assertEqual(r.status_code, 500)
+        c = helpers.db.connect()
+        self.assertIsNone(c.execute("SELECT 1 FROM treehouse WHERE name='Fails house'").fetchone())
+        self.assertIsNone(c.execute("SELECT 1 FROM grown_up WHERE email=?", (p.email,)).fetchone())
+        self.assertEqual(set(households.ids()), before)
+        self.assertEqual(p.get("/api/me").get_json()["treehouse"], None)          # and they can simply try again
+        self.assertEqual(p.post("/api/treehouse", {"name": "Works house", "ack_911": True, "consent": True}).status_code, 201)
+
+    def test_a_failure_after_the_file_exists_removes_it(self):
+        p = Person()
+        c = helpers.db.connect()
+        # A stale grown-up row for this email (on a treehouse that left): the insert fails once the file is made.
+        old = c.execute("INSERT INTO treehouse(name,number,created_at,left_at) VALUES('Old',NULL,?,?)", (db.iso(), db.iso())).lastrowid
+        c.execute("INSERT INTO grown_up(email,treehouse_id,role,created_at) VALUES(?,?,?,?)", (p.email, old, "parent", db.iso()))
+        files, houses = set(households.ids()), c.execute("SELECT count(*) FROM treehouse").fetchone()[0]
+        r = p.post("/api/treehouse", {"name": "Late fail", "ack_911": True, "consent": True})
+        self.assertEqual(r.status_code, 500)
+        self.assertEqual(set(households.ids()), files)                              # the file that had been made is gone
+        self.assertEqual(c.execute("SELECT count(*) FROM treehouse").fetchone()[0], houses)
 
 
 class Strings(unittest.TestCase):
@@ -717,7 +780,7 @@ class Urgent911(unittest.TestCase):
         d = rules.decide(c, handset, "911", db.utcnow())
         c.execute("INSERT INTO call(started_at,caller_treehouse,caller_handset,dialed,state,result,reason) VALUES(?,?,?,?,?,?,?)",
                   (db.iso(), a.house["id"], hid, "911", "ended", d.result, d.reason))
-        db.add_notice(c, a.house["id"], *d.notify_caller_parents)
+        households.add_notice(a.house["id"], *d.notify_caller_parents)
         notes = [n for n in a.get("/api/home").get_json()["notices"] if n["kind"] == "no_911"]
         self.assertEqual(len(notes), 1)
         self.assertIn("Hall phone", notes[0]["body"])
