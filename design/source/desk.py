@@ -25,7 +25,7 @@ WOOD_L, WOOD_M, WOOD_D, WOOD_S = "#dcb48a", "#bf8f5e", "#8f5f33", "#5f3d1f"
 FLOOR_L, FLOOR_D = "#c99e6e", "#a77a4c"
 CORK, CORK_D = "#d6ae7c", "#b88c58"
 BERRY, SKY, CANOPY, SUN = "#b0372f", "#2a6488", "#2e7051", "#f2c14e"
-PAPER = "#fffaf0"
+PAPER = "#f4e9d0"
 
 def defs():
     return f"""<defs>
@@ -53,6 +53,48 @@ def shape(d, fill, edge=None, extra=""):
 def rrect(x, y, w, h, r):
     return f"M{x+r} {y} L{x+w-r} {y} Q{x+w} {y} {x+w} {y+r} L{x+w} {y+h-r} Q{x+w} {y+h} {x+w-r} {y+h} L{x+r} {y+h} Q{x} {y+h} {x} {y+h-r} L{x} {y+r} Q{x} {y} {x+r} {y} Z"
 
+
+_CLIPS = [0]
+def _clip(d):
+    _CLIPS[0] += 1
+    cid = f"tls-wx{_CLIPS[0]}"
+    return cid, f'<clipPath id="{cid}"><path d="{d}"/></clipPath>'
+
+def grime(d, box, seed=1, n=10, color="#4a3216", dust=40):
+    """Dirt ground into a surface: soft brown blotches and specks, kept inside the shape d."""
+    import random
+    rnd = random.Random(seed)
+    x, y, w, h = box
+    cid, cp = _clip(d)
+    g = [cp, f'<g clip-path="url(#{cid})">']
+    for i in range(n):
+        cx_, cy_ = x + rnd.random() * w, y + rnd.random() * h
+        g.append(f'<ellipse cx="{cx_:.0f}" cy="{cy_:.0f}" rx="{8 + rnd.random() * w * .12:.0f}" ry="{5 + rnd.random() * h * .18:.0f}" fill="{color}" opacity="{.06 + rnd.random() * .09:.2f}" filter="url(#tls-soft)"/>')
+    for i in range(dust):
+        g.append(f'<circle cx="{x + rnd.random() * w:.1f}" cy="{y + rnd.random() * h:.1f}" r="{.5 + rnd.random() * 1.1:.1f}" fill="{color}" opacity="{.2 + rnd.random() * .3:.2f}"/>')
+    g.append('</g>')
+    return "".join(g)
+
+def aged(d, box, seed=1, ring=None):
+    """Old paper: browned edges, a water stain or two, and maybe a cup ring."""
+    import random
+    rnd = random.Random(seed)
+    x, y, w, h = box
+    cid, cp = _clip(d)
+    g = [cp, f'<g clip-path="url(#{cid})">',
+         f'<path d="{d}" fill="none" stroke="#9c7a3e" stroke-opacity=".38" stroke-width="{max(8, min(w, h) * .12):.0f}" filter="url(#tls-edge)"/>']
+    for i in range(2):
+        cx_, cy_ = x + rnd.uniform(.2, .8) * w, y + rnd.uniform(.2, .8) * h; r = min(w, h) * rnd.uniform(.12, .22)
+        g.append(f'<ellipse cx="{cx_:.0f}" cy="{cy_:.0f}" rx="{r:.0f}" ry="{r*.8:.0f}" fill="#b8955a" opacity=".1" filter="url(#tls-soft)"/>'
+                 f'<ellipse cx="{cx_:.0f}" cy="{cy_:.0f}" rx="{r:.0f}" ry="{r*.8:.0f}" fill="none" stroke="#a5813f" stroke-width="1" opacity=".22"/>')
+    if ring:
+        rx_, ry_, rr = ring
+        g.append(f'<g {WOB}><circle cx="{rx_}" cy="{ry_}" r="{rr}" fill="none" stroke="#7a4f22" stroke-width="3" stroke-dasharray="{rr*2.2:.0f} 5 {rr*1.4:.0f} 7" opacity=".28"/></g>')
+    for i in range(18):
+        g.append(f'<circle cx="{x + rnd.random() * w:.1f}" cy="{y + rnd.random() * h:.1f}" r="{.4 + rnd.random() * .8:.1f}" fill="#6b4a22" opacity=".25"/>')
+    g.append('</g>')
+    return "".join(g)
+
 def pin(x, y, color=BERRY):
     return (f'<ellipse cx="{x+2}" cy="{y+5}" rx="8" ry="4" fill="{INK}" opacity=".18" filter="url(#tls-edge)"/>'
             f'<circle cx="{x}" cy="{y}" r="8" fill="{color}"/><circle cx="{x-2.5}" cy="{y-2.5}" r="2.6" fill="#fff" opacity=".55"/>'
@@ -70,7 +112,7 @@ def sticky_note():
     tape = f"M{x+50} {y-12} L{x+112} {y-9} L{x+110} {y+14} L{x+48} {y+11} Z"
     return (f'<g transform="rotate(-4 {x+80} {y+75})">'
             f'<path d="{d}" fill="{INK}" opacity=".14" transform="translate(4 6)" filter="url(#tls-edge)"/>'
-            + shape(d, "#f8e49a", edge="#d9b24a")
+            + shape(d, "#ecd585", edge="#c9a03e") + aged(d, (x, y, 158, 156), 23)
             + f'<path d="M{x+4} {y+128} C{x+50} {y+136} {x+110} {y+136} {x+154} {y+130} L{x+156} {y+150} C{x+120} {y+156} {x+40} {y+152} {x+2} {y+146} Z" fill="#e9c860" opacity=".45"/>'
             f'<path d="{tape}" fill="#fff" opacity=".55"/><g {WOB}><path d="{tape}" {LNS}/></g>'
             '</g>')
@@ -87,7 +129,7 @@ def kid_drawing():
     paper = f"M{x} {y+3} L{x+w} {y} L{x+w-2} {y+h} L{x+3} {y+h-2} Z"
     g = [f'<g transform="rotate(-2 {x+w/2} {y+h/2})">',
          f'<path d="{paper}" fill="{INK}" opacity=".13" transform="translate(4 6)" filter="url(#tls-edge)"/>',
-         shape(paper, "#fffdf7")]
+         shape(paper, "#f3e9d2"), aged(paper, (x, y, w, h), 24)]
     gx, gy = x + 100, y + 140                                     # foot of the tree
     g.append(crayon(f"M{x+14} {gy+2} C{x+50} {gy-4} {x+150} {gy+4} {x+w-14} {gy-1} M{x+20} {gy+8} C{x+70} {gy+3} {x+130} {gy+9} {x+w-24} {gy+5}", "#5f9a55", 2.6))
     g.append(crayon(f"M{gx-6} {gy} L{gx-5} {y+104} M{gx+8} {gy} L{gx+7} {y+104} M{gx-4} {gy-12} L{gx+6} {gy-18} M{gx-4} {gy-24} L{gx+6} {gy-28}", "#8a5a2e", 3))
@@ -109,19 +151,18 @@ def kid_drawing():
     sx, sy = x + w - 22, y + 24
     g.append(f'<circle cx="{sx}" cy="{sy}" r="8" fill="{SUN}" opacity=".85"/>')
     g.append(crayon(" ".join(f"M{sx + 12 * math.cos(a):.1f} {sy + 12 * math.sin(a):.1f} L{sx + 17 * math.cos(a):.1f} {sy + 17 * math.sin(a):.1f}" for a in [i * math.pi / 4 for i in range(8)]), "#e0a52c", 1.8))
-    for tx_, rot in ((x + 6, -35), (x + w - 8, 35)):          # tape on the top corners
-        t = rrect(-16, -7, 32, 14, 1)
-        g.append(f'<g transform="translate({tx_} {y + 2}) rotate({rot})"><path d="{t}" fill="#fff" opacity=".6"/><g {WOB}><path d="{t}" {LNS}/></g></g>')
+    g.append(stick_frame(x - 4, y - 4, w + 8, h + 8, 8, 11))
     g.append('</g>')
     return "".join(g)
 
 def corkboard():
     x, y, w, h = 676, 64, 290, 340
     outer, inner = rrect(x, y, w, h, 6), rrect(x+14, y+14, w-28, h-28, 3)
-    g = [f'<path d="{outer}" fill="{INK}" opacity=".16" transform="translate(6 9)" filter="url(#tls-edge)"/>',
-         shape(outer, WOOD_M, edge=WOOD_S), f'<g {WASH}><path d="{inner}" fill="url(#tls-cork)"/></g>',
+    g = [f'<path d="{inner}" fill="{INK}" opacity=".16" transform="translate(6 9)" filter="url(#tls-edge)"/>',
+         f'<g {WASH}><path d="{inner}" fill="url(#tls-cork)"/></g>',
          f'<path d="{inner}" fill="none" stroke="{WOOD_S}" stroke-opacity=".35" stroke-width="10" filter="url(#tls-edge)"/>',
-         f'<g {WOB}><path d="{inner}" {LN}/></g>']
+         grime(inner, (x+14, y+14, w-28, h-28), 31, 12, "#3e2a12", 30),
+         f'<g {WOB}><path d="{inner}" {LN}/></g>', stick_frame(x+14, y+14, w-28, h-28, 11, 5)]
     g.append(certificate())
     g.append(business_card())
     return "".join(g)
@@ -131,7 +172,7 @@ def certificate(turn=3):
     d = rrect(x, y, w, h, 3)
     g = [f'<g transform="rotate({turn} {x+w/2} {y+h/2})">',
          f'<path d="{d}" fill="{INK}" opacity=".15" transform="translate(3 5)" filter="url(#tls-edge)"/>',
-         shape(d, "#fbf4e2"),
+         shape(d, "#f1e3c2"), aged(d, (x, y, w, h), 21, ring=(x + w - 46, y + h - 34, 24)),
          f'<path d="{rrect(x+8, y+8, w-16, h-16, 2)}" fill="none" stroke="{CANOPY}" stroke-width="2.2"/>',
          f'<path d="{rrect(x+13, y+13, w-26, h-26, 2)}" fill="none" stroke="{CANOPY}" stroke-width=".9" stroke-dasharray="1 3"/>']
     for cx_, cy_, rot in ((x+20, y+20, 45), (x+w-20, y+20, 135), (x+w-20, y+h-20, 225), (x+20, y+h-20, 315)):   # leaf corners
@@ -152,7 +193,7 @@ def business_card(turn=-3):
     logo = logo.replace('<svg xmlns="http://www.w3.org/2000/svg" viewBox="10 14 222 146" width="444" height="292">', f'<svg x="{x+14}" y="{y+16}" width="66" height="44" viewBox="10 14 222 146">')
     g = [f'<g transform="rotate({turn} {x+w/2} {y+h/2})">',
          f'<path d="{d}" fill="{INK}" opacity=".15" transform="translate(3 5)" filter="url(#tls-edge)"/>',
-         shape(d, PAPER), logo,
+         shape(d, PAPER), aged(d, (x, y, w, h), 22), logo,
          f'<text x="{x+90}" y="{y+44}" {SERIF} font-size="24" font-weight="600" fill="{INK}">Treeline</text>',
          f'<path d="M{x+14} {y+70} L{x+w-14} {y+70}" stroke="{INK}" stroke-width=".8" opacity=".35"/>',
          f'<text x="{x+16}" y="{y+89}" {SANS} font-size="13" font-weight="600" fill="{INK}">Made by Jordan Miller</text>',
@@ -169,9 +210,10 @@ def sticker(cx, cy, sx=.9, sy=.72, rot=-5):
     curl = f"M{w/2-30} {h/2} Q{w/2-6} {h/2-6} {w/2} {h/2-30} L{w/2} {h/2-16} Q{w/2} {h/2} {w/2-16} {h/2} Z"
     return (f'<g transform="translate({cx} {cy}) rotate({rot}) scale({sx} {sy})">'
             f'<path d="{d}" fill="{INK}" opacity=".12" transform="translate(2 4)" filter="url(#tls-edge)"/>'
-            + shape(d, "#fffdf6")
+            + shape(d, "#f6efe0")
             + f'<path d="{rrect(-w/2+7, -h/2+7, w-14, h-14, 11)}" fill="none" stroke="{BERRY}" stroke-width="5"/>'
-            f'<text x="0" y="-16" text-anchor="middle" {SANS} font-size="33" font-weight="800" letter-spacing="1" fill="{BERRY}">NO 911</text>'
+            + aged(d, (-w/2, -h/2, w, h), 26)
+            + f'<text x="0" y="-16" text-anchor="middle" {SANS} font-size="33" font-weight="800" letter-spacing="1" fill="{BERRY}">NO 911</text>'
             f'<text x="0" y="6" text-anchor="middle" {SANS} font-size="14" font-weight="700" fill="{INK}">No outside calls.</text>'
             f'<text x="0" y="25" text-anchor="middle" {SANS} font-size="12.5" fill="{INK}">In an emergency, use</text>'
             f'<text x="0" y="41" text-anchor="middle" {SANS} font-size="12.5" fill="{INK}">a grown-up’s phone.</text>'
@@ -179,8 +221,8 @@ def sticker(cx, cy, sx=.9, sy=.72, rot=-5):
             '</g>')
 
 CARD = (722, 506, 156, 100)        # the front card in the card file: x, y, w, h
-def card_file():
-    """A rotary card file: the treehouse's phone book. The front card's words go in the overlay."""
+def card_file_old():
+    """(Replaced by the angled card file below.)"""
     x, y, w, h = CARD
     g = [f'<ellipse cx="800" cy="668" rx="118" ry="13" fill="{WOOD_S}" opacity=".35" filter="url(#tls-soft)"/>']
     base = "M716 640 C716 632 722 628 730 628 L870 628 C878 628 884 632 884 640 L890 662 C891 667 888 670 882 670 L718 670 C712 670 709 667 710 662 Z"
@@ -198,6 +240,164 @@ def card_file():
         g.append(f'<circle cx="{kx}" cy="610" r="24" fill="url(#tls-knob)"/><circle cx="{kx-6}" cy="603" r="6" fill="#fff" opacity=".22"/><circle cx="{kx}" cy="610" r="7" fill="url(#tls-metal)"/>')
         g.append(f'<g {WOB}><circle cx="{kx}" cy="610" r="24" {LN}/><circle cx="{kx}" cy="610" r="7" {LNS}/></g>')
     return "".join(g)
+
+
+BARK, BARK_D, BARK_L = "#6e4b2e", "#4a3120", "#94693f"
+ENDG, RING = "#e6c08a", "#a97543"
+def stick(x0, y0, x1, y1, w=9, seed=1):
+    """A hand-cut stick: bark-brown, a little crooked, a pale cut at each end and a knot or two."""
+    import random
+    rnd = random.Random(seed)
+    mx, my = (x0 + x1) / 2 + rnd.uniform(-3, 3), (y0 + y1) / 2 + rnd.uniform(-3, 3)
+    d = f"M{x0:.1f} {y0:.1f} Q{mx:.1f} {my:.1f} {x1:.1f} {y1:.1f}"
+    L = math.hypot(x1 - x0, y1 - y0) or 1
+    nx, ny = -(y1 - y0) / L, (x1 - x0) / L
+    g = [f'<path d="{d}" fill="none" stroke="{INK}" stroke-width="{w+2.6:.1f}" stroke-linecap="round" filter="url(#tls-wobble)"/>',
+         f'<path d="{d}" fill="none" stroke="{BARK}" stroke-width="{w:.1f}" stroke-linecap="round"/>',
+         f'<path d="{d}" fill="none" stroke="{BARK_L}" stroke-width="{w*.3:.1f}" stroke-linecap="round" opacity=".8" transform="translate({nx*w*.22:.1f} {ny*w*.22:.1f})"/>']
+    for k in range(int(L // 70) + 1):                     # knots
+        t = rnd.uniform(.2, .8); kx, ky = x0 + (x1 - x0) * t, y0 + (y1 - y0) * t
+        g.append(f'<ellipse cx="{kx:.1f}" cy="{ky:.1f}" rx="{w*.32:.1f}" ry="{w*.22:.1f}" fill="{BARK_D}" opacity=".8"/>')
+    for ex, ey in ((x0, y0), (x1, y1)):                  # the cut ends
+        g.append(f'<circle cx="{ex:.1f}" cy="{ey:.1f}" r="{w*.42:.1f}" fill="{ENDG}" stroke="{INK}" stroke-width="1"/>')
+    return "".join(g)
+
+def stick_frame(x, y, w, h, t=10, seed=3):
+    """Four sticks lashed at the corners with twine, overhanging a little."""
+    o = 12
+    g = [stick(x - o, y, x + w + o, y + 1, t, seed), stick(x - o + 2, y + h, x + w + o - 1, y + h - 1, t, seed + 1),
+         stick(x, y - o, x + 1, y + h + o, t, seed + 2), stick(x + w, y - o + 1, x + w - 1, y + h + o, t, seed + 3)]
+    for cx_, cy_ in ((x, y), (x + w, y), (x, y + h), (x + w, y + h)):
+        g.append(f'<path d="M{cx_-7} {cy_-5} L{cx_+7} {cy_+5} M{cx_-7} {cy_+5} L{cx_+7} {cy_-5} M{cx_-8} {cy_} L{cx_+8} {cy_}" stroke="#d9c58f" stroke-width="2.2" stroke-linecap="round"/>'
+                 f'<path d="M{cx_-7} {cy_-5} L{cx_+7} {cy_+5} M{cx_-7} {cy_+5} L{cx_+7} {cy_-5}" stroke="{INK}" stroke-width=".6" opacity=".5"/>')
+    return "".join(g)
+
+def end_grain(cx, cy, rx, ry):
+    """The sawn end of a log: pale wood with growth rings and a bark rim."""
+    g = [f'<ellipse cx="{cx}" cy="{cy}" rx="{rx+3}" ry="{ry+3}" fill="{BARK_D}"/>', f'<ellipse cx="{cx}" cy="{cy}" rx="{rx}" ry="{ry}" fill="{ENDG}"/>']
+    for k in (.78, .56, .34, .14):
+        g.append(f'<ellipse cx="{cx+rx*.05:.1f}" cy="{cy-ry*.04:.1f}" rx="{rx*k:.1f}" ry="{ry*k:.1f}" fill="none" stroke="{RING}" stroke-width="1" opacity=".75"/>')
+    g.append(f'<path d="M{cx} {cy} L{cx+rx*.7:.1f} {cy-ry*.1:.1f}" stroke="{RING}" stroke-width=".8" opacity=".6"/>')
+    g.append(f'<path d="M{cx} {cy} L{cx-rx*.5:.1f} {cy+ry*.55:.1f} M{cx} {cy} L{cx+rx*.1:.1f} {cy-ry*.8:.1f}" stroke="#5a3a1c" stroke-width="1.1" opacity=".7"/>')
+    g.append(f'<ellipse cx="{cx}" cy="{cy}" rx="{rx}" ry="{ry}" fill="#5a3a1c" opacity=".14"/>')
+    g.append(f'<g {WOB}><ellipse cx="{cx}" cy="{cy}" rx="{rx+3}" ry="{ry+3}" {LN}/></g>')
+    return "".join(g)
+
+def log_leg(x0, x1, y0, y1, seed=1):
+    """A round log leg with its bark on."""
+    import random
+    rnd = random.Random(seed)
+    d = f"M{x0} {y0} L{x1} {y0} L{x1-2} {y1} L{x0+2} {y1} Z"
+    g = [f'<g {WASH}><path d="{d}" fill="{BARK}"/></g>',
+         f'<path d="M{x0+6} {y0} L{x0+8} {y1}" stroke="{BARK_L}" stroke-width="{(x1-x0)*.18:.1f}" opacity=".7"/>',
+         f'<path d="M{x1-6} {y0} L{x1-7} {y1}" stroke="{BARK_D}" stroke-width="{(x1-x0)*.22:.1f}" opacity=".8"/>']
+    for k in range(9):                                     # bark furrows
+        bx = rnd.uniform(x0 + 5, x1 - 5); by0 = rnd.uniform(y0, y1 - 60)
+        g.append(f'<path d="M{bx:.0f} {by0:.0f} q{rnd.uniform(-3,3):.1f} 25 {rnd.uniform(-2,2):.1f} {rnd.uniform(40,90):.0f}" stroke="{BARK_D}" stroke-width="1.6" fill="none" opacity=".75"/>')
+    ky = rnd.uniform(y0 + 40, y1 - 40)
+    g.append(f'<ellipse cx="{(x0+x1)/2:.0f}" cy="{ky:.0f}" rx="5" ry="7" fill="{BARK_D}"/><ellipse cx="{(x0+x1)/2:.0f}" cy="{ky:.0f}" rx="2.4" ry="3.5" fill="{ENDG}" opacity=".7"/>')
+    g.append(grime(d, (x0, y0, x1 - x0, y1 - y0), seed + 40, 7, "#2e2414", 30))
+    g.append(f'<path d="M{x0+3} {y1-70} L{x1-3} {y1-70}" stroke="#8c9a6a" stroke-width="26" opacity=".18" filter="url(#tls-soft)"/>')   # a little green weather at the foot
+    g.append(f'<g {WOB}><path d="M{x0} {y0} L{x0+2} {y1} M{x1} {y0} L{x1-2} {y1}" {LN}/></g>')
+    return "".join(g)
+
+def front_log(x0, x1, y0, y1):
+    """A whole log laid along the front of the table top, its sawn ends showing."""
+    r = (y1 - y0) / 2; cy = (y0 + y1) / 2
+    body = f"M{x0} {y0} L{x1} {y0} L{x1} {y1} L{x0} {y1} Z"
+    g = [f'<g {WASH}><path d="{body}" fill="{BARK}"/></g>',
+         f'<path d="M{x0} {y0+r*.45:.1f} L{x1} {y0+r*.45:.1f}" stroke="{BARK_L}" stroke-width="{r*.35:.1f}" opacity=".55"/>',
+         f'<path d="M{x0} {y1-r*.3:.1f} L{x1} {y1-r*.3:.1f}" stroke="{BARK_D}" stroke-width="{r*.45:.1f}" opacity=".6"/>']
+    import random
+    rnd = random.Random(int(x1 + y0))
+    for k in range(int((x1 - x0) / 26)):
+        bx = rnd.uniform(x0 + 20, x1 - 40); by_ = rnd.uniform(y0 + 4, y1 - 6)
+        g.append(f'<path d="M{bx:.0f} {by_:.0f} q12 {rnd.uniform(-2,2):.1f} {rnd.uniform(24,50):.0f} {rnd.uniform(-1.5,1.5):.1f}" stroke="{BARK_D}" stroke-width="1.5" fill="none" opacity=".7"/>')
+    g.append(grime(body, (x0, y0, x1 - x0, y1 - y0), int(x1 + y1), 12, "#2e2414", 50))
+    g.append(f'<g {WOB}><path d="M{x0} {y0} L{x1} {y0} M{x0} {y1} L{x1} {y1}" {LN}/></g>')
+    g.append(end_grain(x0, cy, r * .55, r))
+    g.append(end_grain(x1, cy, r * .55, r))
+    return "".join(g)
+
+LEAF_D = "M0 -10C6 -5 6 5 0 10C-6 5 -6 -5 0 -10Z"
+def leaf(cx, cy, rot=0, sc=2, color="#9fbf86", squash=1):
+    """A Treeline leaf, lying flat (squash < 1 tips it onto the surface)."""
+    return (f'<g transform="translate({cx} {cy}) scale(1 {squash}) rotate({rot}) scale({sc})">'
+            f'<path d="{LEAF_D}" fill="{INK}" opacity=".16" transform="translate(1.2 1.6)"/>'
+            f'<g {WASH}><path d="{LEAF_D}" fill="{color}"/></g>'
+            f'<path d="M0 -8 L0 9" stroke="{INK}" stroke-width=".55" opacity=".7"/>'
+            f'<path d="M0 -2 L3 -5 M0 2 L-3 -1 M0 5 L2.6 2.5" stroke="{INK}" stroke-width=".4" opacity=".5"/>'
+            f'<path d="{LEAF_D}" fill="none" stroke="{INK}" stroke-width=".7"/></g>')
+LEAF_COLORS = ("#9fbf86", "#7fa56c", "#c9a958", "#b7cf9a")
+
+# ------------------------------------------------------------------ the card file, angled, like a real Rolodex
+CF_W, CF_H = 260, 230                       # local drawing; its base sits on the surface at y = CF_H
+CF_CARD = (78, 4, 196, 13, 76, 76)          # the front card's top-left, top-right and bottom-left corners (as seen)
+CF_MIRROR = f"translate({CF_W} 0) scale(-1 1)"
+def cf_card_matrix():
+    x, y, w, h = CARD
+    tlx, tly, trx, try_, blx, bly = CF_CARD
+    a, b = (trx - tlx) / w, (try_ - tly) / w
+    c, d = (blx - tlx) / h, (bly - tly) / h
+    return f"translate({tlx} {tly}) matrix({a:.4f} {b:.4f} {c:.4f} {d:.4f} 0 0) translate({-x} {-y})"
+
+_TAN, _TAN_D, _TAN_L = "#b9a273", "#8f7a50", "#d7c597"
+_DRUM = "M34 150 C22 128 22 86 46 62 C60 52 80 50 98 52 L176 58 C196 62 206 80 204 104 C204 124 198 140 190 150 Z"
+# the near part of the drum, below where the cards go in: drawn again over the front card so it sits down inside
+_DRUM_FRONT = "M30 86 C70 84 150 78 205 72 C206 88 205 100 204 104 C204 124 198 140 190 150 L34 150 C24 132 23 106 30 86 Z"
+
+def _cf_front():
+    """The front of the card file (in its unmirrored drawing): the near half of the drum with its card edges and
+    index tabs, the case front and side, and the knobs."""
+    front = "M8 150 L174 162 L174 228 L10 214 Z"
+    side = "M174 162 L248 136 L248 200 L174 228 Z"
+    g = [shape(_DRUM_FRONT, "#ecd7a8", edge="#b08a4a")]
+    for k in range(11):                                    # card edges round the near side of the drum
+        yy = 92 + k * 5
+        g.append(f'<path d="M{30 + 3*k/10:.1f} {yy+2 - k*0.4:.1f} C80 {yy+4} 150 {yy-2} {204 - 2*k/10:.1f} {yy-12 + k*1.1:.1f}" fill="none" stroke="#b9925a" stroke-width=".8" opacity=".75"/>')
+    for k, (ty_, col, lab) in enumerate(((98, "#c9a24a", "A"), (110, "#6f8f5a", "F"), (122, "#c9a24a", "M"), (134, "#6f8f5a", "S"))):
+        tx = 44 + k * 30
+        g.append(f'<path d="M{tx} {ty_} L{tx+18} {ty_-1} L{tx+18} {ty_+7} L{tx} {ty_+8} Z" fill="{col}" stroke="{INK}" stroke-width=".8"/>'
+                 f'<g transform="translate({2*tx+18} 0) scale(-1 1)"><text x="{tx+9}" y="{ty_+6}" text-anchor="middle" {SANS} font-size="6" font-weight="800" fill="#fff">{lab}</text></g>')
+    g += [shape(front, _TAN, edge=_TAN_D), shape(side, _TAN_D, edge="#000"),
+          f'<path d="M12 156 L172 167" stroke="{_TAN_L}" stroke-width="3" opacity=".8"/>',
+          f'<path d="M30 196 L150 205" stroke="{_TAN_D}" stroke-width="1" opacity=".6"/>',
+          f'<g opacity=".22" filter="url(#tls-grain)"><path d="{front} {side}" fill="#000"/></g>',
+          f'<path d="M20 172 l26 2 M60 190 l40 3 M190 180 l30 -10" stroke="#e8dbb4" stroke-width="1.2" opacity=".6"/>',
+          f'<path d="M14 210 L172 222 M176 224 L246 198" stroke="#3b2a12" stroke-width="5" opacity=".18"/>']   # grime along the bottom
+    for kcx, kcy, rx, ry in ((214, 106, 20, 30), (30, 104, 9, 18)):
+        g.append(f'<ellipse cx="{kcx+3}" cy="{kcy+3}" rx="{rx}" ry="{ry}" fill="{INK}" opacity=".35"/>')
+        g.append(f'<ellipse cx="{kcx}" cy="{kcy}" rx="{rx}" ry="{ry}" fill="url(#tls-knob)"/>')
+        g.append(f'<g {WOB}><ellipse cx="{kcx}" cy="{kcy}" rx="{rx}" ry="{ry}" {LN}/></g>')
+    for k in range(10):
+        a = k / 10 * math.tau
+        g.append(f'<path d="M{214 + 13*math.cos(a):.1f} {106 + 20*math.sin(a):.1f} L{214 + 19*math.cos(a):.1f} {106 + 28.5*math.sin(a):.1f}" stroke="#6b6258" stroke-width="1.6"/>')
+    g.append('<ellipse cx="214" cy="106" rx="10" ry="15" fill="#2c2722" stroke="#6b6258" stroke-width="1"/><ellipse cx="211" cy="100" rx="3.5" ry="5" fill="#fff" opacity=".2"/>')
+    return "".join(g)
+
+def cf_front():
+    """The front of the card file as seen (mirrored), for the words layer: drawn over the front card."""
+    return f'<g transform="{CF_MIRROR}">{_cf_front()}</g>'
+
+def card_file():
+    """A rotary card file like the classic desk ones, turned toward the phone: a tan metal case, a drum of tabbed
+    cards on a rod, black knobs, and the front card standing up in it. That card's paper and words, and the near
+    half of the drum over its foot, are in the words layer."""
+    rim = "M8 150 L84 126 L248 136 L174 162 Z"
+    upright = "M196 154 L246 136 L246 58 L232 46 L212 64 Z"
+    g = [f'<ellipse cx="132" cy="{CF_H-2}" rx="136" ry="11" fill="{INK}" opacity=".26" filter="url(#tls-soft)"/>',
+         f'<path d="{rim}" fill="#3a3024"/>', shape(upright, _TAN_D),
+         f'<g opacity=".2" filter="url(#tls-grain)"><path d="{upright}" fill="#000"/></g>',
+         shape(_DRUM, "#ecd7a8", edge="#b08a4a")]
+    for k in range(5):                                     # the tops of the cards across the drum
+        yy = 58 + k * 6
+        g.append(f'<path d="M{44 - k*3} {yy+4} C80 {yy} 150 {yy+2} {196 + k*1.5} {yy+6}" fill="none" stroke="#b9925a" stroke-width=".8" opacity=".75"/>')
+    # two cards standing up behind the front one (in the unmirrored drawing: the front card is at 64..182)
+    for dx_, dy_, col in ((-12, -7, "#efe2c5"), (-6, -3, "#f5ecd8")):
+        d = f"M{64+dx_} {13+dy_} L{182+dx_} {4+dy_} L{184+dx_} {80+dy_} L{66+dx_} {90+dy_} Z"
+        g.append(f'<g {WASH}><path d="{d}" fill="{col}"/></g><g {WOB}><path d="{d}" {LNS}/></g>')
+    g.append(_cf_front())
+    return f'<g transform="{CF_MIRROR}">{"".join(g)}</g>'
 
 # ---------------------------------------------------------------- the shelf
 def book():
@@ -245,7 +445,7 @@ def warranty():
     card = rrect(wx, wy, ww, wh, 2)
     lines = "".join(f'<path d="M10 {wy+y_} L{ww-10 - (14 if i % 3 == 2 else 0)} {wy+y_}" stroke="{INK}" stroke-width="1.6" opacity=".22"/>' for i, y_ in enumerate(range(80, 132, 7)))
     g.append(f'<ellipse cx="{ww/2+4}" cy="0" rx="{ww/2+8}" ry="5" fill="{INK}" opacity=".16" filter="url(#tls-edge)"/><g>'
-             f'<path d="{card}" fill="{INK}" opacity=".14" transform="translate(5 2)" filter="url(#tls-edge)"/>' + shape(card, "#fdfaf2")
+             f'<path d="{card}" fill="{INK}" opacity=".14" transform="translate(5 2)" filter="url(#tls-edge)"/>' + shape(card, "#f2e8d2") + aged(card, (wx, wy, ww, wh), 25)
              + f'<path d="M{wx} {wy+22} L{ww} {wy+22}" stroke="{INK}" stroke-width="1" stroke-dasharray="2 3" opacity=".5"/>'
              f'<text x="{ww/2}" y="{wy+15}" text-anchor="middle" {MONO} font-size="8" fill="{INK}" opacity=".7">DETACH HERE</text>'
              f'<text x="10" y="{wy+44}" {SERIF} font-size="14" font-weight="600" fill="{INK}">Owner’s</text>'
@@ -285,24 +485,44 @@ def table(t):
     DRAWER = rrect(dx, dy, dw, dh, 6)
     STOP = f"M{x0+60} {sy} L{x1-60} {sy} L{x1-26} {sy+26} L{x0+26} {sy+26} Z"
     SFRONT = f"M{x0+26} {sy+26} L{x1-26} {sy+26} L{x1-26} {sy+50} C{x1-26} {sy+54} {x1-29} {sy+56} {x1-33} {sy+56} L{x0+33} {sy+56} C{x0+29} {sy+56} {x0+26} {sy+54} {x0+26} {sy+50} Z"
-    back = [shape(leg(x0+84, x0+110, cb, H + 10, 2), WOOD_D), shape(leg(x1-110, x1-84, cb, H + 10, 2), WOOD_D), shape(STOP, "url(#tls-top)"),
+    back = [log_leg(x0+86, x0+116, cb, H + 10, 7), log_leg(x1-116, x1-86, cb, H + 10, 8), shape(STOP, "url(#tls-top)"),
             f'<g {WOB}><path d="M{x0+68} {sy+6} C{x0+230} {sy+4} {x1-230} {sy+4} {x1-68} {sy+6}" {LNS}/></g>']
-    sfront = [shape(SFRONT, "url(#tls-front)", edge=WOOD_S), f'<g opacity=".18" filter="url(#tls-grain)"><path d="{STOP} {SFRONT}" fill="#000"/></g>']
-    front = [shape(leg(x0+32, x0+70, cb, H + 10), "url(#tls-leg)", edge=WOOD_S), shape(leg(x1-70, x1-32, cb, H + 10), "url(#tls-leg)", edge=WOOD_S),
-             shape(CARC, "url(#tls-front)", edge=WOOD_S),
-             shape(DRAWER, WOOD_M, edge=WOOD_S, extra=f'<path d="M{dx+14} {dy+10} L{dx+dw-14} {dy+10}" stroke="#fff" stroke-opacity=".3" stroke-width="3" stroke-linecap="round"/>'),
-             ]
-    kx, ky = t["knob"]
-    front += [f'<ellipse cx="{kx}" cy="{ky+2}" rx="11" ry="7" fill="{WOOD_S}" opacity=".5" transform="translate(1 3)"/>',
-              f'<circle cx="{kx}" cy="{ky}" r="9" fill="url(#tls-metal)"/><g {WOB}><circle cx="{kx}" cy="{ky}" r="9" {LN}/></g>',
-              shape(APRON, "url(#tls-front)", edge=WOOD_S),
+    for f in (.35, .7):                                   # the shelf is a split slab: two seams
+        a_, b_ = x0 + 60 - 34 * f, x1 - 60 + 34 * f
+        back.append(f'<path d="M{a_:.0f} {sy+26*f:.1f} L{b_:.0f} {sy+26*f:.1f}" stroke="{WOOD_S}" stroke-width="1.6" opacity=".6"/>')
+    sfront = [front_log(x0 + 26, x1 - 26, sy + 26, sy + 58), f'<g opacity=".14" filter="url(#tls-grain)"><path d="{STOP}" fill="#000"/></g>']
+    # the carcass: split boards standing side by side
+    li = t.get("leg_in", 28)
+    front = [log_leg(x0+li, x0+li+50, cb - 4, H + 10, 3), log_leg(x1-li-50, x1-li, cb - 4, H + 10, 4),
+             shape(CARC, "url(#tls-front)", edge=WOOD_S)]
+    bx = x0 + 32
+    import random
+    rnd = random.Random(int(x0 + ty))
+    while bx < x1 - 60:
+        bw = rnd.uniform(60, 90); bx += bw
+        if bx < x1 - 40:
+            front.append(f'<g {WOB}><path d="M{bx:.0f} {F+56} L{bx+rnd.uniform(-2,2):.0f} {cb}" stroke="{WOOD_S}" stroke-width="2" opacity=".7"/></g>'
+                         f'<path d="M{bx+2:.0f} {F+56} L{bx+2:.0f} {cb}" stroke="#f1d0a0" stroke-width="1" opacity=".5"/>')
+    front.append(shape(DRAWER, WOOD_M, edge=WOOD_S, extra=f'<path d="M{dx+14} {dy+10} L{dx+dw-14} {dy+10}" stroke="#fff" stroke-opacity=".3" stroke-width="3" stroke-linecap="round"/>'))
+    for k in (1, 2):                                       # the drawer front is two planks
+        yy = dy + dh * k / 3
+        front.append(f'<path d="M{dx+6} {yy:.0f} L{dx+dw-6} {yy:.0f}" stroke="{WOOD_S}" stroke-width="1.4" opacity=".55"/>')
+    kx, ky = t["knob"]                                     # a wooden peg for a knob
+    front += [f'<ellipse cx="{kx+2}" cy="{ky+4}" rx="11" ry="8" fill="{WOOD_S}" opacity=".45"/>', end_grain(kx, ky, 8, 8),
+              front_log(x0 - 4, x1 + 4, F + 4, F + 56),
               shape(TOP, "url(#tls-top)", extra=f'<path d="M{x0+inset+10} {ty+8} L{x1-inset-10} {ty+8}" stroke="#fff" stroke-opacity=".25" stroke-width="3"/>')]
-    for f in (.2, .41, .65, .9):     # wood grain
-        y = ty + 114 * f; a = x0 + inset * (1 - f); b = x1 - inset * (1 - f)
-        front.append(f'<g {WOB}><path d="M{a:.0f} {y:.0f} C{a+150:.0f} {y-3:.0f} {a+260:.0f} {y+3:.0f} {(a+b)/2:.0f} {y:.0f} S{b-120:.0f} {y-3:.0f} {b:.0f} {y+1:.0f}" fill="none" stroke="{WOOD_D}" stroke-width="1" opacity=".35"/></g>')
-    front.append(f'<g opacity=".16" filter="url(#tls-grain)"><path d="{TOP} {APRON} {CARC}" fill="#000"/></g>')
+    for f in (.3, .58, .82):                               # the top is split planks: dark seams with a pale lip
+        y = ty + 114 * f; a_ = x0 + inset * (1 - f); b_ = x1 - inset * (1 - f)
+        front.append(f'<g {WOB}><path d="M{a_:.0f} {y:.0f} L{b_:.0f} {y:.0f}" stroke="{WOOD_S}" stroke-width="2.4" opacity=".75"/></g>'
+                     f'<path d="M{a_+2:.0f} {y+2:.0f} L{b_-2:.0f} {y+2:.0f}" stroke="#f3d6a8" stroke-width="1.2" opacity=".55"/>')
+    for f in (.14, .44, .7, .93):     # wood grain along the planks
+        y = ty + 114 * f; a_ = x0 + inset * (1 - f); b_ = x1 - inset * (1 - f)
+        front.append(f'<g {WOB}><path d="M{a_:.0f} {y:.0f} C{a_+150:.0f} {y-3:.0f} {a_+260:.0f} {y+3:.0f} {(a_+b_)/2:.0f} {y:.0f} S{b_-120:.0f} {y-3:.0f} {b_:.0f} {y+1:.0f}" fill="none" stroke="{WOOD_D}" stroke-width="1" opacity=".35"/></g>')
+    front.append(f'<g opacity=".22" filter="url(#tls-grain)"><path d="{TOP} {CARC}" fill="#000"/></g>')
+    front.append(grime(TOP, (x0, ty, x1 - x0, 114), int(ty) + 1, 16, "#4a3216", 70))
+    front.append(grime(CARC, (x0 + 32, F + 54, x1 - x0 - 64, cb - F - 54), int(ty) + 2, 10, "#3d2810", 50))
+    front.append(grime(DRAWER, (dx, dy, dw, dh), int(ty) + 3, 6, "#3d2810", 20))
     front.append(wear(t, TOP, F, cb, cx))
-    front.append(f'<g {WOB}><path d="M{x0+8} {F+16} L{x1-8} {F+16}" {LNS}/></g>')
     return "".join(back), "".join(sfront), "".join(front)
 
 def wear(t, TOP, F, cb, cx):
@@ -362,7 +582,11 @@ def moved(box, pl):
 
 # ---------------------------------------------------------------- the guide book, spine out
 BOOK_W, BOOK_T = 200, 46          # length of the spine, thickness of the book
-def book_spine(x0, by, w=BOOK_W, t=BOOK_T, depth=60):
+def book_t(w): return BOOK_T * (w / BOOK_W) ** .5
+def book_depth(w): return 60 * (w / BOOK_W) ** .6
+def book_spine(x0, by, w=BOOK_W, t=None, depth=None):
+    t = book_t(w) if t is None else t
+    depth = book_depth(w) if depth is None else depth
     """The guide lying flat on its back cover, spine toward you: the title reads across the spine."""
     x1 = x0 + w; top = by - t - depth
     face = f"M{x0} {top} L{x1} {top} L{x1} {top+depth} L{x0} {top+depth} Z"      # square, so the cover picture fills it exactly
@@ -478,7 +702,8 @@ def clock_radio():
           f'<text x="137" y="68" {SANS} font-size="4.2" fill="#d8ccbb">AM 55 65 80 100 160</text>',
           f'<path d="M168 55 L168 60" stroke="#ff5a3c" stroke-width="1.2"/>',
           f'<g {WOB}><path d="{front} {top}" fill="none" stroke="{INK}" stroke-width="1.6"/></g>',
-          f'<g opacity=".1" filter="url(#tls-grain)"><path d="{front} {top} {slope}" fill="#fff"/></g>']
+          f'<g opacity=".16" filter="url(#tls-grain)"><path d="{front} {top} {slope}" fill="#fff"/></g>',
+          grime(top + " " + slope, (0, 2, 200, 32), 61, 5, "#d9c9a8", 40)]
     return "".join(g)
 
 def clock_words():
@@ -492,8 +717,10 @@ def clock_words():
     g.append('</g></g>')
     return "".join(g)
 
-def book_box(x0, by, w=BOOK_W, t=BOOK_T, depth=60):
-    return (x0 - 8, by - t - depth - 6, w + 16, t + depth + 14)
+def book_box(x0, by, w=BOOK_W):
+    """The spine is the book's link (a clock may sit on its cover)."""
+    t = book_t(w)
+    return (x0 - 8, by - t - 10, w + 16, t + 18)
 
 # ---------------------------------------------------------------- the warranty card, sticking out of the drawer
 def warranty_face(turn=0):
@@ -512,61 +739,88 @@ def peek_box(x, y):
     return (x - 34, y - 84, 112, 92)
 
 LAYOUTS = {
-    # Landscape tablets and desktops: zoomed in on the phone and the table top. No shelf: the guide book lies
-    # on the table, and the legs run off the bottom just under the drawer.
-    "wide": {"W": 1100, "H": 890,
-        "table": {"x0": 40, "x1": 1060, "ty": 590, "inset": 80, "ch": 120, "sy": 2000, "H": 890,
-                  "drawer": (336, 768, 428, 100), "knob": (374, 818)},
-        "phone": {"x": 270, "y": 2, "w": 560},
-        "sticker": (510, 820, .78, .78, -3),
-        "bookspine": (78, 690, 200), "peek": (668, 768),
-        "place": {"sticky": (72, 150, 34, 40, 1), "sketch": (92, 360, 46, 252, .92), "cork": (676, 64, 800, 40, 1),
-                  "cardfile": (684, 674, 770, 650, .8)},
-        "clock": (878, 700, 176),
+    # Landscape tablets and desktops, zoomed in on the table top. The card file at the back left, the phone in
+    # the middle, the guide book on the right with the clock radio sitting on it. No shelf.
+    "wide": {"W": 1240, "H": 890,
+        "table": {"x0": 20, "x1": 1220, "ty": 590, "inset": 80, "ch": 120, "sy": 2000, "H": 890,
+                  "drawer": (406, 768, 428, 100), "knob": (444, 818)},
+        "phone": {"x": 262, "y": 2, "w": 560},
+        "sticker": (580, 820, .78, .78, -3),
+        "bookspine": (806, 704, 384), "peek": (738, 768),
+        "clock": (812, 0, 384),
+        "cardfile": (4, 668, 1.0),
+        "leaves": [(236, 706, 28, 1.7, 0), (760, 706, -60, 1.5, 2), (910, 404, 160, 1.6, 1)],
+        "place": {"sticky": (72, 150, 34, 30, 1), "sketch": (92, 360, 40, 236, .9), "cork": (676, 64, 930, 40, 1)},
         "shelf": [], "table_items": ["cardfile"], "sketch": True},
-    # Tablets held upright: the same side table, the phone much bigger, the corkboard down beside it.
-    "portrait": {"W": 1000, "H": 1304,
-        "table": {"x0": 60, "x1": 940, "ty": 800, "inset": 78, "ch": 120, "sy": 1224, "H": 1304,
+    # Tablets held upright: the side table with the clock radio beside the phone; the card file and the
+    # guide book on the shelf.
+    "portrait": {"W": 1000, "H": 1420,
+        "table": {"x0": 60, "x1": 940, "ty": 800, "inset": 78, "ch": 120, "sy": 1338, "H": 1420,
                   "drawer": (286, 978, 428, 100), "knob": (324, 1028)},
-        "phone": {"x": 170, "y": 49, "w": 660},
+        "phone": {"x": 96, "y": 140, "w": 620},
         "sticker": (466, 1030, .78, .78, -3),
-        "bookspine": (66, 898, 186), "peek": (624, 978),
-        "place": {"sticky": (72, 150, 20, 60, 1), "sketch": (92, 360, 30, 290, .9), "cork": (676, 64, 788, 180, .72),
-                  "cardfile": (684, 674, 768, 888, .78), "spines": (0, 0, 120, 440, .8), "plant": (0, 0, 172, 453, .8)},
-        "clock": (474, 1240, 176),
-        "shelf": ["spines", "plant"], "table_items": ["cardfile"], "sketch": True},
-    # Phones: a narrow nightstand, the phone across nearly the whole width, the wall things above it,
-    # the book and the card file on the shelf.
-    "tall": {"W": 600, "H": 1340,
-        "table": {"x0": 8, "x1": 592, "ty": 812, "inset": 50, "ch": 138, "sy": 1270, "H": 1340,
+        "bookspine": (712, 906, 214), "peek": (624, 978),
+        "clock": (352, 1356, 440),
+        "cardfile": (84, 1356, .9),
+        "leaves": [(96, 892, 30, 1.7, 0), (690, 912, -40, 1.4, 2), (880, 1362, 70, 1.5, 3)],
+        "place": {"sticky": (72, 150, 20, 60, 1), "sketch": (92, 360, 30, 286, .9), "cork": (676, 64, 788, 180, .72),
+                  "plant": (0, 0, 170, 569, .8)},
+        "shelf": [], "table_items": [], "sketch": True},
+    # Phones: a narrow nightstand, the phone across nearly the whole width, the wall things above it; on the
+    # shelf, the card file, and the guide book with the clock radio sitting on it.
+    "tall": {"W": 600, "H": 1412,
+        "table": {"x0": 8, "x1": 592, "ty": 812, "inset": 50, "ch": 138, "sy": 1334, "H": 1412, "leg_in": 4,
                   "drawer": (70, 990, 460, 118), "knob": (108, 1049)},
         "phone": {"x": 28, "y": 245, "w": 544},
         "sticker": (290, 1050, .85, .85, -3),
-        "bookspine": (82, 1290, 150), "peek": (452, 990),
-        "place": {"sticky": (72, 150, 12, 28, .96), "sketch": (92, 360, 14, 214, .85), "cork": (676, 64, 350, 12, .82),
-                  "cardfile": (684, 674, 238, 1286, .6)},
-        "clock": (384, 1288, 136),
-        "shelf": ["cardfile"], "table_items": [], "sketch": True},
+        "bookspine": (62, 1356, 150), "peek": (452, 990),
+        "clock": (206, 1356, 330),
+        "cardfile": (66, 1276, .54), "cf_on": "shelf-top",
+        "leaves": [(54, 884, 30, 1.5, 0), (548, 888, -50, 1.4, 2), (548, 1362, 80, 1.3, 1)],
+        "place": {"sticky": (72, 150, 12, 28, .96), "sketch": (92, 360, 14, 214, .85), "cork": (676, 64, 350, 12, .82)},
+        "shelf": [], "table_items": [], "sketch": True},
 }
 
+def cf_place(L):
+    x, by, sc = L["cardfile"]
+    return f"translate({x} {by - CF_H * sc:.1f}) scale({sc})"
+def cf_on_shelf(L): return L.get("cf_on", "shelf" if L["cardfile"][1] > L["table"]["sy"] else "table") == "shelf"
+def cf_box(L):
+    x, by, sc = L["cardfile"]
+    return (x, by - CF_H * sc, CF_W * sc, CF_H * sc)
+def leaves_for(L):
+    return "".join(leaf(x, y, r, sc, LEAF_COLORS[c], .55) for x, y, r, sc, c in L["leaves"])
+
+def clock_bottom(L):
+    cx, by, w = L["clock"]
+    if by: return by
+    bx, bb, bw = L["bookspine"]
+    return bb - book_t(bw) - book_depth(bw) * .2
 def clock_place(L):
-    cx, by, w = L["clock"]; sc = w / CLOCK_W
+    cx, _, w = L["clock"]; by = clock_bottom(L); sc = w / CLOCK_W
     return f'translate({cx} {by - CLOCK_H * sc:.1f}) scale({sc:.4f})'
-def clock_on_shelf(L): return L["clock"][1] > L["table"]["sy"]
+def clock_on_shelf(L): return clock_bottom(L) > L["table"]["sy"] - 40
 def clock_at(L): return f'<g transform="{clock_place(L)}">{clock_radio()}</g>'
 
 def scene(name):
     L = LAYOUTS[name]; W_, H_ = L["W"], L["H"]; pl = L["place"]
     back, sfront, front = table(L["table"])
-    draw = {"book": book, "warranty": warranty, "spines": spines, "plant": plant, "cardfile": card_file}
+    draw = {"spines": spines, "plant": plant}
     item = lambda k: placed(draw[k](), pl[k])
     bx, by, bw = L["bookspine"]; px, py = L["peek"]; dx, dy, dw, dh = L["table"]["drawer"]
     book_here = book_spine(bx, by, bw)
-    on_shelf = by > L["table"]["sy"]
+    book_shelf = by > L["table"]["sy"]
+    cf = f'<g transform="{cf_place(L)}">{card_file()}</g>'
+    clock = clock_at(L)
+    on_book = L.get("cf_on") == "shelf-top"
+    shelf = ("".join(item(k) for k in L["shelf"]) + (cf if cf_on_shelf(L) else "") + (book_here if book_shelf else "")
+             + (cf if on_book else "") + (clock if clock_on_shelf(L) else "") + "".join(leaf(x, y, r, sc, LEAF_COLORS[c], .55) for x, y, r, sc, c in L["leaves"] if y > L["table"]["sy"]))
+    tabletop = ((cf if not cf_on_shelf(L) and not on_book else "") + (book_here if not book_shelf else "") + (clock if not clock_on_shelf(L) else "")
+                + "".join(leaf(x, y, r, sc, LEAF_COLORS[c], .55) for x, y, r, sc, c in L["leaves"] if L["table"]["ty"] < y < L["table"]["sy"]))
+    wall_leaves = "".join(leaf(x, y, r, sc, LEAF_COLORS[c], 1) for x, y, r, sc, c in L["leaves"] if y < L["table"]["ty"])
     body = (wall(W_, H_) + placed(sticky_note(), pl["sticky"]) + (placed(kid_drawing(), pl["sketch"]) if L["sketch"] else "")
-            + placed(corkboard(), pl["cork"]) + back + "".join(item(k) for k in L["shelf"]) + (book_here if on_shelf else "") + (clock_at(L) if clock_on_shelf(L) else "") + sfront + front
-            + drawer_peek(px, py, dx, dx + dw, "") + sticker(*L["sticker"]) + (book_here if not on_shelf else "") + "".join(item(k) for k in L["table_items"])
-            + ("" if clock_on_shelf(L) else clock_at(L)))
+            + placed(corkboard(), pl["cork"]) + wall_leaves + back + shelf + sfront + front
+            + drawer_peek(px, py, dx, dx + dw, "") + sticker(*L["sticker"]) + tabletop)
     return (f'<svg xmlns="http://www.w3.org/2000/svg" class="tl-desk__scene tl-desk__l tl-desk__l--{name}" viewBox="0 0 {W_} {H_}" '
             f'preserveAspectRatio="xMidYMax meet" aria-hidden="true" focusable="false">{defs()}{body}</svg>')
 
@@ -590,7 +844,7 @@ def words(name, nm="Sam’s treehouse", quiet="8 pm – 7 am", contact=("The Par
     return (f'<svg xmlns="http://www.w3.org/2000/svg" class="tl-desk__words tl-desk__l tl-desk__l--{name}" viewBox="0 0 {L["W"]} {L["H"]}" preserveAspectRatio="xMidYMax meet" aria-hidden="true" focusable="false">'
             f'<defs><filter id="tls-wwob" x="-5%" y="-5%" width="110%" height="110%"><feTurbulence type="fractalNoise" baseFrequency="0.03" numOctaves="2" seed="7"/><feDisplacementMap in="SourceGraphic" scale="1.8"/></filter>'
             f'<linearGradient id="tls-wpaper" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fffdf7"/><stop offset="1" stop-color="#f1e6cf"/></linearGradient></defs>'
-            + placed(nmg, pl["sketch"]) + placed(q, pl["sticky"]) + placed(c, pl["cardfile"])
+            + placed(nmg, pl["sketch"]) + placed(q, pl["sticky"]) + f'<g transform="{cf_place(L)} {cf_card_matrix()}">{c}</g><g transform="{cf_place(L)}">{cf_front()}</g>'
             + f'<g transform="{clock_place(L)}">{clock_words()}</g>' + '</svg>')
 
 def words_template(name):
@@ -600,7 +854,7 @@ def geometry(name):
     L = LAYOUTS[name]; pl = L["place"]
     bx, by, bw = L["bookspine"]; px, py = L["peek"]
     hot = {"guide": book_box(bx, by, bw), "licenses": peek_box(px, py),
-           "coffee": moved(BOX["coffee"], pl["cork"]), "card": moved(BOX["card"], pl["cork"]), "cardfile": moved(BOX["cardfile"], pl["cardfile"])}
+           "coffee": moved(BOX["coffee"], pl["cork"]), "card": moved(BOX["card"], pl["cork"]), "cardfile": cf_box(L)}
     return {"w": L["W"], "h": L["H"], "phone": L["phone"], "hotspots": hot}
 
 GEOM = {n: geometry(n) for n in LAYOUTS}

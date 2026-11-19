@@ -129,9 +129,9 @@ def layout_css(n, sel=""):
     out += [f"{sel}.tl-desk__hot--{k} {{ left: {pct(x, W)}; top: {pct(y, H)}; width: {pct(w, W)}; height: {pct(h, H)}; }}" for k, (x, y, w, h) in g["hotspots"].items()]
     return "\n".join(out)
 css = f"""
-/* >>> SoftphoneDesk — the tablet softphone screen: the phone on a side table in a 90s room.
-   The room is a still picture drawn three ways, chosen by the screen's shape: wide (1100 × 890) for
-   landscape tablets and desktops, portrait (1000 × 1304) for upright tablets, tall (600 × 1340) for phones.
+/* >>> SoftphoneDesk — the tablet softphone screen: the phone on a log table in a treehouse.
+   The room is a still picture drawn three ways, chosen by the screen's shape: wide (1240 × 890) for
+   landscape tablets and desktops, portrait (1000 × 1420) for upright tablets, tall (600 × 1412) for phones.
    No wallpaper: the room sits on the page's canvas, so it works in Daylight and Lantern.
    Each is zoomed in on the phone and the table top so the dial and handset stay big. The phone and the props on it are live. */
 .tl-desk {{ container-type: size; position: relative; width: 100%; height: 100dvh; overflow: hidden; display: flex; align-items: flex-end; justify-content: center;
