@@ -374,10 +374,10 @@ def book_spine(x0, by, w=BOOK_W, t=BOOK_T, depth=60):
              f"L{x0} {by} C{x0-5} {by-t*.3} {x0-5} {top+depth+t*.3} {x0} {top+depth} Z")
     g = [f'<ellipse cx="{x0+w/2}" cy="{by+2}" rx="{w/2+16}" ry="8" fill="{INK}" opacity=".2" filter="url(#tls-edge)"/>',
          shape(face, "#fbf3df"),
-         # the top of the cover: its blue band and the little dial, seen from above
-         f'<g {WASH}><path d="M{x0+7} {top} L{x0+w*.42:.0f} {top} L{x0+w*.42-3:.0f} {top+depth} L{x0} {top+depth} Z" fill="{SKY}"/></g>',
-         f'<g {WOB}><ellipse cx="{x0+w*.72:.0f}" cy="{top+depth*.52:.0f}" rx="26" ry="12" {LNS}/><ellipse cx="{x0+w*.72:.0f}" cy="{top+depth*.52:.0f}" rx="9" ry="4" {LNS}/></g>',
-         f'<path d="M{x1-52} {top+10} L{x1-20} {top+10}" stroke="{BERRY}" stroke-width="5" stroke-linecap="round" opacity=".85"/>',
+         # the front cover, seen from above: the same design as the book's real cover (desk_pages), lying with
+         # its spine edge toward you, so its top points left. Plain shapes only: no ids, since the room is drawn three ways.
+         f'<clipPath id="tls-bookface{int(x0)}{int(by)}"><path d="{face}"/></clipPath>',
+         f'<g clip-path="url(#tls-bookface{int(x0)}{int(by)})"><g transform="translate({x0} {top+depth}) scale({w/356:.4f} {depth/300:.4f}) rotate(-90)">{cover_top()}</g></g>',
          f'<g {WOB}><path d="{face}" {LN}/></g>',
          shape(spine, SKY, edge="#0f2c40"),
          f'<path d="M{x0+4} {top+depth+7} L{x1-4} {top+depth+7}" stroke="#fff" stroke-opacity=".3" stroke-width="3" stroke-linecap="round"/>',
@@ -388,6 +388,19 @@ def book_spine(x0, by, w=BOOK_W, t=BOOK_T, depth=60):
          f'<g transform="translate({x1-15} {by-t/2})"><path d="M0 -8 C5 -4 5 4 0 8 C-5 4 -5 -4 0 -8Z" fill="#7fc49a"/></g>',
          f'<g opacity=".14" filter="url(#tls-grain)"><path d="{spine}" fill="#000"/></g>']
     return "".join(g)
+
+def cover_top():
+    """The guide's front cover (300 x 356), simplified for the top of the book on the table."""
+    return (f'<rect width="300" height="356" fill="#fbf3df"/><rect width="300" height="122" fill="{SKY}"/><rect y="122" width="300" height="5" fill="{SUN}"/>'
+            f'<text x="26" y="56" {SERIF} font-size="36" font-weight="700" letter-spacing="3" fill="#fff">ROTARY</text>'
+            f'<text x="26" y="98" {SERIF} font-size="36" font-weight="700" letter-spacing="3" fill="#fff">PHONES</text>'
+            f'<text x="26" y="166" {SERIF} font-size="30" font-style="italic" fill="{INK}">the easy way</text>'
+            f'<path d="M26 182 L138 182" stroke="{SKY}" stroke-width="2"/>'
+            f'<path d="M170 300 C168 262 176 246 200 242 L240 242 C262 246 270 262 268 300 Z" fill="#7f9e74"/>'
+            f'<circle cx="219" cy="276" r="18" fill="#f3ead6" stroke="#3a4d36" stroke-width="2"/>'
+            f'<g transform="translate(246 122) rotate(14)"><circle r="28" fill="{BERRY}"/></g>'
+            f'<path d="M26 326 L274 326" stroke="{SKY}" stroke-width="2"/>'
+            f'<text x="26" y="346" {SANS} font-size="12" font-weight="700" letter-spacing="1.6" fill="{SKY}">TREELINE PRESS</text>')
 
 def book_box(x0, by, w=BOOK_W, t=BOOK_T, depth=60):
     return (x0 - 8, by - t - depth - 6, w + 16, t + depth + 14)
