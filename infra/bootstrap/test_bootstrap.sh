@@ -38,9 +38,9 @@ expect "secret types are SecureString" test "$(state '.params["/treeline/vapid_p
 expect "both IAM users exist with a policy" test "$(state '[.users[] | select(.policy != null)] | length')" = 2
 expect "VM key file written, mode 600" test "$(stat -c %a "$T/local/vm-credentials")" = 600
 expect "local dir is private (700)" test "$(stat -c %a "$T/local")" = 700
-expect "VM policy cannot read or delete backups" bash -c "! jq -e '.users[\"treeline-vm\"].policy.Statement[] | select(.Action | tostring | test(\"GetObject|DeleteObject|s3:\\\\*\"))' '$FAKE_AWS_STATE' >/dev/null"
-expect "VM can tag households' backups but not central's" bash -c "jq -e '[.users[\"treeline-vm\"].policy.Statement[] | select(.Action == \"s3:PutObjectTagging\") | .Resource] == [\"arn:aws:s3:::treeline-backups-123456789012-us-west-2/households/*\"]' '$FAKE_AWS_STATE' >/dev/null"
-expect "VM cannot delete, change lifecycle or versioning" bash -c "! jq -e '.users[\"treeline-vm\"].policy.Statement[] | select(.Action | tostring | test(\"Delete|Lifecycle|Versioning|PutBucket\"))' '$FAKE_AWS_STATE' >/dev/null"
+expect "VM policy cannot read backups" bash -c "! jq -e '.users[\"treeline-vm\"].policy.Statement[] | select(.Action | tostring | test(\"GetObject|s3:\\\\*\"))' '$FAKE_AWS_STATE' >/dev/null"
+expect "VM can delete households' backups but not central's" bash -c "jq -e '[.users[\"treeline-vm\"].policy.Statement[] | select(.Action == \"s3:DeleteObject\") | .Resource] == [\"arn:aws:s3:::treeline-backups-123456789012-us-west-2/households/*\"]' '$FAKE_AWS_STATE' >/dev/null"
+expect "VM cannot tag, change lifecycle or versioning, or delete versions" bash -c "! jq -e '.users[\"treeline-vm\"].policy.Statement[] | select(.Action | tostring | test(\"Tagging|Lifecycle|Versioning|PutBucket|DeleteObjectVersion\"))' '$FAKE_AWS_STATE' >/dev/null"
 expect "VM may only list under households/" bash -c "jq -e '.users[\"treeline-vm\"].policy.Statement[] | select(.Action == \"s3:ListBucket\") | .Condition.StringLike[\"s3:prefix\"] == [\"households/*\"]' '$FAKE_AWS_STATE' >/dev/null"
 expect "VM policy has no wildcard resources" bash -c "! jq -e '.users[\"treeline-vm\"].policy.Statement[] | select(.Resource == \"*\")' '$FAKE_AWS_STATE' >/dev/null"
 expect "SMTP user is limited to our domain" bash -c "jq -e '.users[\"treeline-ses-smtp\"].policy.Statement[0].Condition.StringLike[\"ses:FromAddress\"] == \"*@treelinephone.com\"' '$FAKE_AWS_STATE' >/dev/null"

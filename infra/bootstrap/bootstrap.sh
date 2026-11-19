@@ -186,7 +186,7 @@ vm_policy() {
       { Sid: "WriteBackups", Effect: "Allow",
         Action: ["s3:PutObject", "s3:AbortMultipartUpload"],
         Resource: ["arn:aws:s3:::\($b)/central/*", "arn:aws:s3:::\($b)/households/*"] },
-      { Sid: "TagHouseholdBackupsForPurge", Effect: "Allow", Action: "s3:PutObjectTagging",
+      { Sid: "DeleteHouseholdBackups", Effect: "Allow", Action: "s3:DeleteObject",
         Resource: "arn:aws:s3:::\($b)/households/*" },
       { Sid: "ListHouseholdBackups", Effect: "Allow", Action: "s3:ListBucket",
         Resource: "arn:aws:s3:::\($b)",
