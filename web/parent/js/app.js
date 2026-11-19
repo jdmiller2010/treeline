@@ -81,6 +81,7 @@ function shell(v) {
   <div class="tl-app__layout">
     <header class="tl-appbar">
       ${v.back ? html`<div class="tl-appbar__lead">${iconButton({ label: "Back", name: "chevron-right", extra: "tl-iconbtn--back", attrs: { "data-back": v.back } })}</div>` : ""}
+      <span class="tl-appbar__brand">${brand("#/home")}</span>
       <h1 class="tl-appbar__title" id="app-title">${v.title}</h1>
       <div class="tl-appbar__actions">${v.actions || ""}${accountMenu()}</div>
     </header>
@@ -137,6 +138,12 @@ function show(v, mine) {
   if (region) liveToasts.forEach((t) => region.appendChild(t));
   document.title = (v.title ? v.title + " · " : "") + "Treeline";
   window.scrollTo(0, 0);
+  // On a phone the logo and tagline sit at the top of the page. Once they scroll away, the small logo is pinned in the title
+  // bar (and, on Home, the treehouse's name comes in beside it).
+  const topBrand = root.querySelector(".tl-app__brandline"), barBrand = root.querySelector(".tl-appbar__brand");
+  if (topBrand && barBrand && "IntersectionObserver" in window) {
+    new IntersectionObserver(([e]) => barBrand.classList.toggle("is-shown", !e.isIntersecting)).observe(topBrand);
+  }
   root.querySelector("[data-sign-out]")?.addEventListener("click", signOut);
   root.querySelector("[data-back]")?.addEventListener("click", (e) => ctx.go(e.currentTarget.dataset.back));
   root.querySelectorAll("[data-dismiss]").forEach((b) => b.addEventListener("click", async () => {

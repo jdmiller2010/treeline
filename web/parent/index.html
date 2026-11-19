@@ -18,6 +18,14 @@
   /* On a phone there is no side rail (it carries the logo), so the logo and tagline sit at the very top, above the title bar. */
   .tl-app__brandline { padding: max(var(--space-4), env(safe-area-inset-top)) var(--gutter-sm) var(--space-1); }
   @container tl-app (min-width: 768px) { .tl-app__brandline { display: none; } }
+  /* The small logo that joins the title bar on a phone once the big one has scrolled away (the side rail carries it from 768 up). */
+  .tl-appbar__brand { display: none; }
+  .tl-appbar__brand .tl-brand__word { display: none; }
+  .tl-appbar__brand .tl-brand__mark { width: 34px; height: auto; }
+  @container tl-app (max-width: 767px) {
+    .tl-appbar__brand { display: inline-flex; align-items: center; max-width: 0; opacity: 0; overflow: hidden; transition: max-width 200ms, opacity 150ms; }
+    .tl-appbar__brand.is-shown { max-width: 48px; opacity: 1; }
+  }
   /* A hidden step must really be hidden: the stack layout's display would otherwise override the hidden attribute. */
   .tl-stack[hidden] { display: none; }
   /* Home opens with the treehouse; it scrolls away with the page and the treehouse's name stays pinned in the title bar. */

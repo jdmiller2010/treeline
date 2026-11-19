@@ -190,7 +190,12 @@ def main():
         a.evaluate("() => window.scrollTo(0, 99999)"); a.wait_for_timeout(600)
         check(a.evaluate("() => getComputedStyle(document.querySelector('#app-title')).opacity") == "1" and a.evaluate("() => document.querySelector('.tl-home-hero').getBoundingClientRect().bottom < 64"),
               "scrolled down, the picture is gone and the name is in the title bar")
-        a.evaluate("() => window.scrollTo(0, 0)")
+        bar = a.evaluate("""() => { const r = (s) => document.querySelector(s).getBoundingClientRect(); const b = r('.tl-appbar__brand'), t = r('#app-title'), bar = r('.tl-appbar');
+          return { barTop: Math.round(bar.top), brandRight: Math.round(b.right), titleLeft: Math.round(t.left), brandW: Math.round(b.width), brandOpacity: getComputedStyle(document.querySelector('.tl-appbar__brand')).opacity }; }""")
+        check(bar["barTop"] == 0 and bar["brandW"] > 20 and bar["brandOpacity"] == "1" and 0 <= bar["titleLeft"] - bar["brandRight"] <= 24,
+              f"scrolled down on a phone, the small logo is pinned in the title bar with the treehouse's name next to it ({bar})")
+        a.evaluate("() => window.scrollTo(0, 0)"); a.wait_for_timeout(500)
+        check(a.evaluate("() => document.querySelector('.tl-appbar__brand').getBoundingClientRect().width") < 2, "and at the top the big logo and tagline are shown instead, with no second logo in the bar")
         # Home is where the treehouse is managed: the number, the phones, the other grown-ups. No separate page.
         a.goto(f"{BASE}/parent/#/home"); a.wait_for_selector("[aria-label='Grown-ups']")
         check(all(a.locator(f"[aria-label='{n}']").count() == 1 for n in ("Your number", "Phones", "Grown-ups")),
