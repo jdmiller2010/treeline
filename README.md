@@ -16,7 +16,7 @@ phased plan, [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) shows how it fits toge
 
 ```
  softphone (WebRTC) ─┐
- phone adapter + rotary ─┼── SIP/WebRTC ──▶ Asterisk ──every call──▶ control app ──▶ SQLite
+ phone adapter + rotary ─┼── SIP/WebRTC ──▶ Asterisk ──every call──▶ control app ──▶ SQLite (central + one file per treehouse)
  Treeline rotary phone ─┘                                   ▲                         ▲
                                            parent app ──▶ API ───────────────────────┘
 ```
@@ -25,9 +25,9 @@ phased plan, [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) shows how it fits toge
 
 | Phase | What | State |
 | --- | --- | --- |
-| 1 | **Platform core**: treehouses, numbers, strings, call rules, classic tones, call audit, API | Built and tested: 124 unit tests and 17 scripted SIP scenarios |
-| 2 | **Parent app**: setup, strings, calls, quiet hours, phone book, settings, privacy | Built and tested in a real browser (169 checks; 6 widths, both themes) |
-| 3 | **Rotary softphone** and several phones on one line | Built and tested with real browser softphones on real calls (25 checks, with audio) |
+| 1 | **Platform core**: treehouses, numbers, strings, call rules, classic tones, call audit, API | Built and tested: 253 unit tests and 22 scripted SIP scenarios |
+| 2 | **Parent app**: setup, strings, calls, quiet hours, phone book, settings, privacy | Built and tested in a real browser (277 checks; 6 widths, both themes) |
+| 3 | **Rotary softphone** and several phones on one line | Built and tested with real browser softphones on real calls (35 checks, with audio; the softphone's screen 90) |
 | 4 | **Deploy and pilot** | Deployment files, backups, health check, push alerts and privacy are built. **Not run on a public server, and the pilot hasn't happened.** See [docs/DEPLOY.md](docs/DEPLOY.md), [docs/PILOT.md](docs/PILOT.md) |
 | 5 | **A real rotary phone** through an adapter | Server side tested; guide written. **Not tried on an adapter.** See [docs/ADAPTER.md](docs/ADAPTER.md) |
 | 6 | **Custom rotary phone** (ESP32-S3) | Server-side pairing built and tested. **No firmware or board.** See [docs/HARDWARE.md](docs/HARDWARE.md) |
@@ -137,12 +137,12 @@ docker compose logs -f controller  # watch calls being allowed or blocked
 | What | Command | Proves |
 | --- | --- | --- |
 | Unit tests | `docker compose run --rm --no-deps --entrypoint python controller -m unittest discover -s tests -t .` | The rules, the API, the database, backups |
-| Scripted SIP phones | `docker compose run --rm testphones` | 17 scenarios: real SIP calls through Asterisk and the rules |
+| Scripted SIP phones | `docker compose run --rm testphones` | 22 scenarios: real SIP calls through Asterisk and the rules |
 | Softphones | `docker compose run --rm webtests` | Two and three real browser softphones on real WebRTC calls, with audio |
 | The softphone's screen | `docker compose run --rm webtests phone_ui.py` | Pairing and the dial |
-| The parent app | `python3 web/tests/smoke.py` | Needs Playwright and a running API (see the file's header); 169 checks across screens and widths |
+| The parent app | `python3 web/tests/smoke.py` | Needs Playwright and a running API (see the file's header); 277 checks across screens and widths |
 
-A passing scripted run ends with `17/17 scenarios passed`. The scripted tests
+A passing scripted run ends with `22/22 scenarios passed`. The scripted tests
 make a small world of treehouses numbered `01xx` (a range real families never
 get) and remove it afterwards. Run them on a development database, not one with
 real families in it.
@@ -165,15 +165,20 @@ app add a **Phone adapter** (it gives you a user ID and password), then in
 Linphone or Zoiper add a SIP account with that user ID and password, the domain
 set to your PC's address, and transport UDP. Dial another treehouse's four digits.
 
+## Where the data lives
+
+One **central** SQLite database (`data/treeline.db`) holds what routing needs (treehouses, handsets, strings, sign-ins) and a short call ledger. Each treehouse also has **its own file** (`data/households/<id>.db`) with that family's call history, notes, audit log and consent, kept for the family's own retention (7 to 365 days). One family can be backed up, trimmed or deleted without touching another. Backups are one file each (`central/` and `households/<id>/`) and expire after 7 days. There is no upgrade path from the earlier single-file layout: `./dev clean` starts fresh. Rules, write order and the schema-migration process: [docs/DATA_LAYER.md](docs/DATA_LAYER.md).
+
 ## Files
 
 ```
 docker-compose.yml        the development stack (Asterisk, control app, API, test containers)
 asterisk/                 Asterisk image, config, indications (tones), operator messages
 controller/treeline/      rules.py (the rules), calls.py (call engine), api.py (the API),
-                          db.py (SQLite and migrations), jobs.py (alerts, retention), pjsip.py
+                          db.py (central SQLite, markers, migrations), households.py (one file per treehouse),
+                          jobs.py (alerts, retention, reconcile), pjsip.py
 controller/tests/         unit tests
-testphones/               scripted SIP phones and the 17 scenarios
+testphones/               scripted SIP phones and the 22 scenarios
 web/parent/               the parent app    web/phone/   the rotary softphone
 web/shared/               API client and UI builders    web/tests/   browser tests
 design/                   the design system (tokens, components, logo)

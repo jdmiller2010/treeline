@@ -12,13 +12,36 @@ Everything not yet fixed, from every review. Move a row to its review's "Remedia
 |---|---|---|---|---|
 | R1-1 | SMTP STARTTLS does not verify the server certificate (`controller/treeline/mail.py`) | Medium | 2026-11-19 | Open |
 | R1-2 | Adapter SIP secret stored in plaintext, and the provisioning token is unhashed and reusable (`db.py`, `api.py`) | Low–Medium | 2026-11-19 | Open |
-| R1-3 | Call JSON returns the callee's raw block reason to the caller (`api.py` `call_json`) | Low | 2026-11-19 | Open |
-| R1-4 | Backups and the database are unencrypted at rest; backup file is `chmod`ed after creation | Low | 2026-11-19 | Open |
+| R1-3 | Call JSON returns the callee's raw block reason to the caller (`api.py` `call_json`) | Low | 2026-11-19 | **Fixed** in 659d180 (the caller's copy is written with the reason redacted) and 9f0065a (the API reads those copies). Test: `test_api.CallLogs.test_the_callers_json_never_carries_why_the_callee_would_not_take_the_call`, `test_calllog.Isolation` |
+| R1-4 | Backups and the database are unencrypted at rest; backup file is `chmod`ed after creation | Low | 2026-11-19 | Open. The permission part is fixed in 787f646 (every backup is created `0600` in a `0700` directory from its first byte; `test_ops.Backups`). Encryption at rest is still deploy work |
 | R1-5 | Provisioning and pairing tokens appear in the gunicorn access log | Low | 2026-11-19 | Open |
 | R1-6 | Push subscription endpoint accepts any `https://` host (blind SSRF) | Low | 2026-11-19 | Open |
 | R1-7 | Phone lock applied only to the installed app; a parent token can sit on a phone device | Informational | 2026-11-19 | Mostly fixed (uncommitted at time of writing): the lock now applies in every tab, and leaving needs the server-checked parent code. The parent token still stays on the device; it is unusable there while the device is a phone. A person who clears the browser's site data can still escape it. Also by design: "Sign out of this browser" on the phone (no code needed, for a forgotten code) ends phone mode and the browser's parent session, so a child can take a phone out of phone mode that way, but it opens nothing and the parent sees `handset_signed_out` in the action log |
 | R1-8 | `ws://` fallback when `TREELINE_PUBLIC_WS_URL` is unset (dev stack only) | Informational | 2026-11-19 | Open |
 | R1-9 | Bearer token and SIP secret held in `localStorage` | Informational | 2026-11-19 | Accepted (standard for this design) |
+| R2-1 | The caller's copy of a call would have held the callee's pause, quiet hours or daily limit, an unstrung dial's callee id, and the other family's handset ids (found in the spec, before code) | Low | 2026-11-19 | **Fixed** in 659d180: redacted when the copy is written. Tests: `test_calllog.Isolation` |
+| R2-2 | Reconcile could delete a new household's file: the API makes it inside a still-open central transaction, so it has no row yet (data loss, not disclosure) | Medium (availability) | 2026-11-19 | **Fixed** in 659d180: only files that have sat for an hour are treated as orphans. Test: `test_calllog.Reconcile.test_files_with_no_treehouse_are_removed_but_not_while_a_create_may_be_in_flight` |
+| R2-3 | A stale handle to a deleted household (another thread or process) could write through it or bring it back as an empty file | Low | 2026-11-19 | **Fixed** in 7435536: `mode=rw` opens, inode-checked cache. Tests: `test_households.Opening`, `test_api.History.test_a_handle_in_another_thread_cannot_write_to_a_household_deleted_through_the_api` |
+| R2-4 | At startup a file another process was creating could be read as an old-layout file and refused (availability) | Low | 2026-11-19 | **Fixed** in 0284536: one snapshot for the marker read. Test: `test_db.Migrations.test_several_processes_creating_the_same_new_file_at_once_make_it_once` |
+| R2-5 | The central ledger still holds both families' raw facts (including the callee's own rules) for three days, and the API process can open any household file by id: isolation between families on the read path still depends on every call site passing the signed-in family's id | Informational | 2026-11-19 | Open (by design; all current call sites use the session's treehouse, and notes to *other* families are write-only) |
+| R2-6 | Household files, their backups and pre-migration copies are not encrypted at rest | Informational | 2026-11-19 | Open (same as R1-4; deploy work) |
+| R2-7 | "Delete all my data" removes the live file at once, but backups of it (central, and the household's own) live up to 7 days; the VM cannot delete them | Informational | 2026-11-19 | Accepted, documented ([DATA_LAYER.md](DATA_LAYER.md), `infra/README.md`) and warned about in the app when retention is shortened |
+
+## Review 2: 2026-11-19, the data-layer split (reviewed by its author, not independently)
+
+**Scope.** The `data-layer-split` branch: `db.py` (markers, refusal, migration runner), the new `households.py`, `api.py` (treehouse create, leave, delete, the call history and paging, health), `calls.py`, `jobs.py`, `backup.py`, `dev` (clean), and the tests. Not covered: the web client's changes beyond reading them, the deploy files beyond the backup default, and anything on a public server.
+
+**Method.** Not `/security-review`: the author of the change read the spec against the code (the findings below that were found in the spec are marked), wrote tests that scan every row of a family's file for another family's data, and ran real files, real threads and a second process. It was not an independent review, so it should not be taken as one.
+
+**Result.** R2-1 to R2-7 in the table above. No disclosure of one family's data to another was found in the code as written; R2-1 would have been one, and was caught in the spec.
+
+**Now structurally prevented** (rather than checked on each read): a query for one family cannot reach another family's rows, because they are in different files; retention, deletion and backup are per family; a caller's file cannot return why a callee refused, because that is not in it (closes R1-3); a household file whose `meta.treehouse_id` is not its file name, or which carries the wrong marker, is refused; a database newer than the code, or without the marker, is refused and left byte-for-byte unchanged, so an older release cannot write into a newer layout.
+
+**Not prevented.** R2-5: the API opens a household by id, so a call site that passed the wrong id would read another family. The tests cover each current call site with two families.
+
+**Checked and clean.** Path traversal through a household id (ids go through `int()`); SQL injection (parameterised; the only f-strings build column lists from fixed names); file permissions (household files, backups and pre-migration copies are created `0600` in `0700` directories); deleting a household removes its `-wal`/`-shm` files and pre-migration copies.
+
+**Remediation taken.** See each finding. Everything marked Fixed has a test that was run (`./dev unit`, 253 tests). What was not run: nothing on a public server, and the browser tests of the two parent-app changes are listed in the data-layer report, not here.
 
 ## Review 1: 2026-11-19, installable app (PWA) branch, plus transit and at-rest encryption
 

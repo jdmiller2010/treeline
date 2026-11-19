@@ -1,6 +1,6 @@
 # Data layer: one central database and one file per treehouse
 
-Status: **being implemented on the `data-layer-split` branch.** Decided with the owner: no migration from the old layout. This is the spec to implement before the first deployment
+Status: **implemented on the `data-layer-split` branch** (unit tests, the SIP scenarios, both browser softphone scripts, the parent-app and installable-app browser tests and a manual two-family call were run against the dev stack; nothing has run on a public server or in S3, and `age` encryption is still deploy work). Decided with the owner: no migration from the old layout. This is the spec to implement before the first deployment
 (see the deploy plan in `infra/README.md`). The "Spec review" section at the end lists what the first implementation pass corrected in this document.
 
 ## Why

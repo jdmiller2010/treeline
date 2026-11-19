@@ -170,10 +170,8 @@ erDiagram
     treehouse ||--o{ handset : has
     treehouse ||--o{ grown_up : "run by"
     treehouse ||--o{ ladder_code : issues
-    treehouse ||--o{ notice : receives
-    treehouse ||--o{ parent_action : "changes logged"
     treehouse ||--o{ string : "side a or b"
-    treehouse ||--o{ call : "caller or callee"
+    treehouse ||--o{ call : "caller or callee (the ledger)"
     call ||--o{ call_event : records
     handset ||--o{ call_event : "which handset"
     grown_up ||--o{ push_subscription : "devices (by email)"
@@ -188,8 +186,9 @@ erDiagram
         bool paused
         real max_call_minutes
         real daily_minutes
-        int retention_days
-        text consent_version
+        text parent_pin_hash "salted scrypt"
+        text left_at
+        text deleted_at
     }
     handset {
         int id PK
@@ -214,13 +213,36 @@ erDiagram
         text result
         text reason
         int talk_sec
+        bool logged "copied to both households"
     }
     call_event {
         text event "dialed, rang, answered, joined, left, pips, ended"
     }
 ```
 
-Other tables: `login_code` and `session` (email sign-in), `pairing` (tablet and device pairing codes), `setting` (knobs the tests change). Only the md5 digest of a handset's secret is stored for Asterisk; adapters, which fetch their settings by a private link, also keep the secret so that file can be made.
+That is the **central** database (`treeline.db`): what the app needs to route calls and to find a household from an outside key, plus the call **ledger** (calls in progress and the last three days, which the rules are computed from). Each treehouse also has its **own file**, `households/<id>.db`, with that family's call history (a redacted copy per call), notes for the parents, the log of what its grown-ups changed, and its consent and retention. Backing up, trimming or deleting one family never touches another's file. The rules for what lives where, the write order across the two kinds of file, and the schema-migration process are in [DATA_LAYER.md](DATA_LAYER.md).
+
+```mermaid
+erDiagram
+    meta ||--o{ call_log : "retention trims"
+    call_log ||--o{ call_event : records
+    meta {
+        int treehouse_id "the file's own id"
+        int retention_days "7 to 365"
+        bool ack_911
+        text consent_at
+        text consent_version
+    }
+    call_log {
+        int id PK "the ledger's call id"
+        text result
+        text reason "redacted: never the other family's rules"
+    }
+    notice { text kind }
+    parent_action { text action }
+```
+
+Other central tables: `login_code` and `session` (email sign-in), `pairing` (tablet and device pairing codes), `setting` (knobs the tests change). Only the md5 digest of a handset's secret is stored for Asterisk; adapters, which fetch their settings by a private link, also keep the secret so that file can be made.
 
 ## 6. Handset accounts and registration
 
@@ -338,9 +360,9 @@ Development uses the same services with `docker-compose.yml` and a default ARI p
 - **Calls are decided in one place.** Asterisk has a single dialplan line; every rule lives in `rules.py`. Adding a rule means adding a branch there and a scenario in `testphones/`.
 - **Handset accounts are generated, not hand-written.** The database is the source of truth; Asterisk's config is derived and reloaded. Asterisk keeps only digests of secrets.
 - **Tones are named in `indications.conf`.** ARI splits a `media` list on commas, so raw tone strings silently fail.
-- **A call involves two families, so views are filtered.** What each side sees is computed per viewer. Retention removes one family's side of a call without erasing the other's.
+- **A call involves two families, so views are filtered.** What each side sees is computed per viewer. Each family has its own copy of a call, written redacted (a caller's copy never says why the callee wouldn't take the call), so retention trims one family's file without touching the other's.
 - **Plain, framework-free web code.** The apps are ES modules on the design kit; markup goes through an escaping `html` tag, and button `attrs` built from data must be an object.
-- **Real-call tests, not just row checks.** The tones, WebRTC sign-in and upgrade bugs were only found with real calls, real browsers and an upgraded database, so those paths have tests (`testphones/`, `web/tests/`, `controller/tests/test_db.py`).
+- **Real-call tests, not just row checks.** The tones, WebRTC sign-in and upgrade bugs were only found with real calls, real browsers and an upgraded database, so those paths have tests (`testphones/`, `web/tests/`, `controller/tests/test_db.py`, `test_households.py`).
 
 ## Not built
 

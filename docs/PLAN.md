@@ -40,14 +40,14 @@ This plan turns the decisions on the Treeline planning whiteboard into phases. E
 
 **Build**
 
-1. **Data model** (SQLite in the control app to start; it's one file and plenty for a pilot):
+1. **Data model** (SQLite: a **central** database for routing and the call ledger, and **one file per treehouse** for that family's own records, so backing up, trimming and deleting one family never touches another's; see [DATA_LAYER.md](DATA_LAYER.md)):
    - `treehouse`: id, name, number (4 digits), time zone, quiet hours, paused, call-length limit, daily-minutes limit, created, left.
    - `handset`: id, treehouse, kind (`rotary`, `ata`, `softphone`), name, SIP username and secret, last seen, removed.
    - `string`: treehouse A, treehouse B, state (`waiting`, `live`, `paused`, `cut`), who asked, who approved on each side, when.
    - `ladder_code`: code, from treehouse, expires, used.
    - `grown_up`: id, email, treehouse, role (`parent`, `sitter`).
-   - `call`: see [Call audit](#call-audit).
-   - `parent_action`: who, what, target, before and after, when.
+   - `call`: the central ledger of calls in progress and the last three days, which the rules are computed from. When a call ends each family gets its own redacted copy (`call_log` and its events) in its household file, kept for that family's own retention (7 to 365 days; see [Call audit](#call-audit)).
+   - In each household file: `meta` (retention, consent, the 911 acknowledgement), `call_log`, `call_event`, `notice` (notes for the parents) and `parent_action` (who, what, target, before and after, when).
 2. **Numbers:** one per treehouse, assigned at random from 1000–9999 (0xxx is kept for the system, for example tests and recordings). A number is free to claim again as soon as a treehouse lets it go (a call only connects over a string both families approved, so a stale number can't reach anyone). Parents can change it.
 3. **Dialing:** replace speed dials with 4-digit dialing in the dialplan. 911 goes to the 911 message; any other dial that isn't four digits "cannot be completed as dialed" (below).
 4. **Call flow in the control app**, checked in this order:
