@@ -297,15 +297,6 @@ def describe_call(c, tid):
     return {"label": "Didn't connect", "tone": "bark", "icon": "phone-off", "detail": ""}
 
 
-def visible_to_callee(c):
-    """What the called treehouse's parents see. Attempts that never had a
-    live string, and the caller's own rules, stay on the caller's side."""
-    if c["result"] in (rules.NOT_IN_SERVICE, rules.NOT_STRUNG, rules.NO_911, rules.INCOMPLETE):
-        return False
-    why = c["reason"] or ""
-    return not (why.startswith("caller_") or why in ("unstrung_limit", "repeat_limit"))
-
-
 def call_json(c, th, detail=False):
     tid = th["id"]
     outgoing = c["caller_treehouse"] == tid
@@ -327,24 +318,16 @@ def call_json(c, th, detail=False):
         out["events"] = [
             {"at": e["at"], "event": e["event"],
              "handset": names.get(e["handset_id"]) if e["handset_id"] else None,
-             "theirs": bool(e["handset_id"]) and e["handset_id"] not in names}
-            for e in conn().execute("SELECT * FROM call_event WHERE call_id=? ORDER BY id", (c["id"],))]
+             "theirs": bool(e["theirs"])}
+            for e in households.conn(tid).execute("SELECT * FROM call_event WHERE call_id=? ORDER BY id", (c["id"],))]
         out["hung_up_first"] = (None if not c["hung_up_first"] else
                                 ("you" if (c["hung_up_first"] == "caller") == outgoing else "them"))
     return out
 
 
-def calls_for(th, since=None, limit=300):
-    tid = th["id"]
-    args = [tid, tid]
-    sql = "SELECT * FROM call WHERE (caller_treehouse=? OR callee_treehouse=?) AND state='ended'"
-    if since:
-        sql += " AND started_at>=?"
-        args.append(db.iso(since))
-    sql += " ORDER BY id DESC LIMIT ?"
-    args.append(limit)
-    rows = conn().execute(sql, args).fetchall()
-    return [c for c in rows if c["caller_treehouse"] == tid or visible_to_callee(c)]
+def calls_for(th, since=None, limit=300, before=None):
+    """This family's call history: their own file's copies, newest first (see households.call_page)."""
+    return households.call_page(th["id"], th, since, before, limit)[0]
 
 
 # ================================================================ health
@@ -355,7 +338,21 @@ def health():
     rate_limit(f"health:{client_ip()}", 120, 60)          # a monitor polls; a flood doesn't
     conn().execute("SELECT 1")
     asterisk = ari_mod.Ari().online_users(timeout=2) is not None     # never hold a thread long
-    return jsonify(ok=asterisk, database=True, asterisk=asterisk), (200 if asterisk else 503)
+    behind = households_behind()          # a household file whose migration failed or is stuck: the deploy must see it
+    ok = asterisk and behind == 0
+    return jsonify(ok=ok, database=True, asterisk=asterisk, households_behind=behind), (200 if ok else 503)
+
+
+_behind = {"at": 0.0, "n": 0}
+
+
+def households_behind():
+    """How many household files are not at this code's schema version. Reads every file's header, so it is
+    remembered for half a minute (a monitor polls)."""
+    t = time.time()
+    if t - _behind["at"] > 30:
+        _behind.update(at=t, n=len(households.behind()))
+    return _behind["n"]
 
 
 # ================================================================ sign-in
@@ -556,6 +553,7 @@ def treehouse_update():
         if was != keep:
             audit("changed_retention_days", None, was, keep)
             households.set_retention(th["id"], keep)
+            households.trim(th["id"])               # a shorter time takes effect now, not at the next hourly purge
     for k, v in changes.items():
         if th[k] != v:
             audit(f"changed_{k}", None, th[k], v)
@@ -586,25 +584,55 @@ def treehouse_number():
     return jsonify(th_json(db.get_treehouse(conn(), th["id"])))
 
 
-def end_all_strings(tid, left_title):
-    for s in my_strings(tid):
-        other = s["b_id"] if side_of(s, tid) == "a" else s["a_id"]
-        conn().execute("UPDATE string SET state='cut', updated_at=? WHERE id=?", (db.iso(), s["id"]))
-        if s["state"] in ("live", "paused"):
-            households.add_notice(other, "string_ended", left_title,
-                          "The string between your treehouses has ended.")
+def end_all_strings(tid):
+    """Cut every string of this treehouse (central, inside the caller's transaction). Returns the other
+    families that had a live or paused one, to be told afterwards."""
+    tell = []
+    for st in my_strings(tid):
+        conn().execute("UPDATE string SET state='cut', updated_at=? WHERE id=?", (db.iso(), st["id"]))
+        if st["state"] in ("live", "paused"):
+            tell.append(st["b_id"] if side_of(st, tid) == "a" else st["a_id"])
+    return tell
+
+
+def tell_ended(others, title):
+    """The notes to the other families come after the central change has committed: a crash in between loses a
+    note (harmless), where the other order could announce a string that was never cut."""
+    for other in others:
+        households.add_notice(other, "string_ended", title, "The string between your treehouses has ended.")
+
+
+def central_transaction(work):
+    """Run `work(conn)` in one central transaction (BEGIN IMMEDIATE .. COMMIT)."""
+    c = conn()
+    c.execute("BEGIN IMMEDIATE")
+    try:
+        out = work(c)
+        c.execute("COMMIT")
+        return out
+    except BaseException:
+        if c.in_transaction:
+            c.execute("ROLLBACK")
+        raise
 
 
 @app.post("/api/treehouse/leave")
 @auth(parent=True)
 def treehouse_leave():
+    """Leave the Treeline but keep the records until the family's own retention is up (then the purge job
+    removes the file). Order: the action-log entry (household), then one central change, then the other families' notes."""
     th = g.th
     if str(body().get("confirm", "")).strip().lower() != th["name"].lower():
         raise ApiError("Type your treehouse name to confirm.", 400, "confirm")
-    end_all_strings(th["id"], f"{th['name']} left the Treeline")
+    tid = th["id"]
     audit("left_treeline")
-    db.leave_treehouse(conn(), th["id"])
-    conn().execute("DELETE FROM grown_up WHERE treehouse_id=?", (th["id"],))
+
+    def work(c):
+        tell = end_all_strings(tid)
+        db.leave_treehouse(c, tid)
+        c.execute("DELETE FROM grown_up WHERE treehouse_id=?", (tid,))
+        return tell
+    tell_ended(central_transaction(work), f"{th['name']} left the Treeline")
     pjsip.write(conn())
     return jsonify(ok=True)
 
@@ -612,34 +640,38 @@ def treehouse_leave():
 @app.delete("/api/treehouse")
 @auth(parent=True)
 def treehouse_delete():
-    """Leave the Treeline and delete every record for this treehouse."""
+    """Leave the Treeline and delete every record for this treehouse. Order: one central transaction (so a crash
+    leaves either everything as it was or the treehouse deleted), then the other families' notes, then the household's
+    file with its WAL files and pre-migration copies. A file left by a crash in between is removed by reconcile."""
     th = g.th
     if str(body().get("confirm", "")).strip().lower() != th["name"].lower():
         raise ApiError("Type your treehouse name to confirm.", 400, "confirm")
     tid = th["id"]
-    end_all_strings(tid, f"{th['name']} left the Treeline")
-    db.leave_treehouse(conn(), tid)
-    c = conn()
-    c.execute("DELETE FROM call_event WHERE call_id IN (SELECT id FROM call WHERE "
-              "caller_treehouse=? AND callee_treehouse IS NULL)", (tid,))
-    c.execute("DELETE FROM call WHERE (caller_treehouse=? AND callee_treehouse IS NULL) OR "
-              "(callee_treehouse=? AND caller_treehouse IS NULL)", (tid, tid))
-    c.execute("UPDATE call SET caller_treehouse=NULL, caller_handset=NULL WHERE caller_treehouse=?", (tid,))
-    c.execute("UPDATE call SET callee_treehouse=NULL, answered_handset=NULL WHERE callee_treehouse=?", (tid,))
-    c.execute("DELETE FROM call_event WHERE call_id IN (SELECT id FROM call WHERE "
-              "caller_treehouse IS NULL AND callee_treehouse IS NULL)")
-    c.execute("DELETE FROM call WHERE caller_treehouse IS NULL AND callee_treehouse IS NULL")
-    emails = [r["email"] for r in c.execute("SELECT email FROM grown_up WHERE treehouse_id=?", (tid,))]
-    for e in emails:
-        c.execute("DELETE FROM session WHERE email=?", (e,))
-        c.execute("DELETE FROM push_subscription WHERE email=?", (e,))
-    for sql in ("DELETE FROM grown_up WHERE treehouse_id=?", "DELETE FROM ladder_code WHERE treehouse_id=?",
-                "DELETE FROM handset WHERE treehouse_id=?",
-                "DELETE FROM string WHERE a_id=? OR b_id=?"):
-        c.execute(sql, (tid,) * sql.count("?"))
-    c.execute("UPDATE treehouse SET name='(deleted)' WHERE id=?", (tid,))
+
+    def work(c):
+        tell = end_all_strings(tid)
+        db.leave_treehouse(c, tid)
+        # The ledger keeps rows other families' copies may still be waiting for: only this family's side is scrubbed.
+        c.execute("DELETE FROM call_event WHERE call_id IN (SELECT id FROM call WHERE "
+                  "caller_treehouse=? AND callee_treehouse IS NULL)", (tid,))
+        c.execute("DELETE FROM call WHERE (caller_treehouse=? AND callee_treehouse IS NULL) OR "
+                  "(callee_treehouse=? AND caller_treehouse IS NULL)", (tid, tid))
+        c.execute("UPDATE call SET caller_treehouse=NULL, caller_handset=NULL WHERE caller_treehouse=?", (tid,))
+        c.execute("UPDATE call SET callee_treehouse=NULL, answered_handset=NULL WHERE callee_treehouse=?", (tid,))
+        c.execute("DELETE FROM call_event WHERE call_id IN (SELECT id FROM call WHERE "
+                  "caller_treehouse IS NULL AND callee_treehouse IS NULL)")
+        c.execute("DELETE FROM call WHERE caller_treehouse IS NULL AND callee_treehouse IS NULL")
+        for e in [r["email"] for r in c.execute("SELECT email FROM grown_up WHERE treehouse_id=?", (tid,))]:
+            c.execute("DELETE FROM session WHERE email=?", (e,))
+            c.execute("DELETE FROM push_subscription WHERE email=?", (e,))
+        for sql in ("DELETE FROM grown_up WHERE treehouse_id=?", "DELETE FROM ladder_code WHERE treehouse_id=?",
+                    "DELETE FROM handset WHERE treehouse_id=?", "DELETE FROM string WHERE a_id=? OR b_id=?"):
+            c.execute(sql, (tid,) * sql.count("?"))
+        c.execute("UPDATE treehouse SET name='(deleted)', deleted_at=? WHERE id=?", (db.iso(), tid))
+        return tell
+    tell_ended(central_transaction(work), f"{th['name']} left the Treeline")
     households.remove(tid)
-    pjsip.write(c)
+    pjsip.write(conn())
     return jsonify(ok=True)
 
 
@@ -1229,9 +1261,14 @@ def today_start(th, t=None):
     return local.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(dt.timezone.utc)
 
 
+MAX_PAGE = 300
+
+
 @app.get("/api/calls")
 @auth()
 def calls_list():
+    """A page of this family's calls, newest first: `before=<call id>` for the next older page, `limit` (default 50
+    for "all", else 300; at most 300), and `more` says whether there are older ones."""
     rng = request.args.get("range", "week")
     if g.gu["role"] == "sitter":
         rng = "today"                       # a sitter sees only today's calls, whatever they ask for
@@ -1241,15 +1278,20 @@ def calls_list():
         since = today_start(th, t)
     elif rng == "week":
         since = t - dt.timedelta(days=7)
-    return jsonify(calls=[call_json(c, th) for c in calls_for(th, since)])
+    limit = request.args.get("limit", type=int) or (50 if rng == "all" else MAX_PAGE)
+    limit = max(1, min(limit, MAX_PAGE))
+    rows, more = households.call_page(th["id"], th, since, request.args.get("before", type=int), limit)
+    return jsonify(calls=[call_json(c, th) for c in rows], more=more)
 
 
 @app.get("/api/calls/<int:cid>")
 @auth()
 def call_detail(cid):
-    c = conn().execute("SELECT * FROM call WHERE id=? AND (caller_treehouse=? OR callee_treehouse=?)",
-                       (cid, g.th["id"], g.th["id"])).fetchone()
-    if not c or (c["caller_treehouse"] != g.th["id"] and not visible_to_callee(c)):
+    try:
+        c = households.conn(g.th["id"]).execute("SELECT * FROM call_log WHERE id=?", (cid,)).fetchone()
+    except households.HouseholdGone:
+        c = None
+    if not c or (c["caller_treehouse"] != g.th["id"] and not households.visible_to_callee(c)):
         raise ApiError("That call isn't there anymore.", 404)
     if g.gu["role"] == "sitter" and c["started_at"] < db.iso(today_start(g.th)):
         raise ApiError("That call isn't there anymore.", 404)       # a sitter sees only today's calls

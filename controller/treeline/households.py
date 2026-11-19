@@ -285,6 +285,7 @@ def sweep():
     """Open every household file once, so a migration that fails shows up at startup (and in the health
     check), not when a family first opens the app. Returns {id: error} for the ones that could not be opened."""
     failed = {}
+    forget_all()                                              # really open each file, not a handle cached earlier
     for tid in ids():
         try:
             conn(tid)

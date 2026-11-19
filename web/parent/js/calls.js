@@ -4,6 +4,9 @@ import { alert, button, emptyState, html, icon, raw, segmented, tag, toast } fro
 import { plural, when } from "/shared/format.js";
 
 let range = "week";
+let older = [];                 // pages loaded with "Show older" (the first page is fetched each time; these come after it)
+let hasMore = false;
+let keepOlder = false;          // "Show older" asked for this render; otherwise coming back to the list starts again from the newest
 
 function title(c) {
   const other = c.other ? (c.other.name || c.other.number) : "Unknown";
@@ -60,8 +63,14 @@ async function downloadCsv() {
 export async function calls(ctx, params) {
   const sitter = !ctx.isParent();
   if (sitter) range = "today";                                  // a sitter sees only today's calls
-  const { calls: list } = await get(`/api/calls?range=${range}`);
-  const selected = params[0] ? list.find((c) => String(c.id) === params[0]) : null;
+  if (!params[0] && !keepOlder) older = [];                     // opening a call's detail keeps the pages loaded; coming back to the list doesn't
+  keepOlder = false;
+  const first = await get(`/api/calls?range=${range}`);
+  const seen = new Set(first.calls.map((c) => c.id));
+  const list = first.calls.concat(older.filter((c) => !seen.has(c.id)));
+  const more = older.length ? hasMore : first.more;
+  let selected = params[0] ? list.find((c) => String(c.id) === params[0]) : null;
+  if (params[0] && !selected) selected = await get(`/api/calls/${params[0]}`).catch(() => null);      // an older call opened by its link
   const detail = selected ? html`<button class="tl-btn tl-btn--quiet tl-btn--sm tl-listdetail__back" type="button" data-back-list><span class="tl-btn__label">‹ All calls</span></button>${await detailCard(selected, ctx)}`
     : emptyState({ art: "connection", title: "Pick a call", body: "Choose a call to see how it went, minute by minute." });
 
@@ -73,14 +82,21 @@ export async function calls(ctx, params) {
   ${sitter ? html`<p class="tl-card__body" style="color:var(--ink-muted)">You're seeing today's calls. A parent can see the rest.</p>`
     : segmented({ name: "calls-range", label: "Show calls from", value: range, options: [["today", "Today"], ["week", "This week"], ["all", "All"]] })}
   ${list.length ? html`<div class="tl-listdetail${selected ? " is-detail" : ""}">
-    <section class="tl-listdetail__list tl-stack"><div class="tl-card tl-card--list">${list.map((c) => logRow(c, ctx, selected && selected.id === c.id))}</div></section>
+    <section class="tl-listdetail__list tl-stack"><div class="tl-card tl-card--list">${list.map((c) => logRow(c, ctx, selected && selected.id === c.id))}</div>
+      ${more ? html`<div class="tl-actions">${button({ label: "Show older", variant: "secondary", attrs: "data-show-older" })}</div>` : ""}</section>
     <section class="tl-listdetail__detail tl-stack">${detail}</section></div>`
     : emptyState({ art: "quiet", title: range === "today" ? "No calls today" : "No calls yet", body: "Every call attempt shows up here, connected or not, so you always know what happened." })}`;
 
   return {
     title: "Calls", nav: "calls", content,
     mount(root) {
-      root.querySelectorAll("input[name=calls-range]").forEach((r) => r.addEventListener("change", (e) => { range = e.target.value; ctx.go("#/calls"); }));
+      root.querySelectorAll("input[name=calls-range]").forEach((r) => r.addEventListener("change", (e) => { range = e.target.value; older = []; ctx.go("#/calls"); }));
+      root.querySelector("[data-show-older]")?.addEventListener("click", async () => {
+        try {
+          const page = await get(`/api/calls?range=${range}&before=${list[list.length - 1].id}`);
+          older = older.concat(page.calls); hasMore = page.more; keepOlder = true; ctx.render();
+        } catch (e) { toast(e.message, "warning"); }
+      });
       root.querySelector("[data-back-list]")?.addEventListener("click", () => ctx.go("#/calls"));
       root.querySelector("[data-export]")?.addEventListener("click", async () => {
         try { await downloadCsv(); toast("Your calls were saved as a CSV file", "success"); } catch (e) { toast(e.message, "warning"); }

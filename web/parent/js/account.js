@@ -44,6 +44,8 @@ export async function account(ctx) {
     ${textField({ id: "set-name", label: "Name", value: th.name, hint: "Families you're strung with see this." })}
     ${selectField({ id: "set-tz", label: "Time zone", options: zones, value: th.timezone, hint: "Quiet hours and daily minutes follow it." })}
     ${selectField({ id: "set-keep", label: "Keep call records for", options: keep, value: th.retention_days, hint: "Older records are deleted. Treeline never keeps audio." })}
+    <div data-keep-warning hidden>${alert({ tone: "warning", title: "Older calls will be removed right away",
+      body: html`Calls older than <span data-keep-n>${th.retention_days}</span> days will be removed from Treeline as soon as you save. Copies in our backups can take up to a week to disappear.` })}</div>
     <div class="tl-actions">${button({ label: "Save", variant: "primary", type: "submit" })}</div>
   </div></form>` : ""}
 
@@ -86,6 +88,12 @@ export async function account(ctx) {
       });
       root.querySelector("[data-push-off]")?.addEventListener("click", async () => {
         try { await disablePush(); toast("Notifications are off for this device", "neutral"); ctx.render(); } catch (e) { toast(e.message, "warning"); }
+      });
+      // Shortening how long records are kept deletes the older ones now, so say so before it is saved.
+      root.querySelector("#set-keep")?.addEventListener("change", (e) => {
+        const days = Number(e.target.value), warn = root.querySelector("[data-keep-warning]");
+        warn.querySelector("[data-keep-n]").textContent = String(days);
+        warn.hidden = !(days < th.retention_days);
       });
       root.querySelector("#house-form")?.addEventListener("submit", async (e) => {
         e.preventDefault();

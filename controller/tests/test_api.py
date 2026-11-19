@@ -1,6 +1,8 @@
 import base64
 import datetime as dt
 import os
+import tempfile
+import threading
 import unittest
 from unittest import mock
 
@@ -67,6 +69,17 @@ def string_up(a, b):
     s = b.post("/api/strings/redeem", {"code": code}).get_json()
     a.post(f"/api/strings/{s['id']}/approve")
     return s["id"]
+
+
+def add_call(c, caller, callee, started=None, dialed=None, result="connected", reason=None, talk=0, caller_handset=None):
+    """A finished call as the engine leaves it: a row in the central ledger, copied into each family's file by the
+    real households.record_call. `caller` and `callee` are treehouse ids (callee may be None)."""
+    cid = c.execute(
+        "INSERT INTO call(started_at,caller_treehouse,caller_handset,callee_treehouse,dialed,state,ended_at,result,reason,talk_sec)"
+        " VALUES(?,?,?,?,?,?,?,?,?,?)", (started or db.iso(), caller, caller_handset, callee, dialed or "9999", "ended",
+                                        started or db.iso(), result, reason, talk)).lastrowid
+    households.record_call(c, cid)
+    return cid
 
 
 class SignIn(unittest.TestCase):
@@ -239,8 +252,7 @@ class Treehouse(unittest.TestCase):
         c = helpers.db.connect()
         old = (db.utcnow() - dt.timedelta(days=3))
         for when, talk in ((old, 60), (db.utcnow(), 120)):
-            c.execute("INSERT INTO call(started_at,caller_treehouse,callee_treehouse,dialed,state,result,talk_sec) VALUES(?,?,?,?,?,?,?)",
-                      (db.iso(when), parent.house["id"], other.house["id"], other.house["number"], "ended", "connected", talk))
+            add_call(c, parent.house["id"], other.house["id"], db.iso(when), other.house["number"], talk=talk)
         self.assertEqual(parent.get("/api/actions").status_code, 200)
         self.assertEqual(sitter.get("/api/actions").status_code, 403)
         for rng in ("today", "week", "all", ""):
@@ -277,8 +289,7 @@ class Treehouse(unittest.TestCase):
         a, b = make_house("Gone"), make_house("Kept")
         string_up(a, b)
         c = helpers.db.connect()
-        c.execute("INSERT INTO call(started_at,caller_treehouse,callee_treehouse,dialed,state,result) "
-                  "VALUES(?,?,?,?,?,?)", (db.iso(), a.house["id"], b.house["id"], b.house["number"], "ended", "connected"))
+        add_call(c, a.house["id"], b.house["id"], dialed=b.house["number"])
         a.post("/api/handsets", {"kind": "softphone", "name": "Tablet"})
         self.assertEqual(a.delete("/api/treehouse", {"confirm": "gone"}).status_code, 200)
         for table, col in (("grown_up", "treehouse_id"), ("handset", "treehouse_id")):
@@ -351,6 +362,163 @@ class Ownership(unittest.TestCase):
         self.assertEqual(r.status_code, 500)
         self.assertEqual(set(households.ids()), files)                              # the file that had been made is gone
         self.assertEqual(c.execute("SELECT count(*) FROM treehouse").fetchone()[0], houses)
+
+
+class History(unittest.TestCase):
+    """Each family's call history is its own file: retention, paging, deleting and leaving."""
+
+    def setUp(self):
+        self.a, self.b = make_house("Alex's"), make_house("Sam's")
+        string_up(self.a, self.b)
+        self.c = helpers.db.connect()
+        self.aid, self.bid = self.a.house["id"], self.b.house["id"]
+
+    def call(self, days_ago=0, caller=None, callee=None, **kw):
+        started = db.iso(db.utcnow() - dt.timedelta(days=days_ago, seconds=1))
+        return add_call(self.c, caller or self.aid, callee or self.bid, started, self.b.house["number"], **kw)
+
+    def ids(self, who, query="range=all"):
+        return [x["id"] for x in who.get(f"/api/calls?{query}").get_json()["calls"]]
+
+    def test_both_families_see_a_real_call_and_each_file_holds_only_its_own_records(self):
+        cid = self.call(talk=40)
+        self.assertEqual((self.ids(self.a), self.ids(self.b)), ([cid], [cid]))
+        self.assertEqual(self.a.get(f"/api/calls/{cid}").status_code, 200)
+        for tid in (self.aid, self.bid):
+            raw = households.conn(tid)
+            self.assertEqual({r[0] for r in raw.execute("SELECT treehouse_id FROM meta")}, {tid})
+            self.assertEqual({r[0] for r in raw.execute("SELECT name FROM sqlite_master WHERE type='table'")},
+                             {"meta", "call_log", "call_event", "notice", "parent_action"})
+
+    def test_lowering_retention_removes_older_calls_at_once_and_only_for_that_family(self):
+        old, recent = self.call(days_ago=30), self.call(days_ago=2)
+        self.assertEqual(self.ids(self.a), [recent, old])
+        self.assertEqual(self.a.patch("/api/treehouse", {"retention_days": 7}).status_code, 200)
+        self.assertEqual(self.ids(self.a), [recent])                                   # gone now, not at the next purge
+        self.assertEqual(self.ids(self.b), [recent, old])                              # Sam's copy is Sam's own
+        self.assertEqual(households.conn(self.aid).execute("SELECT count(*) FROM call_event").fetchone()[0],
+                         households.conn(self.aid).execute("SELECT count(*) FROM call_event WHERE call_id=?", (recent,)).fetchone()[0])
+
+    def test_paging_newest_first_with_before_limit_and_more(self):
+        made = [self.call(days_ago=0) for _ in range(7)]
+        newest_first = list(reversed(made))
+        page = self.a.get("/api/calls?range=all&limit=3").get_json()
+        self.assertEqual(([x["id"] for x in page["calls"]], page["more"]), (newest_first[:3], True))
+        page = self.a.get(f"/api/calls?range=all&limit=3&before={newest_first[2]}").get_json()
+        self.assertEqual(([x["id"] for x in page["calls"]], page["more"]), (newest_first[3:6], True))
+        page = self.a.get(f"/api/calls?range=all&limit=3&before={newest_first[5]}").get_json()
+        self.assertEqual(([x["id"] for x in page["calls"]], page["more"]), (newest_first[6:], False))
+        self.assertEqual(self.a.get(f"/api/calls?range=all&before={newest_first[-1]}").get_json(), {"calls": [], "more": False})
+
+    def test_all_defaults_to_fifty_and_a_page_never_exceeds_three_hundred(self):
+        h = households.conn(self.aid)
+        h.execute("BEGIN")
+        for i in range(1, 361):
+            h.execute("INSERT INTO call_log(id,started_at,caller_treehouse,dialed,state,result) VALUES(?,?,?,?,?,?)",
+                      (10 ** 6 + i, db.iso(db.utcnow()), self.aid, "9999", "ended", "no_answer"))
+        h.execute("COMMIT")
+        everything = self.a.get("/api/calls?range=all").get_json()
+        self.assertEqual((len(everything["calls"]), everything["more"]), (50, True))
+        self.assertEqual(len(self.a.get("/api/calls?range=all&limit=5000").get_json()["calls"]), 300)
+        self.assertEqual(len(self.a.get("/api/calls?range=week").get_json()["calls"]), 300)
+        self.assertEqual(len(self.a.get("/api/calls?range=all&limit=0").get_json()["calls"]), 50)
+
+    def test_deleting_removes_the_file_and_the_other_family_sees_a_deleted_house(self):
+        cid = self.call(talk=20)
+        self.assertEqual(self.a.delete("/api/treehouse", {"confirm": "alex's"}).status_code, 200)
+        self.assertFalse(households.exists(self.aid))
+        self.assertEqual(os.listdir(households.root()).count(f"{self.aid}.db-wal"), 0)
+        shown = self.b.get("/api/calls?range=all").get_json()["calls"]
+        self.assertEqual([(x["id"], x["other"]["name"], x["other"]["number"]) for x in shown], [(cid, "(deleted)", None)])
+        self.assertIn("Alex's left the Treeline", [n["title"] for n in households.notices(self.bid)])
+        row = self.c.execute("SELECT name, deleted_at, number FROM treehouse WHERE id=?", (self.aid,)).fetchone()
+        self.assertEqual((row["name"], bool(row["deleted_at"]), row["number"]), ("(deleted)", True, None))
+        self.assertEqual(households.reconcile(self.c)["orphans"], [])                  # nothing left over
+
+    def test_a_handle_in_another_thread_cannot_write_to_a_household_deleted_through_the_api(self):
+        seen = {}
+        ready, go, done = threading.Event(), threading.Event(), threading.Event()
+
+        def worker():
+            households.conn(self.aid)                                                  # e.g. the jobs thread, mid-sweep
+            ready.set()
+            go.wait()
+            seen["note"] = households.add_notice(self.aid, "x", "late note")
+            households.log_action(self.aid, "x@example.com", "late")
+            households.forget_all()
+            done.set()
+        t = threading.Thread(target=worker)
+        t.start()
+        ready.wait()
+        self.assertEqual(self.a.delete("/api/treehouse", {"confirm": "alex's"}).status_code, 200)
+        go.set()
+        done.wait()
+        t.join()
+        self.assertIsNone(seen["note"])
+        self.assertFalse(households.exists(self.aid))
+        self.assertEqual([n for n in os.listdir(households.root()) if n.startswith(f"{self.aid}.")], [])
+
+    def test_a_delete_that_fails_part_way_changes_nothing(self):
+        real = db.leave_treehouse
+
+        def fail(c, tid):
+            real(c, tid)
+            raise RuntimeError("crash after the first statements")
+        with mock.patch.object(db, "leave_treehouse", fail):
+            r = self.a.delete("/api/treehouse", {"confirm": "alex's"})
+        self.assertEqual(r.status_code, 500)
+        self.assertTrue(households.exists(self.aid))                                   # nothing was removed
+        row = self.c.execute("SELECT name, left_at, number FROM treehouse WHERE id=?", (self.aid,)).fetchone()
+        self.assertEqual((row["name"], row["left_at"], row["number"]), ("Alex's", None, self.a.house["number"]))
+        self.assertEqual(len(self.a.get("/api/strings").get_json()["strings"]), 1)      # and the string is still there
+        self.assertNotIn("Alex's left the Treeline", [n["title"] for n in households.notices(self.bid)])
+        self.assertEqual(self.a.get("/api/me").status_code, 200)
+
+    def test_an_orphan_file_from_a_crash_during_delete_is_removed_by_reconcile(self):
+        self.c.execute("UPDATE treehouse SET deleted_at=?, name='(deleted)' WHERE id=?", (db.iso(), self.aid))   # crashed before the file went
+        self.assertTrue(households.exists(self.aid))
+        self.assertEqual(households.reconcile(self.c)["orphans"], [self.aid])
+        self.assertFalse(households.exists(self.aid))
+
+    def test_leaving_keeps_the_file_until_past_retention_then_the_purge_removes_it(self):
+        cid = self.call(talk=20)
+        self.assertEqual(self.a.post("/api/treehouse/leave", {"confirm": "alex's"}).status_code, 200)
+        self.assertTrue(households.exists(self.aid))
+        self.assertIn("left_treeline", [r["action"] for r in households.actions(self.aid)])
+        self.assertEqual([n["title"] for n in households.notices(self.bid)][0], "Alex's left the Treeline")
+        self.assertEqual(self.ids(self.b), [cid])
+        self.assertEqual(self.a.get("/api/me").get_json()["treehouse"], None)          # nobody left to read it
+        from treeline import jobs
+        households.set_retention(self.bid, 365)                                        # Sam's family keeps theirs for a year
+        jobs.purge(self.c, db.utcnow() + dt.timedelta(days=60))
+        self.assertTrue(households.exists(self.aid))                                   # 90 days not up
+        jobs.purge(self.c, db.utcnow() + dt.timedelta(days=91))
+        self.assertFalse(households.exists(self.aid))
+        self.assertTrue(households.exists(self.bid))
+        self.assertEqual(households.conn(self.bid).execute("SELECT id FROM call_log").fetchall()[0][0], cid)   # Sam's own copy is Sam's
+
+    def test_health_fails_while_a_household_is_below_the_current_version(self):
+        def step(c):
+            c.execute("ALTER TABLE notice ADD COLUMN seen TEXT")
+        # Its own directory: migrating the shared test directory would leave every file newer than the code.
+        with mock.patch.dict(os.environ, {"TREELINE_HOUSEHOLDS_DIR": tempfile.mkdtemp()}):
+            households.create(1)
+            households.create(2)
+            api._behind["at"] = 0
+            api._hits.clear()
+            self.assertEqual(client.get("/api/health").get_json()["households_behind"], 0)
+            with mock.patch.object(households, "HOUSEHOLD_MIGRATIONS", [step]):
+                api._behind["at"] = 0
+                api._hits.clear()
+                r = client.get("/api/health")
+                self.assertEqual((r.status_code, r.get_json()["ok"], r.get_json()["households_behind"]), (503, False, 2))
+                self.assertEqual(households.sweep(), {})                                  # the startup sweep migrates them
+                api._behind["at"] = 0
+                api._hits.clear()
+                r = client.get("/api/health")
+                self.assertEqual((r.status_code, r.get_json()["households_behind"]), (200, 0))
+            households.forget_all()
+        api._behind["at"] = 0
 
 
 class Strings(unittest.TestCase):
@@ -656,12 +824,8 @@ class CallLogs(unittest.TestCase):
         self.c = helpers.db.connect()
 
     def call(self, caller, callee, result, reason=None, talk=0, dialed=None):
-        cur = self.c.execute(
-            "INSERT INTO call(started_at,caller_treehouse,callee_treehouse,dialed,state,result,reason,talk_sec)"
-            " VALUES(?,?,?,?,?,?,?,?)", (db.iso(), caller["id"], callee["id"] if callee else None,
-                                          dialed or (callee["number"] if callee else "9999"), "ended", result,
-                                          reason, talk))
-        return cur.lastrowid
+        return add_call(self.c, caller["id"], callee["id"] if callee else None, None,
+                        dialed or (callee["number"] if callee else "9999"), result, reason, talk)
 
     def test_both_families_see_a_connected_call(self):
         self.call(self.a.house, self.b.house, "connected", talk=125)
@@ -706,6 +870,7 @@ class CallLogs(unittest.TestCase):
         for h, e in ((hid, "dialed"), (other, "rang"), (other, "answered")):
             self.c.execute("INSERT INTO call_event(call_id,at,handset_id,event) VALUES(?,?,?,?)",
                            (cid, db.iso(), h, e))
+        households.record_call(self.c, cid)               # the events came after the call was first copied: the copy takes them
         events = self.a.get(f"/api/calls/{cid}").get_json()["events"]
         self.assertEqual(events[0]["handset"], "Hall phone")
         self.assertIsNone(events[1]["handset"])
@@ -778,8 +943,7 @@ class Urgent911(unittest.TestCase):
         hid, _, _ = db.create_handset(c, a.house["id"], "ata", "Hall phone")
         handset = c.execute("SELECT * FROM handset WHERE id=?", (hid,)).fetchone()
         d = rules.decide(c, handset, "911", db.utcnow())
-        c.execute("INSERT INTO call(started_at,caller_treehouse,caller_handset,dialed,state,result,reason) VALUES(?,?,?,?,?,?,?)",
-                  (db.iso(), a.house["id"], hid, "911", "ended", d.result, d.reason))
+        add_call(c, a.house["id"], None, dialed="911", result=d.result, reason=d.reason, caller_handset=hid)
         households.add_notice(a.house["id"], *d.notify_caller_parents)
         notes = [n for n in a.get("/api/home").get_json()["notices"] if n["kind"] == "no_911"]
         self.assertEqual(len(notes), 1)
@@ -942,8 +1106,7 @@ class Hardening(unittest.TestCase):
         a, b = make_house("Alex's"), make_house("=cmd|' /C calc'!A0")
         string_up(a, b)
         c = helpers.db.connect()
-        c.execute("INSERT INTO call(started_at,caller_treehouse,callee_treehouse,dialed,state,result,talk_sec) "
-                  "VALUES(?,?,?,?,?,?,?)", (db.iso(), a.house["id"], b.house["id"], "x", "ended", "connected", 60))
+        add_call(c, a.house["id"], b.house["id"], dialed="x", talk=60)
         text = a.get("/api/calls.csv").get_data(as_text=True)
         self.assertIn("'=cmd", text)
         self.assertNotIn(",=cmd", text)
