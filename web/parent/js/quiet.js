@@ -32,7 +32,7 @@ export async function quiet(ctx) {
   if (th.daily_minutes && !DAILY.includes(th.daily_minutes)) dailyOpts.push([th.daily_minutes, minutesText(th.daily_minutes)]);
 
   const content = html`
-  ${!parent ? alert({ tone: "info", title: "You can pause the line", body: "Only a parent can change quiet hours and limits." }) : ""}
+  ${!parent ? alert({ tone: "info", title: "You can turn quiet hours on or off", body: "You can also pause the line. Only a parent can change the times, nights and limits." }) : ""}
   <h2 class="title-lg">Quiet hours</h2>
   <div id="qh-banner">${banner(th)}</div>
   ${quietPreview(q)}
@@ -65,7 +65,7 @@ export async function quiet(ctx) {
     mount(root) {
       const form = root.querySelector("#quiet-form");
       const enabled = root.querySelector("#qh-enabled");
-      if (!parent) { form.querySelectorAll("input, select").forEach((i) => (i.disabled = true)); enabled.disabled = true; }
+      if (!parent) form.querySelectorAll("input, select").forEach((i) => (i.disabled = true));   // a sitter gets the on/off switch and nothing else
       const days = () => [0, 1, 2, 3, 4, 5, 6].map((i) => (form.querySelector(`#day-${i}`).checked ? "1" : "0")).join("");
       const refresh = () => {
         root.querySelector('[data-qh="start"]').textContent = time12(form.querySelector("#qh-start").value || q.start);
@@ -81,9 +81,10 @@ export async function quiet(ctx) {
         const start = form.querySelector("#qh-start").value, end = form.querySelector("#qh-end").value;
         if (!start || !end) return;                                     // a time box that's mid-edit isn't a time yet
         saving = true;
+        const on = enabled.getAttribute("aria-checked") === "true";
         try {
-          const r = await patch("/api/treehouse", {
-            quiet: { enabled: enabled.getAttribute("aria-checked") === "true", start, end, days: days() },
+          const r = await patch("/api/treehouse", !parent ? { quiet: { enabled: on } } : {      // a sitter sends only the switch
+            quiet: { enabled: on, start, end, days: days() },
             max_call_minutes: Number(form.querySelector("#longest").value),
             daily_minutes: form.querySelector("#daily").value || null,
           });

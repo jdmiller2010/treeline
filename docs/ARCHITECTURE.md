@@ -304,7 +304,7 @@ flowchart LR
 | Handset auth | `GET /api/line` (HTTP Basic with the handset's SIP account) |
 | Ops | `GET /api/health` (503 if Asterisk is unreachable) |
 
-Sign-in is an emailed six-digit code. Parents can change everything for their own treehouse; sitters can look and pause. Every change a grown-up makes is written to the action log.
+Sign-in is an emailed six-digit code. Parents can change everything for their own treehouse; sitters can pause the line, turn quiet hours on or off, disconnect or ring a phone, and see today's calls (no action log, no other changes). Every change a grown-up makes is written to the action log.
 
 ## 9. Deployment
 

@@ -360,6 +360,42 @@ def main():
         a.goto(f"{BASE}/parent/#/settings"); a.wait_for_selector("text=Leave Treeline")
         txt = a.inner_text("main").lower()
         check("year of rest" not in txt and "frees your number" not in txt and "ladder" not in txt, "the Leave Treeline card doesn't talk about a number resting (or ladder codes)")
+        # ---- a sitter: pause, the quiet-hours switch, disconnect and ring a phone, today's calls. Nothing else.
+        a.evaluate("""async () => { const t = localStorage.getItem('treeline.token').replace(/"/g, '');
+          const r = await fetch('/api/grown-ups', { method: 'POST', headers: { Authorization: 'Bearer ' + t, 'Content-Type': 'application/json' }, body: JSON.stringify({ email: 'sitter@example.com', name: 'Sam the sitter', role: 'sitter' }) });
+          if (!r.ok) throw new Error(await r.text()); }""")
+        sit_ctx = browser.new_context(viewport={"width": 1280, "height": 900}); sit = sit_ctx.new_page(); watch(sit, "sitter")
+        sign_in(sit, "sitter@example.com")
+        sit.wait_for_selector(".tl-home-hero"); sit.wait_for_selector("[data-handset-switch]")
+        n = lambda sel: sit.locator(sel).count()
+        check(n("[data-add-phone]") == 0 and n("[data-this-device]") == 0 and n("[data-change-number]") == 0 and n("[data-add-grownup]") == 0,
+              "a sitter's Home has no Add a phone, Use this device, Change number or Add a grown-up")
+        menu = sit.locator("button[aria-label^='More for']").first
+        menu.click()
+        check(n("[data-handset='ring']") >= 1 and n("[data-handset='rename']") == 0 and n("[data-handset='remove']") == 0, "a phone's menu offers only the ring test to a sitter (no rename, no remove)")
+        sit.keyboard.press("Escape")
+        switch = sit.locator("[data-handset-switch]").first
+        switch.click(); sit.wait_for_selector("text=is disconnected")
+        check(sit.locator("[data-handset-switch]").first.get_attribute("aria-checked") == "false", "a sitter can disconnect a phone")
+        sit.locator("[data-handset-switch]").first.click(); sit.wait_for_selector("text=is connected again")
+        sit.click("[data-pause]"); sit.wait_for_selector("text=Calls are paused")
+        check(True, "and pause all calls")
+        sit.click("[data-pause]"); sit.wait_for_selector("text=Calls are back on")
+        sit.goto(f"{BASE}/parent/#/quiet"); sit.wait_for_selector("#qh-enabled")
+        check(not sit.locator("#qh-enabled").is_disabled() and all(sit.locator(sel).first.is_disabled() for sel in ("#qh-start", "#qh-end", "#day-0", "#longest", "#daily")),
+              "on Quiet hours a sitter gets the on/off switch, and the times, nights and limits are locked")
+        with sit.expect_response(lambda r: r.request.method == "PATCH" and r.url.endswith("/api/treehouse"), timeout=8000) as resp:
+            sit.click("#qh-enabled")
+        check(resp.value.status == 200, "and the switch works for a sitter")
+        with sit.expect_response(lambda r: r.request.method == "PATCH" and r.url.endswith("/api/treehouse"), timeout=8000):
+            sit.click("#qh-enabled")
+        sit.goto(f"{BASE}/parent/#/calls"); sit.wait_for_selector("text=Call log")
+        check(n("input[name=calls-range]") == 0 and n("[data-export]") == 0 and "today's calls" in sit.inner_text("main").lower(), "a sitter's call log is today only: no range choice, no export")
+        sit.goto(f"{BASE}/parent/#/settings"); sit.wait_for_selector("text=Notifications")
+        check("Action log" not in sit.inner_text("main"), "a sitter's Settings has no action log")
+        sit.goto(f"{BASE}/parent/#/actions"); sit.wait_for_function("() => location.hash === '#/home'", timeout=5000)
+        check(True, "and the action log's address goes to Home")
+        sit_ctx.close()
         # One h1 per screen
         a.set_viewport_size({"width": 1280, "height": 900})
         for name, hash_ in screens.items():

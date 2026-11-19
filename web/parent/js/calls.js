@@ -58,6 +58,8 @@ async function downloadCsv() {
 }
 
 export async function calls(ctx, params) {
+  const sitter = !ctx.isParent();
+  if (sitter) range = "today";                                  // a sitter sees only today's calls
   const { calls: list } = await get(`/api/calls?range=${range}`);
   const selected = params[0] ? list.find((c) => String(c.id) === params[0]) : null;
   const detail = selected ? html`<button class="tl-btn tl-btn--quiet tl-btn--sm tl-listdetail__back" type="button" data-back-list><span class="tl-btn__label">‹ All calls</span></button>${await detailCard(selected, ctx)}`
@@ -68,7 +70,8 @@ export async function calls(ctx, params) {
   ${tries911.length ? alert({ tone: "danger", title: tries911.length === 1 ? "Someone tried to call 911" : `Someone tried to call 911 ${tries911.length} times`,
     body: "Treeline can't call 911, so those calls went nowhere. If anyone needs emergency help, call 911 from another phone. They're marked in red below." }) : ""}
   <div class="tl-split"><h2 class="title-lg">Call log</h2>${ctx.isParent() ? button({ label: "Export CSV", variant: "secondary", size: "sm", attrs: "data-export" }) : ""}</div>
-  ${segmented({ name: "calls-range", label: "Show calls from", value: range, options: [["today", "Today"], ["week", "This week"], ["all", "All"]] })}
+  ${sitter ? html`<p class="tl-card__body" style="color:var(--ink-muted)">You're seeing today's calls. A parent can see the rest.</p>`
+    : segmented({ name: "calls-range", label: "Show calls from", value: range, options: [["today", "Today"], ["week", "This week"], ["all", "All"]] })}
   ${list.length ? html`<div class="tl-listdetail${selected ? " is-detail" : ""}">
     <section class="tl-listdetail__list tl-stack"><div class="tl-card tl-card--list">${list.map((c) => logRow(c, ctx, selected && selected.id === c.id))}</div></section>
     <section class="tl-listdetail__detail tl-stack">${detail}</section></div>`

@@ -195,9 +195,54 @@ class Treehouse(unittest.TestCase):
         self.assertEqual(sitter.get("/api/home").status_code, 200)
         self.assertEqual(sitter.patch("/api/treehouse", {"paused": True}).status_code, 200)
         self.assertEqual(sitter.patch("/api/treehouse", {"max_call_minutes": 5}).status_code, 403)
+        self.assertEqual(sitter.patch("/api/treehouse", {"name": "Nope"}).status_code, 403)
         self.assertEqual(sitter.post("/api/ladder-codes").status_code, 403)
         self.assertEqual(sitter.post("/api/handsets", {"kind": "softphone", "name": "x"}).status_code, 403)
         self.assertEqual(sitter.post("/api/grown-ups", {"email": "x@example.com"}).status_code, 403)
+        self.assertEqual(sitter.get("/api/calls.csv").status_code, 403)
+
+    def test_sitters_can_turn_quiet_hours_on_and_off_and_nothing_else_about_them(self):
+        parent = make_house()
+        parent.post("/api/grown-ups", {"email": "sitter-q@example.com", "role": "sitter"})
+        sitter = Person("sitter-q@example.com")
+        before = parent.get("/api/home").get_json()["treehouse"]["quiet"]
+        # the switch: on and off
+        self.assertEqual(sitter.patch("/api/treehouse", {"quiet": {"enabled": False}}).status_code, 200)
+        self.assertFalse(parent.get("/api/home").get_json()["treehouse"]["quiet"]["enabled"])
+        self.assertEqual(sitter.patch("/api/treehouse", {"quiet": {"enabled": True}}).status_code, 200)
+        self.assertTrue(parent.get("/api/home").get_json()["treehouse"]["quiet"]["enabled"])
+        # the times, the nights and the limits stay with a parent, alone or hidden beside the switch
+        for change in ({"quiet": {"start": "21:00"}}, {"quiet": {"end": "06:00"}}, {"quiet": {"days": "1000000"}},
+                       {"quiet": {"enabled": False, "start": "21:00"}}, {"quiet": "off"},
+                       {"max_call_minutes": 5}, {"daily_minutes": 30}, {"timezone": "America/New_York"},
+                       {"paused": True, "retention_days": 30}):
+            self.assertEqual(sitter.patch("/api/treehouse", change).status_code, 403, change)
+        after = parent.get("/api/home").get_json()["treehouse"]["quiet"]
+        self.assertEqual((after["start"], after["end"], after["days"]), (before["start"], before["end"], before["days"]))
+        # a parent still can
+        self.assertEqual(parent.patch("/api/treehouse", {"quiet": {"start": "21:00", "days": "1000000"}}).status_code, 200)
+
+    def test_a_sitter_has_no_action_log_and_sees_only_todays_calls(self):
+        parent = make_house("Parents")
+        other = make_house("Friends")
+        string_up(parent, other)
+        parent.post("/api/grown-ups", {"email": "sitter-c@example.com", "role": "sitter"})
+        sitter = Person("sitter-c@example.com")
+        c = helpers.db.connect()
+        old = (db.utcnow() - dt.timedelta(days=3))
+        for when, talk in ((old, 60), (db.utcnow(), 120)):
+            c.execute("INSERT INTO call(started_at,caller_treehouse,callee_treehouse,dialed,state,result,talk_sec) VALUES(?,?,?,?,?,?,?)",
+                      (db.iso(when), parent.house["id"], other.house["id"], other.house["number"], "ended", "connected", talk))
+        self.assertEqual(parent.get("/api/actions").status_code, 200)
+        self.assertEqual(sitter.get("/api/actions").status_code, 403)
+        for rng in ("today", "week", "all", ""):
+            calls = sitter.get(f"/api/calls?range={rng}").get_json()["calls"]
+            self.assertEqual([x["talk_sec"] for x in calls], [120], rng)                 # only today's, whatever they ask for
+        self.assertEqual(len(parent.get("/api/calls?range=all").get_json()["calls"]), 2)     # a parent still sees the history
+        ids = {x["talk_sec"]: x["id"] for x in parent.get("/api/calls?range=all").get_json()["calls"]}
+        self.assertEqual(sitter.get(f"/api/calls/{ids[120]}").status_code, 200)
+        self.assertEqual(sitter.get(f"/api/calls/{ids[60]}").status_code, 404)              # an older call isn't theirs to open
+        self.assertEqual(parent.get(f"/api/calls/{ids[60]}").status_code, 200)
         self.assertEqual(sitter.get("/api/calls.csv").status_code, 403)
 
     def test_cannot_remove_the_last_parent(self):
@@ -354,13 +399,24 @@ class Handsets(unittest.TestCase):
         kinds = [a["action"] for a in p.get("/api/actions").get_json()["actions"]]
         self.assertNotIn("handset_reconnected", kinds)
 
-    def test_only_parents_can_disconnect_a_phone_and_only_their_own(self):
+    def test_a_sitter_can_disconnect_reconnect_and_ring_a_phone_but_not_add_rename_or_remove_one(self):
         a, b = make_house(), make_house()
         hid = a.post("/api/handsets", {"kind": "softphone", "name": "K"}).get_json()["handset"]["id"]
-        self.assertEqual(b.patch(f"/api/handsets/{hid}", {"disabled": True}).status_code, 404)
+        self.assertEqual(b.patch(f"/api/handsets/{hid}", {"disabled": True}).status_code, 404)        # only your own treehouse's
+        self.assertEqual(b.post(f"/api/handsets/{hid}/ring-test").status_code, 404)
         a.post("/api/grown-ups", {"email": "sit2@example.com", "role": "sitter"})
         sitter = Person("sit2@example.com")
-        self.assertEqual(sitter.patch(f"/api/handsets/{hid}", {"disabled": True}).status_code, 403)
+        self.assertEqual(sitter.get("/api/handsets").status_code, 200)
+        self.assertEqual(sitter.patch(f"/api/handsets/{hid}", {"disabled": True}).status_code, 200)    # disconnect...
+        self.assertEqual(sitter.post(f"/api/handsets/{hid}/ring-test").status_code, 409)               # ... a disconnected phone can't ring (not "parents only")
+        self.assertEqual(sitter.patch(f"/api/handsets/{hid}", {"disabled": False}).status_code, 200)   # ... and reconnect
+        self.assertNotEqual(sitter.post(f"/api/handsets/{hid}/ring-test").status_code, 403)            # the ring test is allowed
+        self.assertEqual(sitter.patch(f"/api/handsets/{hid}", {"name": "Renamed"}).status_code, 403)   # but not rename,
+        self.assertEqual(sitter.patch(f"/api/handsets/{hid}", {"name": "Renamed", "disabled": True}).status_code, 403)
+        self.assertEqual(sitter.delete(f"/api/handsets/{hid}").status_code, 403)                       # remove,
+        self.assertEqual(sitter.post("/api/handsets", {"kind": "softphone", "name": "New"}).status_code, 403)   # or add
+        self.assertEqual(sitter.get(f"/api/handsets/{hid}/provision").status_code, 403)                # nor see a phone's sign-in
+        self.assertEqual(a.get("/api/handsets").get_json()["handsets"][0]["name"], "K")
         self.assertEqual(a.patch(f"/api/handsets/{hid}", {}).status_code, 400)
 
     def test_a_disconnected_phone_cannot_be_rung_and_reports_itself_to_the_tablet(self):

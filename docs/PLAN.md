@@ -75,7 +75,7 @@ This plan turns the decisions on the Treeline planning whiteboard into phases. E
 
 **Build** (from `design/ui`, following `design/CLAUDE.md`; a web app that can be added to the home screen):
 
-1. **Sign in** with an email code. Several grown-ups per treehouse; sitters get limited rights (can pause, can't approve or cut strings).
+1. **Sign in** with an email code. Several grown-ups per treehouse; sitters get limited rights: they can pause the line, turn quiet hours on or off, disconnect, reconnect and ring a phone, and see today's calls. They can't add, rename or remove phones, change quiet-hour times or limits, approve or cut strings, see the action log or older calls, or export.
 2. **Setup** (Steps): make your treehouse and get its number → read and accept "Treeline can't call 911" (a required checkbox) → pair the first handset → send a string code to a friend's family.
 3. **Home** (Overview): the breeze or night card, alerts (strings waiting, a handset offline), this week's calls and minutes, and the no-911 reminder.
 4. **Strings** (List and detail; the "Friends" tab becomes "Strings"): every strung treehouse and its number; approve, pause or cut; strings waiting on the other family; send a string code.

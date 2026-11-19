@@ -52,11 +52,11 @@ export async function account(ctx) {
     ${push === "on" || push === "off" ? html`<div class="tl-actions">${push === "on" ? button({ label: "Turn off on this device", attrs: "data-push-off" }) : button({ label: "Turn on for this device", attrs: "data-push-on" })}</div>` : ""}
   </div></section>
 
-  <section class="tl-card"><div class="tl-stack tl-stack--group">
+  ${parent ? html`<section class="tl-card"><div class="tl-stack tl-stack--group">
     <h2 class="tl-card__title">Records</h2>
     <p class="tl-card__body">Every change a grown-up makes is written to the action log, so you can see who changed what.</p>
     <div class="tl-actions">${button({ label: "Action log", attrs: 'data-href="#/actions"' })}</div>
-  </div></section>
+  </div></section>` : ""}
 
   ${parent ? html`<section class="tl-card"><div class="tl-stack tl-stack--group">
     <h2 class="tl-card__title">Leave Treeline</h2>
@@ -163,6 +163,7 @@ const ACTIONS = {
 };
 
 export async function actionLog(ctx) {
+  if (!ctx.isParent()) return { redirect: "#/home" };       // the action log is for parents
   const { actions } = await get("/api/actions");
   const tz = ctx.me.treehouse.timezone;
   const content = html`<h2 class="title-lg">Action log</h2>${actions.length ? html`<div class="tl-card tl-card--list">${actions.map((a) => html`<div class="tl-row">

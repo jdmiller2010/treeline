@@ -478,8 +478,14 @@ RULE_FIELDS = ("name", "timezone", "quiet", "paused", "max_call_minutes", "daily
 def treehouse_update():
     data = body()
     th = g.th
-    if g.gu["role"] == "sitter" and set(data) - {"paused"}:
-        raise ApiError("Sitters can pause the line, but only a parent can change this.", 403, "parents_only")
+    if g.gu["role"] == "sitter":
+        # A sitter can pause all calls and turn quiet hours on or off. The times, nights, limits, name and
+        # everything else stay with a parent.
+        quiet = data.get("quiet")
+        quiet_switch_only = isinstance(quiet, dict) and set(quiet) <= {"enabled"}
+        if set(data) - {"paused", "quiet"} or ("quiet" in data and not quiet_switch_only):
+            raise ApiError("Sitters can pause the line and turn quiet hours on or off, but only a parent can change this.",
+                           403, "parents_only")
     changes = {}
     if "name" in data:
         changes["name"] = clean_name(data["name"], "treehouse name")
@@ -871,14 +877,16 @@ def handset_create():
 
 
 @app.patch("/api/handsets/<int:hid>")
-@auth(parent=True)
+@auth()
 def handset_update(hid):
-    """Rename a phone, and/or disconnect or reconnect it. A disconnected phone doesn't ring and
-    can't place calls; schedules and limits don't matter to it; the treehouse's other phones carry on."""
+    """Rename a phone (a parent), and/or disconnect or reconnect it (a parent or a sitter). A disconnected phone
+    doesn't ring and can't place calls; schedules and limits don't matter to it; the treehouse's other phones carry on."""
     data = body()
     h = handset_for(hid)
     if "name" not in data and "disabled" not in data:
         raise ApiError("Nothing to change.")
+    if "name" in data and g.gu["role"] != "parent":
+        raise ApiError("Only a parent can rename a phone.", 403, "parents_only")
     if "name" in data:
         name = clean_name(data["name"], "handset name")
         conn().execute("UPDATE handset SET name=? WHERE id=?", (name, hid))
@@ -912,7 +920,7 @@ def handset_remove(hid):
 
 
 @app.post("/api/handsets/<int:hid>/ring-test")
-@auth(parent=True)
+@auth()                      # a sitter can test that a phone rings
 def handset_ring_test(hid):
     h = handset_for(hid)
     if h["disabled"]:
@@ -1096,15 +1104,22 @@ def line_state():
 
 # ================================================================ calls
 
+def today_start(th, t=None):
+    """Midnight at the start of today in the treehouse's own time zone, as UTC."""
+    local = rules.local_now(th, t or now())
+    return local.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(dt.timezone.utc)
+
+
 @app.get("/api/calls")
 @auth()
 def calls_list():
     rng = request.args.get("range", "week")
+    if g.gu["role"] == "sitter":
+        rng = "today"                       # a sitter sees only today's calls, whatever they ask for
     th, t = g.th, now()
     since = None
     if rng == "today":
-        local = rules.local_now(th, t)
-        since = local.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(dt.timezone.utc)
+        since = today_start(th, t)
     elif rng == "week":
         since = t - dt.timedelta(days=7)
     return jsonify(calls=[call_json(c, th) for c in calls_for(th, since)])
@@ -1117,6 +1132,8 @@ def call_detail(cid):
                        (cid, g.th["id"], g.th["id"])).fetchone()
     if not c or (c["caller_treehouse"] != g.th["id"] and not visible_to_callee(c)):
         raise ApiError("That call isn't there anymore.", 404)
+    if g.gu["role"] == "sitter" and c["started_at"] < db.iso(today_start(g.th)):
+        raise ApiError("That call isn't there anymore.", 404)       # a sitter sees only today's calls
     return jsonify(call_json(c, g.th, detail=True))
 
 
@@ -1146,7 +1163,7 @@ def calls_csv():
 
 
 @app.get("/api/actions")
-@auth()
+@auth(parent=True)                          # the action log is for parents
 def actions_list():
     rows = conn().execute("SELECT * FROM parent_action WHERE treehouse_id=? ORDER BY id DESC LIMIT 200",
                           (g.th["id"],)).fetchall()

@@ -91,7 +91,7 @@ export async function useThisDevice(ctx) {
   return true;
 }
 
-function handsetRow(h, thisId) {
+function handsetRow(h, thisId, parent = true) {
   const [kindName] = KIND[h.kind];
   const menuId = nextId("hm");
   const off = h.disabled;
@@ -108,9 +108,9 @@ function handsetRow(h, thisId) {
     <button type="button" class="tl-iconbtn tl-btn--quiet tl-iconbtn--md" aria-label="More for ${h.name}" title="More" aria-haspopup="menu" aria-expanded="false" aria-controls="${menuId}" data-tl-menu="${menuId}">${icon("more")}</button>
     <div class="tl-menu__panel" id="${menuId}" role="menu" hidden aria-label="${h.name}">
       ${off ? "" : html`<button role="menuitem" type="button" class="tl-menu__item" data-handset="ring" data-id="${h.id}">${icon("bell")}<span>Ring test</span></button>`}
-      <button role="menuitem" type="button" class="tl-menu__item" data-handset="rename" data-id="${h.id}" data-name="${h.name}">${icon("settings")}<span>Rename</span></button>
+      ${parent ? html`<button role="menuitem" type="button" class="tl-menu__item" data-handset="rename" data-id="${h.id}" data-name="${h.name}">${icon("settings")}<span>Rename</span></button>
       <div class="tl-menu__sep" role="separator"></div>
-      <button role="menuitem" type="button" class="tl-menu__item tl-menu__item--danger" data-handset="remove" data-id="${h.id}" data-name="${h.name}">${icon("close")}<span>Remove</span></button>
+      <button role="menuitem" type="button" class="tl-menu__item tl-menu__item--danger" data-handset="remove" data-id="${h.id}" data-name="${h.name}">${icon("close")}<span>Remove</span></button>` : ""}
     </div>
   </div>
 </div>`;
@@ -138,7 +138,7 @@ export function treehouseSections(ctx, handsets, grown_ups) {
     <div class="tl-split"><h2 class="title-lg">Phones</h2>${parent ? button({ label: "Add a phone", size: "sm", icon: "plus", attrs: "data-add-phone" }) : ""}</div>
     ${parent ? deviceButton(thisId) : ""}
     ${handsets.length
-      ? html`<div class="tl-card tl-card--list">${handsets.map((h) => handsetRow(h, thisId))}</div>
+      ? html`<div class="tl-card tl-card--list">${handsets.map((h) => handsetRow(h, thisId, parent))}</div>
         <p class="tl-card__body tl-measure" style="color:var(--ink-muted)">Use the switch to disconnect a phone for now. A disconnected phone doesn't ring and can't call out; your other phones carry on as usual.</p>`
       : emptyState({ art: null, title: "No phones yet", body: "Add a softphone, a phone adapter or the Treeline phone. They all ring together when a friend calls.",
           action: parent ? button({ label: "Add a phone", variant: "primary", icon: "plus", attrs: "data-add-phone" }) : null })}
@@ -152,7 +152,7 @@ export function treehouseSections(ctx, handsets, grown_ups) {
       ${tag(g.role === "parent" ? "bark" : "neutral", g.role === "parent" ? "Parent" : "Sitter")}
       ${parent && !g.you ? iconButton({ label: `Remove ${g.name || g.email}`, name: "close", attrs: { "data-remove-grownup": g.id, "data-name": g.name || g.email } }) : ""}
     </div>`)}</div>
-    <p class="tl-card__body tl-measure" style="color:var(--ink-muted)">Sitters can see calls and pause the line. Only parents can change anything else.</p>
+    <p class="tl-card__body tl-measure" style="color:var(--ink-muted)">Sitters can see today's calls, pause the line, turn quiet hours on or off, and disconnect or ring a phone. Only parents can change anything else.</p>
   </section>`;
 }
 
@@ -226,7 +226,7 @@ async function addGrownUp(ctx) {
     title: "Add a grown-up", intro: "They sign in with this email address.", submit: "Add",
     body: html`${textField({ id: "gu-email", name: "email", label: "Email", type: "email", placeholder: "name@example.com" })}
       ${textField({ id: "gu-name", name: "name", label: "Name (optional)" })}
-      ${radioGroup({ name: "role", legend: "Role", value: "parent", options: [["parent", "Parent", "Can change everything, approve strings and add phones."], ["sitter", "Sitter", "Can see calls and pause the line."]] })}`,
+      ${radioGroup({ name: "role", legend: "Role", value: "parent", options: [["parent", "Parent", "Can change everything, approve strings and add phones."], ["sitter", "Sitter", "Can see today's calls, pause the line, turn quiet hours on or off, and disconnect or ring a phone."]] })}`,
     onSubmit: (f) => post("/api/grown-ups", { email: f.querySelector("[name=email]").value, name: f.querySelector("[name=name]").value,
       role: f.querySelector("input[name=role]:checked").value }),
   });
