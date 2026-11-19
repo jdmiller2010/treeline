@@ -181,13 +181,13 @@ export async function pairClaim(ctx, params) {
     <div class="tl-actions tl-actions--stack">${button({ label: "Not now", variant: "quiet", attrs: 'data-href="#/home"' })}${button({ label: "Add softphone", variant: "primary", type: "submit" })}</div>
   </div></form>`;
   return {
-    title: "Add a softphone", back: "#/house", nav: null, template: "settings", content,
+    title: "Add a softphone", back: "#/home", nav: null, template: "settings", content,
     mount(root) {
       root.querySelector("#pair-form").addEventListener("submit", async (e) => {
         e.preventDefault();
         try {
           const r = await post("/api/pair/claim", { code, name: root.querySelector("#pair-name").value || "Softphone" });
-          toast(`${r.handset.name} is connected`, "success"); ctx.go("#/house");
+          toast(`${r.handset.name} is connected`, "success"); ctx.go("#/home");
         } catch (err) { root.querySelector("[data-error]").innerHTML = String(alert({ tone: "danger", title: err.message })); }
       });
     },

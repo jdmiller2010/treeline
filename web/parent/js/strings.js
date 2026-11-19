@@ -72,7 +72,7 @@ export function bindStringActions(root, ctx) {
   root.querySelectorAll("[data-string]").forEach((b) => b.addEventListener("click", async () => {
     const { string: action, id, name } = b.dataset;
     try {
-      if (action === "approve") { await post(`/api/strings/${id}/approve`); toast(`${name} is in the treehouse`, "success"); }
+      if (action === "approve") { await post(`/api/strings/${id}/approve`); toast(`${name} is on your Treeline`, "success"); }
       else if (action === "decline") { await post(`/api/strings/${id}/cut`); toast("Request declined", "neutral"); }
       else if (action === "cut") { await post(`/api/strings/${id}/cut`); toast("Request withdrawn", "neutral"); }
       else if (action === "pause") { await post(`/api/strings/${id}/pause`); toast(`String with ${name} paused`, "neutral"); }

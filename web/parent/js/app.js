@@ -1,6 +1,6 @@
 // The Treeline parent app: a small hash-routed single page app.
 import { get, post, token, ApiError } from "/shared/api.js";
-import { avatar, brand, footer, html, icon, iconButton, button, loader, raw, str, alert, toast } from "/shared/ui.js";
+import { avatar, brand, brandLine, footer, html, icon, iconButton, button, loader, raw, str, alert, toast } from "/shared/ui.js";
 import { plural } from "/shared/format.js";
 import { signIn } from "./signin.js";
 import { setup } from "./setup.js";
@@ -8,7 +8,7 @@ import { home } from "./home.js";
 import { strings } from "./strings.js";
 import { calls } from "./calls.js";
 import { quiet } from "./quiet.js";
-import { house, phonebook } from "./house.js";
+import { phonebook } from "./house.js";
 import { account, privacy, about, actionLog, pairClaim, ladderLink } from "./account.js";
 import { forgetPushQuietly } from "./push.js";
 
@@ -34,7 +34,7 @@ const NAV = [
 ];
 
 const ROUTES = {
-  home, strings, calls, quiet, house, phonebook, account, privacy, about, actions: actionLog,
+  home, strings, calls, quiet, phonebook, account, privacy, about, actions: actionLog,
   pair: pairClaim, ladder: ladderLink,
 };
 
@@ -50,7 +50,7 @@ function accountMenu() {
   <button type="button" class="tl-avatar-btn" aria-label="Account" aria-haspopup="menu" aria-expanded="false" aria-controls="account-menu" data-tl-menu="account-menu">${avatar(who, "sm")}</button>
   <div class="tl-menu__panel" id="account-menu" role="menu" hidden aria-label="Account">
     <div class="tl-menu__head"><span class="tl-menu__name">${who}</span><span class="tl-menu__meta">${me.treehouse.name}</span></div>
-    ${[["#/house", "Our treehouse", "home"], ["#/phonebook", "Phone book", "phone"], ["#/settings", "Settings", "settings"],
+    ${[["#/phonebook", "Phone book", "phone"], ["#/settings", "Settings", "settings"],
        ["#/privacy", "Privacy and safety", "shield-check"], ["#/about", "About Treeline", "info"]].map(([href, label, ic]) =>
       html`<a role="menuitem" href="${href}" class="tl-menu__item">${icon(ic)}<span>${label}</span></a>`)}
     <div class="tl-menu__sep" role="separator"></div>
@@ -77,6 +77,7 @@ function shell(v) {
     ? html`<div class="tl-page tl-page--narrow"><div class="tl-stack tl-stack--cards">${v.content}${footer()}</div></div>`
     : html`<div class="tl-page"><div class="tl-stack tl-stack--sections">${v.content}${footer()}</div></div>`;
   return html`<div class="tl-app">
+  <div class="tl-app__brandline">${brandLine()}</div>
   <div class="tl-app__layout">
     <header class="tl-appbar">
       ${v.back ? html`<div class="tl-appbar__lead">${iconButton({ label: "Back", name: "chevron-right", extra: "tl-iconbtn--back", attrs: { "data-back": v.back } })}</div>` : ""}

@@ -153,7 +153,7 @@ def main():
         check("Strung" in a.inner_text("main"), "the string is live")
 
         # ---- one switch disconnects a phone; one tap makes this browser a phone
-        a.goto(f"{BASE}/parent/#/house")
+        a.goto(f"{BASE}/parent/#/home")
         a.wait_for_selector("[data-handset-switch]")
         sw = a.locator("[data-handset-switch]").first
         check(sw.get_attribute("aria-checked") == "true", "a phone starts connected")
@@ -166,7 +166,19 @@ def main():
         check("Disconnected" in a.inner_text("main"), "Home lists the phones and shows it's disconnected")
         a.locator("[data-handset-switch]").first.click()
         a.wait_for_selector("text=is connected again")
-        a.goto(f"{BASE}/parent/#/house"); a.wait_for_selector("[data-this-device]")
+        # Home is where the treehouse is managed: the number, the phones, the other grown-ups. No separate page.
+        a.goto(f"{BASE}/parent/#/home"); a.wait_for_selector("[aria-label='Grown-ups']")
+        check(all(a.locator(f"[aria-label='{n}']").count() == 1 for n in ("Your number", "Phones", "Grown-ups")),
+              "Home has the number, the phones and the grown-ups")
+        check(a.locator("[data-change-number]").count() == 1 and a.locator("[data-add-phone]").count() >= 1 and a.locator("[data-add-grownup]").count() == 1
+              and a.locator("[data-handset='rename']").count() >= 1, "and a parent can change the number, add or rename a phone, and add a grown-up there")
+        check("Pat" in a.inner_text("[aria-label='Grown-ups']") and "(you)" in a.inner_text("[aria-label='Grown-ups']"), "the grown-ups are listed on Home")
+        a.goto(f"{BASE}/parent/#/house"); a.wait_for_function("() => location.hash === '#/home'", timeout=5000)
+        check(True, "the old treehouse address goes to Home")
+        a.click("[data-tl-menu='account-menu']")
+        check("Our treehouse" not in a.inner_text("#account-menu"), "the account menu has no treehouse page")
+        a.keyboard.press("Escape")
+        a.goto(f"{BASE}/parent/#/home"); a.wait_for_selector("[data-this-device]")
         a.click("[data-this-device]")
         a.fill("#dev-name", "My laptop")
         a.click(".tl-sheet-scrim:not([hidden]) button[type=submit]")
@@ -213,7 +225,7 @@ def main():
         e_ctx.close()
 
         # ---- every screen, every width, both themes
-        screens = {"home": "#/home", "strings": "#/strings", "calls": "#/calls", "quiet": "#/quiet", "house": "#/house",
+        screens = {"home": "#/home", "strings": "#/strings", "calls": "#/calls", "quiet": "#/quiet",
                    "phonebook": "#/phonebook", "settings": "#/settings", "privacy": "#/privacy", "about": "#/about", "actions": "#/actions"}
         for width in WIDTHS:
             a.set_viewport_size({"width": width, "height": 900})
@@ -224,6 +236,11 @@ def main():
                     a.wait_for_selector("#app-title")
                     a.evaluate(f"document.documentElement.setAttribute('data-theme','{theme}')")
                     no_sideways_scroll(a, f"{name} {width} {theme}")
+                    # The logo and tagline: at the top on a phone (the side rail has them from 768 up).
+                    brand_on = a.locator(".tl-app__brandline").is_visible()
+                    if theme == "light" and name in ("home", "quiet"):
+                        check(brand_on == (width < 768) and (width >= 768 or "Safe calls for neighborhood kids" in a.inner_text(".tl-app__brandline")),
+                              f"{name} {width}: the logo and tagline are at the top on a phone, in the rail from 768 up")
                     if width in (390, 1280) or (name in ("home", "strings") and width in (360, 768, 1024, 1440)):
                         shoot(a, f"{name}-{width}-{theme}")
                 # the AppBar title lines up with the first card at wide widths
@@ -236,16 +253,79 @@ def main():
             check("Open-source licenses" in a.inner_text("main"), f"{name}: footer present")
             check(a.locator(".tl-btn--primary").count() <= 1 or name in ("home",), f"{name}: at most one primary button ({a.locator('.tl-btn--primary').count()})")
 
-        # ---- quiet hours
+        # ---- quiet hours: no Save button, everything saves the moment it changes
+        def saved(act):
+            """Do something, and wait for the save it causes to finish."""
+            with a.expect_response(lambda r: r.request.method == "PATCH" and r.url.endswith("/api/treehouse"), timeout=8000):
+                act()
         a.goto(f"{BASE}/parent/#/quiet")
         a.wait_for_selector("#quiet-form")
-        a.fill("#qh-start", "21:30")
+        saved(lambda: a.fill("#qh-start", "21:30"))
         check("9:30 pm" in a.inner_text("#qh-preview"), "quiet hours preview follows the time field")
-        a.click("#quiet-form button[type=submit]")
-        a.wait_for_selector(".tl-toast")
+        check(a.locator("#quiet-form button[type=submit]").count() == 0, "there's no Save button: quiet hours save by themselves")
         a.reload()
         a.wait_for_selector("#qh-start")
-        check(a.input_value("#qh-start") == "21:30", "quiet hours saved")
+        check(a.input_value("#qh-start") == "21:30", "a changed time saved itself")
+        # a night, the limits and the switch each save the moment they change
+        saved(lambda: a.click("label[for=day-6]"))
+        saved(lambda: a.select_option("#longest", "10"))
+        saved(lambda: a.select_option("#daily", "60"))
+        a.reload(); a.wait_for_selector("#qh-start")
+        check(not a.locator("#day-6").is_checked() and a.locator("#day-5").is_checked(), "a night turned off saved itself")
+        check(a.input_value("#longest") == "10" and a.input_value("#daily") == "60", "the call limits saved themselves")
+        saved(lambda: a.click("label[for=day-6]"))                              # put the night back
+        for i in range(6):                                                      # turn nights off one at a time: the last one stays
+            saved(lambda i=i: a.click(f"label[for=day-{i}]"))
+        a.click("label[for=day-6]"); a.wait_for_selector(".tl-toast:has-text('at least one night')")
+        check(a.locator("#day-6").is_checked(), "the last night can't be turned off (turn quiet hours off instead)")
+        for i in range(6):                                                      # all back on
+            saved(lambda i=i: a.click(f"label[for=day-{i}]"))
+        saved(lambda: a.click("#qh-enabled")); a.reload(); a.wait_for_selector("#qh-start")
+        check(a.get_attribute("#qh-enabled", "aria-checked") == "false", "the quiet hours switch saved itself")
+        saved(lambda: a.click("#qh-enabled")); a.reload(); a.wait_for_selector("#qh-start")
+        check(a.get_attribute("#qh-enabled", "aria-checked") == "true", "and turns back on the same way")
+        saved(lambda: a.select_option("#longest", "30")); saved(lambda: a.select_option("#daily", ""))   # leave the limits as they were
+        on_bg = a.evaluate("() => getComputedStyle(document.querySelector('#qh-enabled')).backgroundImage")
+        check(a.get_attribute("#qh-enabled", "aria-checked") == "true" and "gradient" in on_bg,
+              "the quiet hours switch shows green when it's on (it looked off, so people turned it off)")
+        day_bg = a.evaluate("() => getComputedStyle(document.querySelector('#day-0 + .tl-check__box, #day-0 ~ .tl-check__box')).backgroundImage")
+        check("gradient" in day_bg, "a checked night is filled green")
+
+        # ---- a 911 attempt: a danger alert first on Home, and a louder row and a summary in the log.
+        # (Real 911 dials are tested with real calls in testphones; here the call and its note go in the database the way
+        # the call engine writes them, and the screens are checked.)
+        ui_db = os.environ.get("TREELINE_UI_DB")
+        if ui_db and os.path.exists(ui_db):
+            import sqlite3
+            from datetime import datetime, timezone
+            now_iso = datetime.now(timezone.utc).isoformat(timespec="seconds")
+            db = sqlite3.connect(ui_db, timeout=15)
+            tid = db.execute("SELECT id FROM treehouse WHERE name=?", ("Alex's house",)).fetchone()[0]
+            db.execute("INSERT INTO call(started_at,caller_treehouse,dialed,state,result,reason) VALUES(?,?,?,?,?,?)", (now_iso, tid, "911", "ended", "no_911", "911"))
+            db.execute("INSERT INTO notice(treehouse_id,kind,title,body,created_at,key) VALUES(?,?,?,?,?,?)",
+                       (tid, "no_911", "Someone tried to call 911", "Someone on Hall phone dialed 911 at Wed 3:42 pm. The call didn't go anywhere.", now_iso, "smoke-911"))
+            db.commit(); db.close()
+            a.goto(f"{BASE}/parent/#/home")
+            a.wait_for_selector(".tl-alert")
+            first = a.locator(".tl-alert").first
+            check("tried to call 911" in first.inner_text().lower() and "tl-alert--danger" in (first.get_attribute("class") or ""),
+                  "a 911 attempt is the first thing on Home, as a danger alert")
+            check(a.locator(".tl-alert--danger [data-href='#/calls']").count() == 1, "and it leads to the call log")
+            a.set_viewport_size({"width": 390, "height": 844}); shoot(a, "911-home-390")
+            a.goto(f"{BASE}/parent/#/calls")
+            a.wait_for_selector(".tl-log--urgent")
+            check(a.locator(".tl-log--urgent").count() == 1 and "Tried to call 911" in a.locator(".tl-log--urgent").inner_text(), "the log row for it is marked urgent")
+            check(a.locator(".tl-alert--danger").count() == 1 and "tried to call 911" in a.locator(".tl-alert--danger").inner_text().lower(), "and the log opens with a danger summary")
+            shoot(a, "911-calls-390")
+            urgent_bg = a.evaluate("() => getComputedStyle(document.querySelector('.tl-log--urgent')).backgroundColor")
+            check(urgent_bg not in ("rgba(0, 0, 0, 0)", "transparent"), f"the urgent row has its own background ({urgent_bg})")
+            a.goto(f"{BASE}/parent/#/home")
+            a.wait_for_selector(".tl-alert--danger [data-dismiss]")
+            a.click(".tl-alert--danger [data-dismiss]")
+            a.wait_for_function("() => !document.querySelector('.tl-alert--danger')", timeout=5000)
+            check(True, "a parent can dismiss the note (the call stays in the log)")
+        else:
+            print("skip  911 alert screens: run through ./dev ui smoke (it gives the test database's path)", flush=True)
 
         # ---- pause is one tap
         a.goto(f"{BASE}/parent/#/home")

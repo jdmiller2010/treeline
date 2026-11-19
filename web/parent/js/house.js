@@ -1,4 +1,4 @@
-// Our treehouse (number, phones, grown-ups) and the printable phone book.
+// Managing the treehouse (number, phones, grown-ups: drawn on Home) and the printable phone book.
 import { get, post, patch, del } from "/shared/api.js";
 import { avatar, button, card, codeInput, codeValue, emptyState, html, icon, iconButton, join, presence, radioGroup, raw, tag,
   textField, toast, nextId, NO_911 } from "/shared/ui.js";
@@ -122,18 +122,18 @@ export function deviceButton(thisId) {
     : html`<div class="tl-actions">${button({ label: "Use this device as a phone", size: "sm", attrs: "data-this-device" })}</div>`;
 }
 
-export async function house(ctx) {
-  const [{ handsets }, { grown_ups }] = await Promise.all([get("/api/handsets"), get("/api/grown-ups")]);
+/** The number, the phones and the grown-ups: everything for managing the treehouse, drawn on Home. */
+export function treehouseSections(ctx, handsets, grown_ups) {
   const th = ctx.me.treehouse, parent = ctx.isParent();
   const thisId = (handsets.find((h) => h.id === thisDevice()?.handset_id) || {}).id;
-  const content = html`
-  <section class="tl-card tl-card--plank">
+  return html`
+  <section class="tl-card tl-card--plank" aria-label="Your number">
     <header class="tl-card__head"><div><p class="tl-card__eyebrow">Your number</p><h2 class="tl-card__title numeral tl-num" style="font-size:42px;line-height:50px">${th.number}</h2></div></header>
     <p class="tl-card__body">Friends dial this to reach ${th.name}. It only rings through when both families have approved the string.</p>
     ${parent ? html`<div class="tl-actions">${button({ label: "Change number", attrs: "data-change-number" })}</div>` : ""}
   </section>
 
-  <section class="tl-stack">
+  <section class="tl-stack" aria-label="Phones">
     <div class="tl-split"><h2 class="title-lg">Phones</h2>${parent ? button({ label: "Add a phone", size: "sm", icon: "plus", attrs: "data-add-phone" }) : ""}</div>
     ${parent ? deviceButton(thisId) : ""}
     ${handsets.length
@@ -143,7 +143,7 @@ export async function house(ctx) {
           action: parent ? button({ label: "Add a phone", variant: "primary", icon: "plus", attrs: "data-add-phone" }) : null })}
   </section>
 
-  <section class="tl-stack">
+  <section class="tl-stack" aria-label="Grown-ups">
     <div class="tl-split"><h2 class="title-lg">Grown-ups</h2>${parent ? button({ label: "Add a grown-up", size: "sm", icon: "plus", attrs: "data-add-grownup" }) : ""}</div>
     <div class="tl-card tl-card--list">${grown_ups.map((g) => html`<div class="tl-row">
       ${avatar(g.name || g.email, "md")}
@@ -152,40 +152,36 @@ export async function house(ctx) {
       ${parent && !g.you ? iconButton({ label: `Remove ${g.name || g.email}`, name: "close", attrs: { "data-remove-grownup": g.id, "data-name": g.name || g.email } }) : ""}
     </div>`)}</div>
     <p class="tl-card__body tl-measure" style="color:var(--ink-muted)">Sitters can see calls and pause the line. Only parents can change anything else.</p>
-  </section>
-  <p class="caption" style="color:var(--ink-muted)">${NO_911}</p>`;
+  </section>`;
+}
 
-  return {
-    title: "Our treehouse", back: "#/home", nav: null, content,
-    mount(root) {
-      const refresh = () => ctx.render();
-      root.querySelectorAll("[data-add-phone]").forEach((b) => b.addEventListener("click", async () => { if (await addHandsetDialog(ctx)) refresh(); }));
-      root.querySelectorAll("[data-this-device]").forEach((b) => b.addEventListener("click", async () => { if (await useThisDevice(ctx)) refresh(); }));
-      bindPhoneSwitches(root, refresh);
-      root.querySelector("[data-change-number]")?.addEventListener("click", async () => { if (await changeNumber(ctx)) { await ctx.refreshMe(); refresh(); } });
-      root.querySelector("[data-add-grownup]")?.addEventListener("click", async () => { if (await addGrownUp(ctx)) refresh(); });
-      root.querySelectorAll("[data-remove-grownup]").forEach((b) => b.addEventListener("click", async () => {
-        const ok = await confirmDialog({ title: `Remove ${b.dataset.name}?`, body: "They'll be signed out and won't see your treehouse anymore.", confirm: "Remove", danger: true,
-          onConfirm: () => del(`/api/grown-ups/${b.dataset.removeGrownup}`) });
-        if (ok) refresh();
-      }));
-      root.querySelectorAll("[data-handset]").forEach((b) => b.addEventListener("click", async () => {
-        const { handset, id, name } = b.dataset;
-        if (handset === "ring") {
-          try { await post(`/api/handsets/${id}/ring-test`); toast(`${name} is ringing`, "success"); } catch (e) { toast(e.message, "warning"); }
-        } else if (handset === "rename") {
-          const r = await formDialog({ title: "Rename phone", submit: "Save",
-            body: textField({ id: "rn", name: "name", label: "Name", value: name }),
-            onSubmit: (f) => patch(`/api/handsets/${id}`, { name: f.querySelector("[name=name]").value }) });
-          if (r) refresh();
-        } else if (handset === "remove") {
-          const ok = await confirmDialog({ title: `Remove ${name}?`, body: "It stops working right away, even in the middle of a call. You can add it again later.", confirm: "Remove phone", danger: true,
-            onConfirm: () => del(`/api/handsets/${id}`) });
-          if (ok) refresh();
-        }
-      }));
-    },
-  };
+/** The buttons and menus drawn by treehouseSections. */
+export function bindTreehouse(root, ctx, refresh) {
+  root.querySelectorAll("[data-add-phone]").forEach((b) => b.addEventListener("click", async () => { if (await addHandsetDialog(ctx)) refresh(); }));
+  root.querySelectorAll("[data-this-device]").forEach((b) => b.addEventListener("click", async () => { if (await useThisDevice(ctx)) refresh(); }));
+  bindPhoneSwitches(root, refresh);
+  root.querySelector("[data-change-number]")?.addEventListener("click", async () => { if (await changeNumber(ctx)) { await ctx.refreshMe(); refresh(); } });
+  root.querySelector("[data-add-grownup]")?.addEventListener("click", async () => { if (await addGrownUp(ctx)) refresh(); });
+  root.querySelectorAll("[data-remove-grownup]").forEach((b) => b.addEventListener("click", async () => {
+    const ok = await confirmDialog({ title: `Remove ${b.dataset.name}?`, body: "They'll be signed out and won't see your treehouse anymore.", confirm: "Remove", danger: true,
+      onConfirm: () => del(`/api/grown-ups/${b.dataset.removeGrownup}`) });
+    if (ok) refresh();
+  }));
+  root.querySelectorAll("[data-handset]").forEach((b) => b.addEventListener("click", async () => {
+    const { handset, id, name } = b.dataset;
+    if (handset === "ring") {
+      try { await post(`/api/handsets/${id}/ring-test`); toast(`${name} is ringing`, "success"); } catch (e) { toast(e.message, "warning"); }
+    } else if (handset === "rename") {
+      const r = await formDialog({ title: "Rename phone", submit: "Save",
+        body: textField({ id: "rn", name: "name", label: "Name", value: name }),
+        onSubmit: (f) => patch(`/api/handsets/${id}`, { name: f.querySelector("[name=name]").value }) });
+      if (r) refresh();
+    } else if (handset === "remove") {
+      const ok = await confirmDialog({ title: `Remove ${name}?`, body: "It stops working right away, even in the middle of a call. You can add it again later.", confirm: "Remove phone", danger: true,
+        onConfirm: () => del(`/api/handsets/${id}`) });
+      if (ok) refresh();
+    }
+  }));
 }
 
 /** The connect/disconnect switch on a phone's row. */
@@ -206,7 +202,7 @@ export function bindPhoneSwitches(root, refresh) {
 async function changeNumber(ctx) {
   const r = await formDialog({
     title: "Change your number",
-    intro: "Families you're strung with get a note with your new number. Your old number rests for a year so it can't reach someone else by mistake.",
+    intro: "Families you're strung with get a note with your new number. Calls only connect between families who've approved each other, so nobody can reach you just by dialing a number. Your old number isn't given to another family for a year, so a friend who still has it written down doesn't end up calling someone new.",
     submit: "Change number", danger: false,
     body: html`${radioGroup({ name: "how", legend: "New number", value: "random", options: [["random", "Pick one for me", "A random four-digit number."], ["own", "I'll choose", "Four digits, not starting with 0."]] })}
       <div data-for="own" hidden>${textField({ id: "newnum", name: "number", label: "Number", attrs: 'inputmode="numeric" maxlength="4"' })}</div>`,

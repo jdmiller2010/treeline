@@ -15,13 +15,16 @@
 <style>
   /* Empty message slots take no room, so they don't add a gap in a form. */
   [data-error]:empty, [id$="-error"]:empty, #dev-note:empty { display: none; }
+  /* On a phone there is no side rail (it carries the logo), so the logo and tagline sit at the very top, above the title bar. */
+  .tl-app__brandline { padding: max(var(--space-4), env(safe-area-inset-top)) var(--gutter-sm) var(--space-1); }
+  @container tl-app (min-width: 768px) { .tl-app__brandline { display: none; } }
   /* A call to 911 is the one entry in the log about safety: a red edge, a soft red wash and bold text. */
   .tl-log--urgent { background: var(--berry-soft); box-shadow: inset 4px 0 0 var(--berry); }
   .tl-log--urgent .tl-row__title { font-weight: 700; }
   .tl-log--urgent .tl-tag { background: var(--berry); color: var(--canvas); }
   /* Printing the phone book: only the card. */
   @media print {
-    .tl-appbar, .tl-nav, .tl-toasts, .tl-footer, .tl-noprint { display: none !important; }
+    .tl-appbar, .tl-nav, .tl-toasts, .tl-footer, .tl-noprint, .tl-app__brandline { display: none !important; }
     .tl-app__layout { display: block !important; }
   }
 </style>

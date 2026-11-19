@@ -1,6 +1,6 @@
 // Quiet hours, call limits and pause: the Settings form template.
 import { get, patch } from "/shared/api.js";
-import { alert, button, checkRow, html, icon, raw, selectField, str, switchRow, timeField, toast } from "/shared/ui.js";
+import { alert, checkRow, html, icon, raw, selectField, str, switchRow, timeField, toast } from "/shared/ui.js";
 import { DAY_LETTERS, DAY_NAMES, daysSummary, minutesText, time12 } from "/shared/format.js";
 
 const LENGTHS = [5, 10, 15, 20, 30, 45, 60, 90, 120];
@@ -14,8 +14,12 @@ function quietPreview(q) {
     <div class="tl-quiet__time"><span class="tl-num" data-qh="start">${time12(q.start)}</span><span class="tl-quiet__to">to</span><span class="tl-num" data-qh="end">${time12(q.end)}</span></div>
     <div class="tl-quiet__days" aria-label="Days">${DAY_LETTERS.map((l, i) => html`<span class="tl-day${q.days[i] === "1" ? " is-on" : ""}" data-day="${i}">${l}</span>`)}</div>
   </div>
-  <div class="tl-field-row"><button id="qh-enabled" type="button" role="switch" aria-checked="${q.enabled}" aria-label="Quiet hours on" class="tl-switch${q.enabled ? " is-on" : ""}"><span class="tl-switch__thumb">${q.enabled ? icon("check", 12) : ""}</span></button></div>
+  <div class="tl-field-row"><button id="qh-enabled" type="button" role="switch" aria-checked="${q.enabled ? "true" : "false"}" aria-label="Quiet hours on" class="tl-switch${q.enabled ? " is-on" : ""}"><span class="tl-switch__thumb">${q.enabled ? icon("check", 12) : ""}</span></button></div>
 </div>`;
+}
+
+function banner(th) {
+  return th.quiet_now && !th.paused ? alert({ tone: "info", title: "Quiet hours are on right now", body: `Calls wait until ${time12(th.quiet.end)}.` }) : "";
 }
 
 export async function quiet(ctx) {
@@ -29,7 +33,7 @@ export async function quiet(ctx) {
 
   const content = html`
   ${!parent ? alert({ tone: "info", title: "You can pause the line", body: "Only a parent can change quiet hours and limits." }) : ""}
-  ${th.quiet_now && !th.paused ? alert({ tone: "info", title: "Quiet hours are on right now", body: `Calls wait until ${time12(q.end)}.` }) : ""}
+  <div id="qh-banner">${banner(th)}</div>
   ${quietPreview(q)}
   <form class="tl-stack tl-stack--cards" id="quiet-form" novalidate>
     <section class="tl-card"><div class="tl-stack tl-stack--group">
@@ -48,7 +52,7 @@ export async function quiet(ctx) {
       ${selectField({ id: "longest", label: "Longest call", options: lengthOpts, value: th.max_call_minutes, hint: "The shorter limit of the two families applies." })}
       ${selectField({ id: "daily", label: "Minutes per day", options: dailyOpts, value: th.daily_minutes ?? "", hint: "Counts calls in both directions. Resets at midnight." })}
     </div>
-    ${parent ? html`<div class="tl-actions tl-actions--stack">${button({ label: "Save", variant: "primary", type: "submit" })}</div>` : ""}</section>
+    ${parent ? html`<p class="tl-card__body tl-measure" style="color:var(--ink-muted)" id="qh-note">Changes are saved as you make them.</p>` : ""}</section>
   </form>
 
   <section class="tl-card"><div class="tl-stack tl-stack--group">
@@ -68,24 +72,39 @@ export async function quiet(ctx) {
         const d = days();
         root.querySelectorAll("[data-day]").forEach((el) => el.classList.toggle("is-on", d[el.dataset.day] === "1"));
       };
-      form.addEventListener("input", refresh);
-      form.addEventListener("change", refresh);
-
-      form.addEventListener("submit", async (e) => {
-        e.preventDefault();
-        const d = days();
-        if (d === "0000000") return toast("Pick at least one night, or turn quiet hours off.", "warning");
+      // Everything saves as soon as it changes. Typing in a time box waits for a short pause; a switch, a night or a limit
+      // saves at once. The page isn't redrawn (that would take the cursor away), so the banner is updated in place.
+      let timer = null, saving = false, again = false;
+      const save = async () => {
+        if (saving) { again = true; return; }
+        const start = form.querySelector("#qh-start").value, end = form.querySelector("#qh-end").value;
+        if (!start || !end) return;                                     // a time box that's mid-edit isn't a time yet
+        saving = true;
         try {
           const r = await patch("/api/treehouse", {
-            quiet: { enabled: enabled.getAttribute("aria-checked") === "true", start: form.querySelector("#qh-start").value, end: form.querySelector("#qh-end").value, days: d },
+            quiet: { enabled: enabled.getAttribute("aria-checked") === "true", start, end, days: days() },
             max_call_minutes: Number(form.querySelector("#longest").value),
             daily_minutes: form.querySelector("#daily").value || null,
           });
           ctx.me.treehouse = r;
+          root.querySelector("#qh-banner").innerHTML = str(banner(r));
           toast("Saved", "success");
-          ctx.render();
         } catch (err) { toast(err.message, "warning"); }
+        saving = false;
+        if (again) { again = false; save(); }
+      };
+      const soon = (ms) => { clearTimeout(timer); timer = setTimeout(save, ms); };
+      form.addEventListener("input", (e) => { refresh(); if (e.target.matches("input[type=time], input[type=text]")) soon(700); });
+      form.addEventListener("change", (e) => {
+        refresh();
+        if (e.target.name === "day" && days() === "0000000") {            // at least one night, or turn quiet hours off
+          e.target.checked = true; refresh();
+          return toast("Pick at least one night, or turn quiet hours off.", "warning");
+        }
+        soon(e.target.matches("input[type=time]") ? 700 : 0);
       });
+      form.addEventListener("submit", (e) => e.preventDefault());
+      enabled.addEventListener("tl-change", () => soon(0));
 
       root.querySelector("#pause").addEventListener("tl-change", async (e) => {
         try {

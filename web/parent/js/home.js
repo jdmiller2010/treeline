@@ -2,8 +2,7 @@
 import { get, patch } from "/shared/api.js";
 import { alert, art, button, emptyState, html, icon, join, presence, raw, toast, NO_911, nextId } from "/shared/ui.js";
 import { minutesText, plural, time12 } from "/shared/format.js";
-import { addHandsetDialog, bindPhoneSwitches, deviceButton, thisDevice, useThisDevice } from "./house.js";
-import { KIND } from "./house.js";
+import { bindTreehouse, treehouseSections } from "./house.js";
 import { approvalCard, bindStringActions, showLadderCode } from "./strings.js";
 
 const NOTICE_TONE = { string_request: "info", string_live: "success", string_ended: "info", number_changed: "info",
@@ -22,17 +21,16 @@ function tonedCard(d, tz) {
   const s = d.strings.newest_live;
   if (s && Date.now() - new Date(s.updated_at).getTime() < 7 * 86400000) {
     return html`<section class="tl-card tl-card--breeze"><header class="tl-card__head"><div><p class="tl-card__eyebrow">Good news</p><h3 class="tl-card__title">Newly strung</h3></div></header>
-      <p class="tl-card__body">${s.other.name} is in the treehouse. Their number is ${s.other.number}.</p></section>`;
+      <p class="tl-card__body">${s.other.name} is on your Treeline now. Their number is ${s.other.number}.</p></section>`;
   }
   return "";
 }
 
 export async function home(ctx) {
-  const d = await get("/api/home");
+  const [d, { grown_ups }] = await Promise.all([get("/api/home"), get("/api/grown-ups")]);
   ctx.me.treehouse = d.treehouse;
   ctx.badge = d.strings.waiting_on_me.length;
   const parent = ctx.isParent(), th = d.treehouse;
-  const thisId = (d.handsets.find((h) => h.id === thisDevice()?.handset_id) || {}).id;
   const toned = tonedCard(d);
   const t = d.today, w = d.week;
   const today = html`<section class="tl-card"><header class="tl-card__head"><div><p class="tl-card__eyebrow">Today</p>
@@ -62,16 +60,7 @@ export async function home(ctx) {
     <div class="tl-stat"><span class="tl-stat__label">Talk time</span><span class="tl-stat__value">${w.minutes}<span class="tl-stat__unit">min</span></span><span class="tl-stat__note">This week</span></div>
     <div class="tl-stat"><span class="tl-stat__label">Strings</span><span class="tl-stat__value">${d.strings.live}</span><span class="tl-stat__note">${waiting.length ? `${waiting.length} waiting` : "All set"}</span></div>
   </div></section>
-  ${d.handsets.length ? html`<section class="tl-stack">
-    <div class="tl-split"><h2 class="title-lg">Phones</h2>${button({ label: "Manage", variant: "quiet", size: "sm", attrs: 'data-href="#/house"' })}</div>
-    <div class="tl-card tl-card--list">${d.handsets.map((h) => html`<div class="tl-row tl-log tl-log--${h.disabled ? "bark" : h.online ? "canopy" : "bark"}">
-      <span class="tl-log__icon" aria-hidden="true">${icon(h.disabled ? "phone-off" : "phone")}</span>
-      <div class="tl-row__main"><div class="tl-row__title">${h.name}${h.id === thisId ? " (this device)" : ""}</div><div class="tl-row__meta"><span>${KIND[h.kind][0]}</span><span>${h.disabled ? "Disconnected" : h.online ? "Online" : "Offline"}</span></div></div>
-      ${h.disabled ? presence("bark", "Disconnected") : presence(h.online ? "canopy" : "bark", h.online ? "Online" : "Offline")}
-      <button type="button" role="switch" aria-checked="${h.disabled ? "false" : "true"}" aria-label="${h.name} connected" class="tl-switch${h.disabled ? "" : " is-on"}" data-handset-switch data-id="${h.id}" data-name="${h.name}"><span class="tl-switch__thumb">${h.disabled ? "" : icon("check", 12)}</span></button>
-    </div>`)}</div>
-    ${parent ? deviceButton(thisId) : ""}
-  </section>` : ""}
+  ${treehouseSections(ctx, d.handsets, grown_ups)}
   ${waiting.length ? html`<section class="tl-stack"><h2 class="title-lg">Waiting on families</h2>${waiting.map((s) => approvalCard(s, parent))}</section>` : ""}
   ${setupCards}
   ${alert({ tone: "info", title: "Treeline can't call 911", body: NO_911 })}`;
@@ -90,9 +79,7 @@ export async function home(ctx) {
           ctx.render();
         } catch (e) { toast(e.message, "warning"); }
       });
-      bindPhoneSwitches(root, () => ctx.render());
-      root.querySelectorAll("[data-this-device]").forEach((b) => b.addEventListener("click", async () => { if (await useThisDevice(ctx)) ctx.render(); }));
-      root.querySelectorAll("[data-add-phone]").forEach((b) => b.addEventListener("click", async () => { if (await addHandsetDialog(ctx)) ctx.render(); }));
+      bindTreehouse(root, ctx, () => ctx.render());
       root.querySelectorAll("[data-make-code]").forEach((b) => b.addEventListener("click", async () => { await showLadderCode(ctx); ctx.render(); }));
     },
   };
