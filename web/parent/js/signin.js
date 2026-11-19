@@ -4,33 +4,33 @@ import { alert, art, button, card, codeInput, codeValue, html, icon, raw, setBus
 /** Sign in with an emailed six-digit code. */
 export async function signIn(ctx) {
   const content = html`
-  <div class="tl-stack tl-stack--related">
+  <div class="tl-stack tl-stack--related" style="align-items:center;text-align:center">
     <img src="/ui/logo/treeline-lockup.svg" width="220" height="auto" alt="Treeline" style="max-width:100%;height:auto">
     <p class="tl-tagline">Safe calls for neighborhood kids</p>
   </div>
-  <section class="tl-stack">
-    <div style="max-width:240px">${art("treeline")}</div>
-    <h1 class="display-md">Sign in</h1>
-    <p class="body tl-measure" style="color:var(--ink-muted)">Use your email. We'll send a six-digit code, so there's no password to remember.</p>
-  </section>
-  <section class="tl-card" id="step-email">
-    <form class="tl-stack tl-stack--group" novalidate>
-      ${textField({ id: "email", label: "Your email", type: "email", placeholder: "you@example.com", autocomplete: "email", iconName: "users" })}
-      <div id="email-error"></div>
-      <div class="tl-actions tl-actions--stack">${button({ label: "Send code", variant: "primary", type: "submit", full: false })}</div>
-    </form>
-  </section>
-  <section class="tl-card" id="step-code" hidden>
-    <form class="tl-stack tl-stack--group" novalidate>
-      <p class="tl-card__body" id="sent-note"></p>
-      <div id="dev-note"></div>
-      ${codeInput({ legend: "Sign-in code", hint: "Six digits from the email." })}
-      <div id="code-error"></div>
-      <div class="tl-actions tl-actions--stack">
-        ${button({ label: "Use a different email", variant: "quiet", attrs: "data-back-to-email" })}
-        ${button({ label: "Sign in", variant: "primary", type: "submit" })}
+  <section class="tl-card">
+    <div class="tl-stack tl-stack--group">
+      <div class="tl-stack tl-stack--related" style="align-items:center;text-align:center">
+        <div style="width:min(240px,100%)">${art("treeline")}</div>
+        <h1 class="display-md">Sign in</h1>
+        <p class="body tl-measure" style="color:var(--ink-muted)">Use your email. We'll send a six-digit code, so there's no password to remember.</p>
       </div>
-    </form>
+      <form class="tl-stack tl-stack--group" id="step-email" novalidate>
+        ${textField({ id: "email", label: "Your email", type: "email", placeholder: "you@example.com", autocomplete: "email", iconName: "users" })}
+        <div id="email-error"></div>
+        <div class="tl-actions tl-actions--stack">${button({ label: "Send code", variant: "primary", type: "submit", full: false })}</div>
+      </form>
+      <form class="tl-stack tl-stack--group" id="step-code" novalidate hidden>
+        <p class="tl-card__body" id="sent-note"></p>
+        <div id="dev-note"></div>
+        ${codeInput({ legend: "Sign-in code", hint: "Six digits from the email." })}
+        <div id="code-error"></div>
+        <div class="tl-actions tl-actions--stack">
+          ${button({ label: "Use a different email", variant: "quiet", attrs: "data-back-to-email" })}
+          ${button({ label: "Sign in", variant: "primary", type: "submit" })}
+        </div>
+      </form>
+    </div>
   </section>
   <p class="caption" style="color:var(--ink-muted)">${NO_911}</p>`;
 
@@ -44,7 +44,7 @@ export async function signIn(ctx) {
       const showError = (sel, msg) => { root.querySelector(sel).innerHTML = msg ? String(alert({ tone: "danger", title: msg })) : ""; };
       emailInput.focus();
 
-      emailCard.querySelector("form").addEventListener("submit", async (e) => {
+      emailCard.addEventListener("submit", async (e) => {
         e.preventDefault();
         const btn = e.submitter || emailCard.querySelector("button[type=submit]");
         email = emailInput.value.trim();
@@ -63,7 +63,7 @@ export async function signIn(ctx) {
       codeCard.querySelector("[data-back-to-email]").addEventListener("click", () => {
         codeCard.hidden = true; emailCard.hidden = false; emailInput.focus();
       });
-      codeCard.querySelector("form").addEventListener("submit", async (e) => {
+      codeCard.addEventListener("submit", async (e) => {
         e.preventDefault();
         const code = codeValue(codeCard);
         showError("#code-error", "");

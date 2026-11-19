@@ -18,6 +18,16 @@
   /* On a phone there is no side rail (it carries the logo), so the logo and tagline sit at the very top, above the title bar. */
   .tl-app__brandline { padding: max(var(--space-4), env(safe-area-inset-top)) var(--gutter-sm) var(--space-1); }
   @container tl-app (min-width: 768px) { .tl-app__brandline { display: none; } }
+  /* A hidden step must really be hidden: the stack layout's display would otherwise override the hidden attribute. */
+  .tl-stack[hidden] { display: none; }
+  /* Home opens with the treehouse; it scrolls away with the page and the treehouse's name stays pinned in the title bar. */
+  /* The brand guide's picture-with-text: the picture, space-6, the title, space-3, the line under it; all centered, text no wider than 420px. */
+  .tl-home-hero { display: flex; flex-direction: column; align-items: center; text-align: center; padding-block: var(--space-4) var(--space-2); }
+  .tl-home-hero .tl-art { width: min(240px, 100%); height: auto; margin-bottom: var(--space-6); }
+  .tl-home-hero__name { margin: 0 0 var(--space-3); max-width: 420px; font: 420 36px/44px var(--font-display); font-variation-settings: "SOFT" 100; letter-spacing: -.01em; color: var(--ink); text-wrap: balance; overflow-wrap: anywhere; }
+  .tl-home-hero__meta { margin: 0; max-width: 420px; font: 400 16px/24px var(--font-sans); color: var(--ink-muted); }
+  .tl-appbar__title { transition: opacity 150ms; }
+  .tl-appbar__title--quiet { opacity: 0; }
   /* A call to 911 is the one entry in the log about safety: a red edge, a soft red wash and bold text. */
   .tl-log--urgent { background: var(--berry-soft); box-shadow: inset 4px 0 0 var(--berry); }
   .tl-log--urgent .tl-row__title { font-weight: 700; }

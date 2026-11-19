@@ -94,6 +94,10 @@ def main():
         page.wait_for_selector("#email")
         check("Treeline can't call 911" in page.inner_text("body") or "can't call 911" in page.inner_text("body"), "sign-in says plainly that 911 isn't available")
         no_sideways_scroll(page, "sign-in 390")
+        check(page.locator("#step-email").is_visible() and not page.locator("#step-code").is_visible(),
+              "sign-in shows the email step only: the code step stays hidden until a code is sent")
+        check(page.locator("form#step-email").count() == 1 and page.locator("section.tl-card:has(h1):has(.tl-art):has(#email)").count() == 1,
+              "the picture, the title and the email box are all in one card")
         shoot(page, "signin-390")
         # The green fill is a design token (--tl-canopy-fill). A stray character in treeline.css once made the
         # browser drop the whole block of --tl-* variables, and every green button, switch and checkbox became
@@ -109,6 +113,8 @@ def main():
 
         # ---- two families
         a_ctx, a = make_family(browser, "alex@example.com", "Alex's house")
+        check(a.locator("[aria-label='Kinds of phone'] .tl-row").count() == 3 and a.locator("section.tl-card:has([data-add])").count() == 0,
+              "the add-a-phone step lists the three kinds of phone, and its buttons aren't in a card of their own")
         shoot(a, "setup-step3-390")
         a.click("[data-add]")
         a.wait_for_selector(".tl-sheet-scrim:not([hidden])")
@@ -126,7 +132,7 @@ def main():
         shoot(a, "ladder-code-390")
         a.click(".tl-sheet-scrim:not([hidden]) button[type=submit]")
         a.wait_for_selector("#app-title")
-        check(a.inner_text("#app-title") == "Home", "setup ends on Home")
+        check(a.inner_text("#app-title") == "Alex's house" and a.locator(".tl-home-hero").count() == 1, "setup ends on Home, titled with the treehouse")
 
         s_ctx, s = make_family(browser, "sam@example.com", "Sam's house")
         s.click("[data-skip]")
@@ -166,6 +172,20 @@ def main():
         check("Disconnected" in a.inner_text("main"), "Home lists the phones and shows it's disconnected")
         a.locator("[data-handset-switch]").first.click()
         a.wait_for_selector("text=is connected again")
+        # Home opens with the treehouse: the picture, the name under it, when it joined and its number (the brand guide's
+        # picture-with-text, centered). Scrolled up under the title bar, the name moves into the title bar instead.
+        a.goto(f"{BASE}/parent/#/home"); a.wait_for_selector(".tl-home-hero")
+        a.set_viewport_size({"width": 390, "height": 700}); a.wait_for_timeout(400)
+        check(a.locator(".tl-home-hero .tl-art").count() == 1 and a.inner_text("#home-name") == "Alex's house", "Home opens with the treehouse picture and its name under it")
+        meta = a.inner_text(".tl-home-hero__meta")
+        check(meta.startswith("Joined ") and "Number " in meta and bool(re.search(r"\d{4}$", meta)), f"with when it joined and its number ({meta})")
+        check(a.evaluate("() => getComputedStyle(document.querySelector('.tl-home-hero')).textAlign") == "center", "all centered")
+        check(a.inner_text("#app-title") == "Alex's house" and a.locator("h1").count() == 1 and a.inner_text("h1") != "Home", "the page title is the treehouse's name, not Home (the nav says Home)")
+        check(a.evaluate("() => getComputedStyle(document.querySelector('#app-title')).opacity") == "0", "at the top the title bar doesn't repeat the name")
+        a.evaluate("() => window.scrollTo(0, 99999)"); a.wait_for_timeout(600)
+        check(a.evaluate("() => getComputedStyle(document.querySelector('#app-title')).opacity") == "1" and a.evaluate("() => document.querySelector('.tl-home-hero').getBoundingClientRect().bottom < 64"),
+              "scrolled down, the picture is gone and the name is in the title bar")
+        a.evaluate("() => window.scrollTo(0, 0)")
         # Home is where the treehouse is managed: the number, the phones, the other grown-ups. No separate page.
         a.goto(f"{BASE}/parent/#/home"); a.wait_for_selector("[aria-label='Grown-ups']")
         check(all(a.locator(f"[aria-label='{n}']").count() == 1 for n in ("Your number", "Phones", "Grown-ups")),
@@ -173,6 +193,17 @@ def main():
         check(a.locator("[data-change-number]").count() == 1 and a.locator("[data-add-phone]").count() >= 1 and a.locator("[data-add-grownup]").count() == 1
               and a.locator("[data-handset='rename']").count() >= 1, "and a parent can change the number, add or rename a phone, and add a grown-up there")
         check("Pat" in a.inner_text("[aria-label='Grown-ups']") and "(you)" in a.inner_text("[aria-label='Grown-ups']"), "the grown-ups are listed on Home")
+        # A number that isn't valid shows the reason, and the button goes back to what it said (it used to stay on "Working").
+        a.click("[data-change-number]")
+        a.wait_for_selector(".tl-sheet-scrim:not([hidden]) input[name=how]")
+        a.click(".tl-sheet-scrim:not([hidden]) label[for=how-1]")
+        a.fill(".tl-sheet-scrim:not([hidden]) [name=number]", "0123")
+        a.click(".tl-sheet-scrim:not([hidden]) button[type=submit]")
+        a.wait_for_selector(".tl-sheet-scrim:not([hidden]) [data-error] .tl-alert")
+        btn = a.locator(".tl-sheet-scrim:not([hidden]) button[type=submit]")
+        check("Change number" in btn.inner_text() and "Working" not in btn.inner_text() and btn.is_enabled(),
+              "a number that isn't valid shows why, and the button goes back to Change number")
+        a.keyboard.press("Escape")
         a.goto(f"{BASE}/parent/#/house"); a.wait_for_function("() => location.hash === '#/home'", timeout=5000)
         check(True, "the old treehouse address goes to Home")
         a.click("[data-tl-menu='account-menu']")
@@ -306,10 +337,10 @@ def main():
                        (tid, "no_911", "Someone tried to call 911", "Someone on Hall phone dialed 911 at Wed 3:42 pm. The call didn't go anywhere.", now_iso, "smoke-911"))
             db.commit(); db.close()
             a.goto(f"{BASE}/parent/#/home")
-            a.wait_for_selector(".tl-alert")
+            a.wait_for_selector(".tl-alert--danger")
             first = a.locator(".tl-alert").first
             check("tried to call 911" in first.inner_text().lower() and "tl-alert--danger" in (first.get_attribute("class") or ""),
-                  "a 911 attempt is the first thing on Home, as a danger alert")
+                  f"a 911 attempt is the first thing on Home, as a danger alert (first alert: {first.inner_text()[:30]!r}, class {first.get_attribute("class")!r})")
             check(a.locator(".tl-alert--danger [data-href='#/calls']").count() == 1, "and it leads to the call log")
             a.set_viewport_size({"width": 390, "height": 844}); shoot(a, "911-home-390")
             a.goto(f"{BASE}/parent/#/calls")

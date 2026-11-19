@@ -1,7 +1,7 @@
 // First-run setup: your treehouse, the 911 notice, a first phone, a first friend.
 import { get, post } from "/shared/api.js";
 import { alert, art, button, checkRow, html, raw, selectField, setBusy, steps, textField, NO_911, str, icon } from "/shared/ui.js";
-import { addHandsetDialog } from "./house.js";
+import { KIND, addHandsetDialog } from "./house.js";
 import { showLadderCode } from "./strings.js";
 import { privacyAccordion } from "./privacy-content.js";
 
@@ -97,15 +97,19 @@ export async function setup(ctx) {
         </section>
         <section class="tl-stack">
           <h1 class="display-md">Add your first phone</h1>
-          <p class="body tl-measure" style="color:var(--ink-muted)">A softphone, the Treeline phone app on a tablet, phone or computer, works today. A phone adapter or the Treeline rotary phone works too. You can add more later, and they all ring together.</p>
+          <p class="body tl-measure" style="color:var(--ink-muted)">Pick what you'll connect first. You can add more later, and they all ring together.</p>
         </section>
-        <section class="tl-card"><div class="tl-stack tl-stack--group">
-          <div data-error></div>
-          <div class="tl-actions tl-actions--stack">
-            ${button({ label: "Skip for now", variant: "quiet", attrs: "data-skip" })}
-            ${button({ label: "Add a phone", variant: "primary", icon: "plus", attrs: "data-add" })}
-          </div>
-        </div></section>`);
+        <section class="tl-card tl-card--list" aria-label="Kinds of phone">
+          ${["softphone", "ata", "rotary"].map((k) => html`<div class="tl-row tl-log tl-log--bark">
+            <span class="tl-log__icon" aria-hidden="true">${icon("phone")}</span>
+            <div class="tl-row__main"><div class="tl-row__title">${KIND[k][0]}</div><p class="tl-card__body" style="margin:0;color:var(--ink-muted)">${KIND[k][1]}</p></div>
+          </div>`)}
+        </section>
+        <div data-error></div>
+        <div class="tl-actions tl-actions--stack">
+          ${button({ label: "Skip for now", variant: "quiet", attrs: "data-skip" })}
+          ${button({ label: "Add a phone", variant: "primary", icon: "plus", attrs: "data-add" })}
+        </div>`);
         body.querySelector("[data-skip]").addEventListener("click", () => { state.step = 4; step4(); });
         body.querySelector("[data-add]").addEventListener("click", async () => { if (await addHandsetDialog(ctx)) { state.step = 4; step4(); } });
       }
@@ -117,13 +121,11 @@ export async function setup(ctx) {
           <h1 class="display-md">Invite a friend's family</h1>
           <p class="body tl-measure" style="color:var(--ink-muted)">Make a ladder code and send it to a parent you know. When they enter it, you both say yes, and the kids can call each other.</p>
         </section>
-        <section class="tl-card"><div class="tl-stack tl-stack--group">
-          <div data-error></div>
-          <div class="tl-actions tl-actions--stack">
-            ${button({ label: "I'll do this later", variant: "quiet", attrs: "data-later" })}
-            ${button({ label: "Make a ladder code", variant: "primary", icon: "plus", attrs: "data-code" })}
-          </div>
-        </div></section>`);
+        <div data-error></div>
+        <div class="tl-actions tl-actions--stack">
+          ${button({ label: "I'll do this later", variant: "quiet", attrs: "data-later" })}
+          ${button({ label: "Make a ladder code", variant: "primary", icon: "plus", attrs: "data-code" })}
+        </div>`);
         const finish = () => ctx.go("#/home");
         body.querySelector("[data-later]").addEventListener("click", finish);
         body.querySelector("[data-code]").addEventListener("click", async () => { await showLadderCode(ctx); finish(); });

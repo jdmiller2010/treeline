@@ -1,7 +1,7 @@
 // Home: the Overview template. One toned card, today's summary, what needs a parent's answer.
 import { get, patch } from "/shared/api.js";
 import { alert, art, button, emptyState, html, icon, join, presence, raw, toast, NO_911, nextId } from "/shared/ui.js";
-import { minutesText, plural, time12 } from "/shared/format.js";
+import { dateText, minutesText, plural, time12 } from "/shared/format.js";
 import { bindTreehouse, treehouseSections } from "./house.js";
 import { approvalCard, bindStringActions, showLadderCode } from "./strings.js";
 
@@ -53,6 +53,11 @@ export async function home(ctx) {
 
   const waiting = [...d.strings.waiting_on_me, ...d.strings.waiting_on_them];
   const content = html`
+  <header class="tl-home-hero">
+    ${art("treehouse")}
+    <p class="tl-home-hero__name" id="home-name" aria-hidden="true">${th.name}</p>
+    <p class="tl-home-hero__meta">Joined ${dateText(th.created_at, th.timezone)} · Number <span class="tl-num">${th.number}</span></p>
+  </header>
   ${alerts.length ? html`<div class="tl-stack">${alerts}</div>` : ""}
   ${toned ? html`<div class="tl-grid tl-grid--2">${toned}${today}</div>` : today}
   <section class="tl-card" aria-label="This week"><div class="tl-stats">
@@ -68,7 +73,7 @@ export async function home(ctx) {
   const pauseLabel = th.paused ? "Turn calls back on" : "Pause calls";
   const actions = button({ label: pauseLabel, variant: "secondary", collapse: true, icon: th.paused ? "phone" : "pause", attrs: "data-pause" });
   return {
-    title: "Home", nav: "home", content, actions,
+    title: th.name, nav: "home", content, actions,
     mount(root) {
       bindStringActions(root, ctx);
       root.querySelector("[data-pause]").addEventListener("click", async () => {
@@ -80,6 +85,13 @@ export async function home(ctx) {
         } catch (e) { toast(e.message, "warning"); }
       });
       bindTreehouse(root, ctx, () => ctx.render());
+      // The name is shown big under the picture. Once that has scrolled up under the title bar, the title bar shows it instead.
+      const title = document.querySelector("#app-title"), big = root.querySelector("#home-name");
+      if (title && big && "IntersectionObserver" in window) {
+        title.classList.add("tl-appbar__title--quiet");
+        new IntersectionObserver(([e]) => title.classList.toggle("tl-appbar__title--quiet", e.isIntersecting),
+          { rootMargin: "-64px 0px 0px 0px" }).observe(big);
+      }
       root.querySelectorAll("[data-make-code]").forEach((b) => b.addEventListener("click", async () => { await showLadderCode(ctx); ctx.render(); }));
     },
   };

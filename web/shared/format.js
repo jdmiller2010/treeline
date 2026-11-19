@@ -38,6 +38,11 @@ export function when(iso, tz) {
   return `${day}, ${clock}`;
 }
 
+/** "November 12, 2026" in the given time zone. */
+export function dateText(iso, tz) {
+  return new Intl.DateTimeFormat("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: tz }).format(new Date(iso));
+}
+
 export function relative(iso) {
   const secs = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
   if (secs < 90) return "just now";
