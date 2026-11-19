@@ -21,13 +21,27 @@ export function isStandalone() {
   return ["standalone", "fullscreen", "minimal-ui"].some((m) => matchMedia(`(display-mode: ${m})`).matches) || navigator.standalone === true;
 }
 
-/** An installed app that is a phone is locked to the phone: a parent code is needed to leave it. In a browser tab nothing is locked. */
-export const lockedToPhone = () => isStandalone() && isPhone();
+/** A device that is a phone is locked to the phone, in the installed app and in any browser tab: the dashboard and every other page send it
+ *  back to the phone, so a new tab is no way out. Only the parent code, on the phone, ends phone mode (see leavePhoneMode in phone.js). */
+export const lockedToPhone = () => isPhone();
 
 export function platform(ua = navigator.userAgent, touchPoints = navigator.maxTouchPoints || 0) {
   if (/iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && touchPoints > 1)) return "ios";     // (an iPad asks for the desktop site)
   if (/Android/.test(ua)) return "android";
   return "other";
+}
+
+/** Which kind of device and browser this is, so the install steps can name the right buttons.
+ *  os: "ios" | "android" | "other". browser: safari, chrome, firefox, edge, samsung, opera or other. inApp: inside another app's own browser
+ *  (Facebook, Instagram, a webview...), which can't install anything. tablet: an iPad, or an Android that isn't "Mobile". */
+export function device(ua = navigator.userAgent, touchPoints = navigator.maxTouchPoints || 0) {
+  const os = platform(ua, touchPoints);
+  const inApp = /FBAN|FBAV|FB_IAB|Instagram|Snapchat|TikTok|MicroMessenger|Line\/|; wv\)/.test(ua) || (os === "ios" && !/Safari|CriOS|FxiOS|EdgiOS|OPiOS/.test(ua));
+  let browser = "other";
+  if (os === "ios") browser = /CriOS/.test(ua) ? "chrome" : /FxiOS/.test(ua) ? "firefox" : /EdgiOS/.test(ua) ? "edge" : /OPiOS/.test(ua) ? "opera" : "safari";
+  else if (os === "android") browser = /SamsungBrowser/.test(ua) ? "samsung" : /EdgA/.test(ua) ? "edge" : /OPR|OPT\//.test(ua) ? "opera" : /Firefox/.test(ua) ? "firefox" : /Chrome/.test(ua) ? "chrome" : "other";
+  const tablet = os === "ios" ? /iPad/.test(ua) || /Macintosh/.test(ua) : os === "android" && !/Mobile/.test(ua);
+  return { os, browser, inApp, tablet };
 }
 
 export const MOVED_PUSH_KEY = "treeline.push.moved";     // endpoints of alert subscriptions that belonged to a retired worker
@@ -54,11 +68,25 @@ export async function registerApp() {
   } catch { return null; }
 }
 
+/** A phone or a tablet (an iPad that asks for the desktop site counts). Computers are not: the install page is for devices that
+ *  can hold the app on a Home Screen, and a computer can just use the browser. */
+export const isMobileOrTablet = () => platform() !== "other";
+
+// "Use Treeline in your browser instead": remembered for this visit only, so the install page comes back next time.
+let browserChosen = false;
+export const chooseBrowser = () => { browserChosen = true; try { sessionStorage.setItem("treeline.use.browser", "1"); } catch { /* blocked: the variable holds it */ } };
+export const usingBrowser = () => { try { return browserChosen || sessionStorage.getItem("treeline.use.browser") === "1"; } catch { return browserChosen; } };
+
+/** Should a device that isn't a phone yet be asked to install the app first? Only a phone or tablet in a browser tab, and only until it picks the browser. */
+export const showInstallPage = () => !isStandalone() && isMobileOrTablet() && !usingBrowser();
+
 // The install prompt (Android and desktop Chrome). iPhones and iPads have none: they use Share, then Add to Home Screen.
 let deferred = null;
 const listeners = new Set();
 window.addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); deferred = e; listeners.forEach((f) => f()); });
-window.addEventListener("appinstalled", () => { deferred = null; listeners.forEach((f) => f()); });
+let installed = false;
+window.addEventListener("appinstalled", () => { deferred = null; installed = true; listeners.forEach((f) => f()); });
+export const justInstalled = () => installed;
 export const canPromptInstall = () => !!deferred;
 export async function promptInstall() {
   if (!deferred) return false;

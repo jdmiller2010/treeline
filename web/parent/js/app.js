@@ -2,7 +2,9 @@
 import { get, post, patch, token, ApiError } from "/shared/api.js";
 import { avatar, brand, footer, TAGLINE, html, icon, iconButton, button, loader, raw, str, alert, toast } from "/shared/ui.js";
 import { plural } from "/shared/format.js";
-import { lockedToPhone, registerApp } from "/shared/pwa.js";
+import { lockedToPhone, onInstallChange, registerApp } from "/shared/pwa.js";
+import { installAvailable, installSteps, runInstall } from "/shared/install.js";
+import { infoDialog } from "./dialogs.js";
 import { signIn } from "./signin.js";
 import { setup } from "./setup.js";
 import { home } from "./home.js";
@@ -54,6 +56,7 @@ function accountMenu() {
     ${[["#/phonebook", "Phone book", "phone"], ["#/settings", "Settings", "settings"],
        ["#/privacy", "Privacy and safety", "shield-check"], ["#/about", "About Treeline", "info"]].map(([href, label, ic]) =>
       html`<a role="menuitem" href="${href}" class="tl-menu__item">${icon(ic)}<span>${label}</span></a>`)}
+    <button role="menuitem" type="button" class="tl-menu__item" data-install-app ${installAvailable() ? "" : raw("hidden")}>${icon("plus")}<span>Install the app</span></button>
     <div class="tl-menu__sep" role="separator"></div>
     <button role="menuitem" type="button" class="tl-menu__item tl-menu__item--danger" data-sign-out>${icon("log-out")}<span>Sign out</span></button>
   </div>
@@ -111,6 +114,7 @@ function barePage(v) {
 let renderToken = 0;
 
 async function render() {
+  if (lockedToPhone()) { location.replace("/phone/"); return; }      // a phone can't use the dashboard, in any tab, until a parent code is entered on it
   const mine = ++renderToken;
   const { name, params } = parseHash();
   document.body.className = "tl-root";
@@ -149,6 +153,9 @@ function show(v, mine) {
   document.title = (v.title ? v.title + " · " : "") + "Treeline";
   window.scrollTo(0, 0);
   root.querySelector("[data-sign-out]")?.addEventListener("click", signOut);
+  root.querySelector("[data-install-app]")?.addEventListener("click", async () => {
+    if (await runInstall() === "steps") await infoDialog({ title: "Install Treeline", body: installSteps() });
+  });
   root.querySelector("[data-pause]")?.addEventListener("click", async () => {
     try {
       const r = await patch("/api/treehouse", { paused: !ctx.me.treehouse.paused });
@@ -179,7 +186,12 @@ async function signOut() {
   token.clear(); ctx.me = null; ctx.go("#/signin");
 }
 
+// The browser may offer the install prompt after the page drew: show or hide the menu item as that changes.
+onInstallChange(() => { const item = document.querySelector("[data-install-app]"); if (item) item.hidden = !installAvailable(); });
 window.addEventListener("hashchange", render);
 window.addEventListener("tl-signed-out", () => { ctx.me = null; render(); });
-if (lockedToPhone()) location.replace("/phone/");     // an installed app that is a phone stays a phone until a parent code is entered there
+// A device that is a phone stays a phone in every tab until a parent code is entered there. (A tab that was already open finds out when
+// the phone's sign-in is saved in another one.)
+window.addEventListener("storage", () => { if (lockedToPhone()) location.replace("/phone/"); });
+if (lockedToPhone()) location.replace("/phone/");
 else { registerApp().then(() => { if (token.get()) carryOverPush(); }); render(); }
