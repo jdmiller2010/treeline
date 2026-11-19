@@ -79,7 +79,8 @@ def main():
         tablet_ctx = browser.new_context(viewport={"width": 820, "height": 1100})
         tablet = tablet_ctx.new_page()
         tablet.on("console", lambda m: errors.append(f"console {m.type}: {m.text}")
-                  if m.type in ("error", "warning") and "Failed to load resource" not in m.text and "WebSocket" not in m.text else None)
+                  if m.type in ("error", "warning") and "Failed to load resource" not in m.text and "WebSocket" not in m.text
+                  and "wouldn't start the call audio" not in m.text else None)       # (that one is refused on purpose, in the call-audio checks)
         tablet.on("pageerror", lambda e: errors.append(f"page error: {e}"))
         # This test is about the screen, not calls (phone_calls.py has those), and it checks what the phone shows while
         # it can't connect. Whether a browser can reach Asterisk depends on where the tests run, so send the phone's
@@ -132,6 +133,56 @@ def main():
         lite = tablet.evaluate(filt)
         tablet.evaluate("() => __phone.setLite(false)")
         check(len(full) > 5 and all(f != "none" for f in full) and all(f == "none" for f in lite), "in lite mode the painted texture is off and the phone is otherwise the same", f"{len(full)} filtered parts")
+        # The busy tone is one beep-and-gap period that the browser loops, so it never drifts and has no reset to hear: exactly the right
+        # length, silent at both ends (so the loop point can't click), a beep of the right length and a silent gap.
+        tone = tablet.evaluate("""() => { const f = window.__phone.cadenceSamples, rate = 48000, d = f(rate, 480, 620, 0.5, 0.5, 0.13);
+          let firstSound = -1, lastSound = -1, peak = 0, gapPeak = 0;
+          for (let i = 0; i < d.length; i++) { const a = Math.abs(d[i]); if (a > 1e-6) { if (firstSound < 0) firstSound = i; lastSound = i; } peak = Math.max(peak, a); if (i >= 0.5 * rate) gapPeak = Math.max(gapPeak, a); }
+          const fast = f(rate, 480, 620, 0.25, 0.25, 0.13), ring = f(rate, 440, 480, 2, 4, 0.13);
+          return { n: d.length, first: d[0], last: d[d.length - 1], beepSec: (lastSound + 1) / rate, startsAt: firstSound, peak: Math.round(peak * 1000) / 1000, gapPeak, fastN: fast.length, ringN: ring.length }; }""")
+        check(tone["n"] == 48000 and tone["first"] == 0 and tone["last"] == 0 and tone["gapPeak"] == 0 and 0.49 < tone["beepSec"] <= 0.5 and 0.12 < tone["peak"] <= 0.26,
+              "the busy tone is one beep and gap, silent at the loop point, so it repeats with no click or reset", str(tone))
+        check(tone["fastN"] == 24000 and tone["ringN"] == 288000, "and fast busy and ringback keep their rhythms (0.25 s and 2 s on, 4 s off)", str(tone))
+        # Call audio. A refused playback arms ONE retry (not three listeners per refusal), a second track joins the connection's one
+        # stream instead of replacing it, and ending a call leaves nothing behind for the next call to replay.
+        audio = tablet.evaluate("""async () => {
+          const p = window.__phone, el = document.getElementById('remote-audio'), real = HTMLMediaElement.prototype.play, out = {};
+          HTMLMediaElement.prototype.play = () => Promise.reject(new DOMException('blocked', 'NotAllowedError'));
+          try {
+            el.srcObject = new MediaStream();
+            p.playRemote(); p.playRemote(); p.playRemote();
+            await new Promise((r) => setTimeout(r, 50));
+            const before = p.audioState.tries;
+            window.dispatchEvent(new Event('pointerdown'));                   // one tap
+            await new Promise((r) => setTimeout(r, 50));
+            out.retriesPerTap = p.audioState.tries - before;                  // was 3 with stacked listeners
+            out.error = p.audioState.error;
+            window.dispatchEvent(new Event('keydown'));                       // a key after the retry re-armed: still just one more
+            await new Promise((r) => setTimeout(r, 50));
+            out.afterKey = p.audioState.tries - before - out.retriesPerTap;
+            p.stopRemoteAudio();                                              // the call ends: nothing armed, nothing left to replay
+            const t0 = p.audioState.tries;
+            window.dispatchEvent(new Event('pointerdown'));
+            await new Promise((r) => setTimeout(r, 50));
+            out.afterEnd = p.audioState.tries - t0; out.srcAfterEnd = !!el.srcObject; out.errorAfterEnd = p.audioState.error;
+          } finally { HTMLMediaElement.prototype.play = real; }
+          return out; }""")
+        check(audio["retriesPerTap"] == 1 and audio["afterKey"] == 1 and audio["error"] == "NotAllowedError",
+              "a browser that refuses the call audio gets one retry per tap, however often it refused", str(audio))
+        check(audio["afterEnd"] == 0 and not audio["srcAfterEnd"] and audio["errorAfterEnd"] == "",
+              "and when a call ends the audio element is cleared and nothing is left waiting to replay it", str(audio))
+        streams = tablet.evaluate("""() => {
+          const p = window.__phone, el = document.getElementById('remote-audio'), ctx = new AudioContext();
+          const t1 = ctx.createMediaStreamDestination().stream.getAudioTracks()[0], t2 = ctx.createMediaStreamDestination().stream.getAudioTracks()[0];
+          const pc = new EventTarget();
+          p.hookAudio({ connection: pc, on() {} });
+          const fire = (t) => { const e = new Event('track'); e.track = t; e.streams = []; pc.dispatchEvent(e); };
+          fire(t1); const first = el.srcObject; fire(t2);
+          const out = { same: el.srcObject === first, tracks: el.srcObject.getTracks().length };
+          const v = new Event('track'); v.track = { kind: 'video' }; v.streams = []; pc.dispatchEvent(v);              // not audio: ignored
+          out.afterVideo = el.srcObject.getTracks().length; p.stopRemoteAudio(); ctx.close(); return out; }""")
+        check(streams == {"same": True, "tracks": 2, "afterVideo": 2}, "a second audio track joins the call's one stream instead of replacing it, and other tracks are ignored", str(streams))
+        check(tablet.locator("#audio-debug").count() == 0, "the audio readout is only there when asked for (?debug=1)")
         # Tapping the handset (or double tapping) must not flash a highlight box or select text or the picture.
         touch = tablet.evaluate("""() => { const s = getComputedStyle(document.querySelector('.ph')); return { sel: s.userSelect, tap: s.webkitTapHighlightColor,
           kid: getComputedStyle(document.querySelector('.ph__status')).userSelect }; }""")

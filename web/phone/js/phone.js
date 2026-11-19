@@ -334,16 +334,38 @@ function onDigit(d) {
  *  (its autoplay rules); that used to fail silently and the audio began only after some later tap. Now the refusal is
  *  remembered, playback is retried at the next tap or key press and when the call connects, and ?debug=1 shows what happened. */
 const audioState = { error: "", tries: 0 };
+// One retry at the next tap or key press, however many times playback is refused: the three listeners are added together,
+// removed together, and never doubled.
+const RETRY_EVENTS = ["pointerdown", "keydown", "touchend"];
+let retryArmed = false;
+function retryPlay() { disarmRetry(); playRemote(); }
+function armRetry() {
+  if (retryArmed) return;
+  retryArmed = true;
+  RETRY_EVENTS.forEach((t) => window.addEventListener(t, retryPlay, { capture: true }));
+}
+function disarmRetry() {
+  if (!retryArmed) return;
+  retryArmed = false;
+  RETRY_EVENTS.forEach((t) => window.removeEventListener(t, retryPlay, { capture: true }));
+}
+/** The call is over (or a new one is starting): nothing may be left to play or retry, so the next call can't replay this one's stream. */
+function stopRemoteAudio() {
+  disarmRetry();
+  try { remoteAudio.pause(); } catch { /* nothing playing */ }
+  remoteAudio.srcObject = null;
+  audioState.error = "";
+}
 function playRemote() {
   if (!remoteAudio.srcObject) return;
   remoteAudio.muted = false; remoteAudio.volume = 1;
   audioState.tries++;
   const p = remoteAudio.play?.();
   if (p && p.catch) p.then(() => { audioState.error = ""; }, (err) => {
+    if (err && err.name === "AbortError") return;           // we stopped or replaced the audio while it was starting: not a refusal
     audioState.error = (err && err.name) || "blocked";
     console.warn("The browser wouldn't start the call audio yet:", audioState.error);
-    const retry = () => playRemote();
-    ["pointerdown", "keydown", "touchend"].forEach((t) => window.addEventListener(t, retry, { once: true, capture: true }));
+    armRetry();
   });
 }
 const hooked = new WeakSet();
@@ -351,11 +373,16 @@ function hookAudio(session) {
   // A call's audio arrives as a "track" on its peer connection. Two things used to leave the calling phone with nothing to play:
   // the track can come with no stream attached (so streams[0] is undefined), and an outgoing call can create its connection
   // before we are listening for it. Handle both: wrap a lone track in a stream, and attach to a connection that already exists.
+  stopRemoteAudio();                                    // a new call starts from a clean element
   const attach = (pc) => {
     if (!pc || hooked.has(pc)) return;
     hooked.add(pc);
+    let stream = null;                                  // one stream per connection: a later track joins it, it isn't replaced
     pc.addEventListener("track", (ev) => {
-      remoteAudio.srcObject = ev.streams && ev.streams[0] ? ev.streams[0] : new MediaStream([ev.track]);
+      if (ev.track && ev.track.kind !== "audio") return;
+      if (ev.streams && ev.streams[0]) stream = ev.streams[0];
+      else { stream = stream || new MediaStream(); if (!stream.getTracks().includes(ev.track)) stream.addTrack(ev.track); }
+      if (remoteAudio.srcObject !== stream) remoteAudio.srcObject = stream;
       playRemote();
     });
   };
@@ -409,6 +436,7 @@ function joinCall() {
 /** The other side hung up, or the call failed. A click, a moment of quiet, then dial tone. */
 function ended() {
   S.session = null;
+  stopRemoteAudio();
   tones.stop();
   if (S.hook !== "off") return;
   S.phase = "after"; S.digits = "";
@@ -496,23 +524,25 @@ async function boot() {
 }
 
 // ?debug=1 on the phone's address shows a small readout of the call audio, to say what the browser is doing when a call is silent.
+// It is opt-in and works on any address on purpose: it is for a real device on your network, where the page is not on localhost.
 if (location.search.includes("debug=1")) {
   const box = document.createElement("pre");
   box.id = "audio-debug";
   box.style.cssText = "position:fixed;left:8px;bottom:72px;z-index:9999;margin:0;padding:6px 8px;border-radius:8px;background:#000c;color:#9f9;font:11px/15px monospace;pointer-events:none;white-space:pre-wrap;max-width:92vw";
   document.body.appendChild(box);
-  setInterval(() => {
+  const timer = setInterval(() => {
+    if (!box.isConnected) return clearInterval(timer);             // the readout is gone: stop updating it
     const t = remoteAudio.srcObject && remoteAudio.srcObject.getAudioTracks ? remoteAudio.srcObject.getAudioTracks()[0] : null;
     box.textContent = [`call audio: ${remoteAudio.srcObject ? (remoteAudio.paused ? "NOT playing" : "playing") : "no call"}${audioState.error ? "  (browser said " + audioState.error + ")" : ""}`,
       `  track: ${t ? t.readyState + (t.muted ? ", muted" : ", live") : "none"}   time: ${remoteAudio.currentTime.toFixed(1)}s   tries: ${audioState.tries}`,
-      `  phase: ${S.phase}   tones: ${tones.audioReady?.() ? "sound on" : "sound OFF (tap the page)"}`].join("\n");
+      `  phase: ${S.phase}   tones: ${tones.audioReady() ? "sound on" : "sound OFF (tap the page)"}`].join("\n");
   }, 400);
 }
 
 // A hook for the browser tests, on this machine only, and without the SIP secret.
 if (location.search.includes("test=1") && ["localhost", "127.0.0.1"].includes(location.hostname)) {
   const view = new Proxy(S, { get: (t, k) => (k === "creds" ? undefined : t[k]), set: (t, k, v) => { t[k] = v; return true; } });
-  window.__phone = { isSlow, setLite, S: view, render: () => render(), cards: () => ui.cards, tonesLevel: () => tones.effectiveLevel(), lift: () => (ui.api.isOffHook() ? ui.api.hangUp() : ui.api.lift()), dial: (d) => S.dial?.(d), rotary: () => ui.api, tones,
+  window.__phone = { isSlow, setLite, cadenceSamples: tones.cadenceSamples, hookAudio, playRemote, stopRemoteAudio, audioState, S: view, render: () => render(), cards: () => ui.cards, tonesLevel: () => tones.effectiveLevel(), lift: () => (ui.api.isOffHook() ? ui.api.hangUp() : ui.api.lift()), dial: (d) => S.dial?.(d), rotary: () => ui.api, tones,
     async stats() { const pc = S.session?.connection; if (!pc) return null; const r = await pc.getStats(); let rx = 0, tx = 0; r.forEach((x) => { if (x.type === "inbound-rtp" && x.kind === "audio") rx += x.bytesReceived; if (x.type === "outbound-rtp" && x.kind === "audio") tx += x.bytesSent; }); return { rx, tx }; } };
 }
 

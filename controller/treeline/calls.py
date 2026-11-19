@@ -22,8 +22,10 @@ log = logging.getLogger("treeline")
 # Tones are named in asterisk/config/indications.conf and played as "tone:<name>".
 # (Not as raw strings: ARI splits a media list on commas, which tone strings are full of.)
 TONES = {
-    "busy": ("tone:busy", 4.0),
-    "fast_busy": ("tone:congestion", 4.0),
+    # Busy and fast busy play until the caller hangs up, like a real phone (the tone itself repeats with no gap or reset). The
+    # cap is only a safety net for a phone that never does.
+    "busy": ("tone:busy", 60.0),
+    "fast_busy": ("tone:congestion", 60.0),
     "sit": ("tone:sit", 1.2),
     "pips": ("tone:pips", 1.0),
     "join": ("tone:join", 0.6),
@@ -315,6 +317,8 @@ class Engine:
     def on_channel_gone(self, chan_id):
         with self.lock:
             self.ringtests.pop(chan_id, None)
+            for pb in [pb for pb, (chan, _) in self.playing.items() if chan == chan_id]:
+                self.playing.pop(pb, None)           # the caller hung up mid-tone: nothing left to stop or to play next
             call = self.by_chan.pop(chan_id, None)
             if call is None or call.finished:
                 return

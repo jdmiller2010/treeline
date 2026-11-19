@@ -40,26 +40,40 @@ function osc(freq, gain, dest) {
   return { o, g };
 }
 
-/** Two sine waves, on and off in a cadence (seconds). cadence = null means steady. */
+/** One period of a cadenced tone (the beep, then the gap) as samples: two sine waves with 8 ms edges, so the period starts and ends
+ *  in silence. Looped by the browser this is sample-accurate: no timers to drift or jitter, and no reset to hear when it comes round. */
+export function cadenceSamples(rate, f1, f2, on, off, level = LEVELS.dual) {
+  const n = Math.round((on + off) * rate), burst = Math.round(on * rate), ramp = Math.max(1, Math.round(0.008 * rate));
+  const d = new Float32Array(n);
+  for (let i = 0; i < burst; i++) {
+    const env = Math.min(1, i / ramp, (burst - 1 - i) / ramp);
+    d[i] = level * (Math.sin(2 * Math.PI * f1 * i / rate) + Math.sin(2 * Math.PI * f2 * i / rate)) * env;
+  }
+  return d;
+}
+
+/** A cadenced tone (busy, fast busy, ringback): that one period, repeated for as long as it plays. */
+function cadenced(f1, f2, [on, off], level) {
+  const samples = cadenceSamples(ctx.sampleRate, f1, f2, on, off, level);
+  const buf = ctx.createBuffer(1, samples.length, ctx.sampleRate);
+  buf.copyToChannel(samples, 0);
+  const src = ctx.createBufferSource(); src.buffer = buf; src.loop = true;
+  const out = ctx.createGain(); out.gain.value = 1; src.connect(out); out.connect(toneBus);
+  src.start();
+  return { stop() {
+    const t = ctx.currentTime;
+    out.gain.cancelScheduledValues(t); out.gain.setTargetAtTime(0, t, 0.015);
+    setTimeout(() => { try { src.stop(); out.disconnect(); } catch { /* done */ } }, 120);
+  } };
+}
+
+/** Two sine waves, steady (the dial tone) or in a cadence (seconds on, off). */
 function dual(f1, f2, cadence, level = LEVELS.dual) {
+  if (cadence) return cadenced(f1, f2, cadence, level);
   const out = ctx.createGain(); out.gain.value = 0; out.connect(toneBus);
   const a = osc(f1, 1, out), b = osc(f2, 1, out);
-  let timer = null, stopped = false;
-  if (!cadence) out.gain.setTargetAtTime(level, ctx.currentTime, 0.01);
-  else {
-    const [on, off] = cadence;
-    const cycle = () => {
-      if (stopped) return;
-      const t = ctx.currentTime;
-      out.gain.cancelScheduledValues(t);
-      out.gain.setTargetAtTime(level, t, 0.01);
-      out.gain.setTargetAtTime(0, t + on, 0.01);
-      timer = setTimeout(cycle, (on + off) * 1000);
-    };
-    cycle();
-  }
+  out.gain.setTargetAtTime(level, ctx.currentTime, 0.01);
   return { stop() {
-    stopped = true; clearTimeout(timer);
     const t = ctx.currentTime;
     out.gain.cancelScheduledValues(t); out.gain.setTargetAtTime(0, t, 0.015);
     setTimeout(() => { try { a.o.stop(); b.o.stop(); out.disconnect(); } catch { /* done */ } }, 120);

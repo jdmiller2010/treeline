@@ -170,8 +170,16 @@ def run(families):
         check(ss and ss["rx"] > 1000 and ss["tx"] > 1000, "audio flows both ways (calling side)", str(ss))
         # Packets arriving isn't hearing them: the page's audio element must actually be playing (a browser can refuse to start it).
         playing = "() => { const e = document.getElementById('remote-audio'); return !!e.srcObject && !e.paused && e.currentTime > 0.5; }"
+
+        def plays(tab, ms=8000):
+            """Audio can lag the packets a little: wait for the element to be playing rather than reading it once."""
+            try:
+                tab.page.wait_for_function(playing, timeout=ms)
+                return True
+            except Exception:
+                return False
         state = "() => { const e = document.getElementById('remote-audio'); return { src: !!e.srcObject, paused: e.paused, time: Math.round(e.currentTime * 10) / 10, ready: e.readyState, muted: e.muted, vol: e.volume, tracks: e.srcObject ? e.srcObject.getAudioTracks().map((t) => t.readyState + '/' + (t.muted ? 'muted' : 'live') + '/' + t.enabled) : null }; }"
-        check(a.page.evaluate(playing) and s.page.evaluate(playing), "and both tablets are really playing what they receive, not just receiving it",
+        check(plays(a) and plays(s), "and both tablets are really playing what they receive, not just receiving it",
               f"callee {a.page.evaluate(state)} | caller {s.page.evaluate(state)}")
 
         # ---- someone else on the line joins mid-call
@@ -185,6 +193,8 @@ def run(families):
         s.lift()
         check(a.wait_phase("after", 15000) or a.wait_phase("dialtone", 15000), "when one side hangs up, the other hears the click")
         check(a.wait_phase("dialtone", 15000), "and then the dial tone comes back")
+        gone = "() => !document.getElementById('remote-audio').srcObject"
+        check(a.page.evaluate(gone) and s.page.evaluate(gone), "after the call neither tablet is left holding its audio, so the next call can't replay it")
         a.lift()                                               # put it back
         time.sleep(1)
         c = newest_call(alex)

@@ -97,6 +97,18 @@ class EngineTests(unittest.TestCase):
         self.assertNotIn("j1", call.legs)
         self.assertTrue(any(m == "POST" and path.startswith("/channels/j1/play/") for m, path, _ in e.ari.sent))   # fast busy
 
+    def test_busy_tones_play_until_the_caller_hangs_up(self):
+        for name in ("busy", "fast_busy"):
+            media, seconds = calls.sound_plan(name)[0]
+            self.assertGreaterEqual(seconds, 30, name)          # not cut off after a few seconds: only a safety net for a phone that never hangs up
+
+    def test_a_caller_hanging_up_mid_tone_leaves_nothing_playing_or_queued(self):
+        e = calls.Engine(FakeAri())
+        e.play_plan("c9", calls.sound_plan("busy"))
+        self.assertEqual(len(e.playing), 1)
+        e.on_channel_gone("c9")
+        self.assertEqual(e.playing, {})
+
     def test_sound_plans(self):
         self.assertEqual(calls.sound_plan("busy")[0][0], "tone:busy")
         self.assertEqual(calls.sound_plan("fast_busy")[0][0], "tone:congestion")

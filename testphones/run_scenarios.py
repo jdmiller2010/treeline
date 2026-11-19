@@ -346,6 +346,26 @@ def callee_offline(w):
     return c["result"] == "offline", dict(c)
 
 
+def _channels_of(w, user):
+    return [c for c in (w.ari.request("GET", "/channels") or []) if c.get("name", "").startswith(f"PJSIP/{user}-")]
+
+
+def busy_tone_plays_until_hangup(w):
+    """A busy / fast-busy tone is not cut off after a few seconds: the caller's line is still up, still hearing it, well past the old
+    4 s limit, and it ends when the caller hangs up (nobody is on Alex's line, so Sam gets fast busy)."""
+    s = Session(w)
+    try:
+        p = s.dial("sam", "0102", seconds=10, wait=False)
+        time.sleep(7.5)
+        still = len(_channels_of(w, p.user))
+        p.stop()
+        time.sleep(2.5)
+        after = len(_channels_of(w, p.user))
+        return still == 1 and after == 0, {"line_up_at_7_5s": still, "line_up_after_hangup": after}
+    finally:
+        s.close()
+
+
 def ring_timeout(w):
     """Alex's phone rings and nobody answers: a missed call after the ring timeout."""
     db.set_setting(w.conn, "ring_timeout_sec", 5)
@@ -461,7 +481,7 @@ def join_with_no_call(w):
 
 
 SCENARIOS = [dial_by_number, not_in_service, not_strung, no_911, incomplete_number, callee_paused,
-             caller_quiet_hours, callee_quiet_hours, busy_line, callee_offline,
+             caller_quiet_hours, callee_quiet_hours, busy_line, busy_tone_plays_until_hangup, callee_offline,
              ring_timeout, time_limit, repeat_limit, unstrung_hunting, daily_minutes,
              shared_line, join_mid_call, join_with_no_call, disconnected_phone_is_skipped,
              every_phone_disconnected, disconnected_phone_cannot_call]
