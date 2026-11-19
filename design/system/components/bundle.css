@@ -849,7 +849,7 @@ body {
 .tl-desk__hot--licenses { left: 57.636%; top: 73.933%; width: 10.182%; height: 7.865%; }
 .tl-desk__hot--coffee { left: 70.909%; top: 6.292%; width: 24.364%; height: 18.652%; }
 .tl-desk__hot--card { left: 70.909%; top: 24.944%; width: 21.818%; height: 17.079%; }
-.tl-desk__hot--cardfile { left: 72.445%; top: 54.933%; width: 20.418%; height: 17.876%; }
+.tl-desk__hot--cardfile { left: 72.673%; top: 51.191%; width: 19.782%; height: 22.112%; }
 /* The slot: the wall above the phone. For the app's few words (what the phone is doing, the connection
    light, a sleeping card). Keep it short: two lines. */
 .tl-desk__slot { position: absolute; left: 2.5%; right: 77%; top: 50%; display: flex; flex-direction: column; align-items: center; gap: var(--space-2); text-align: center; color: var(--ink); }
@@ -862,7 +862,7 @@ body {
 .tl-desk__hot--licenses { left: 59.000%; top: 66.564%; width: 11.200%; height: 5.368%; }
 .tl-desk__hot--coffee { left: 77.160%; top: 14.686%; width: 19.300%; height: 9.164%; }
 .tl-desk__hot--card { left: 77.160%; top: 23.850%; width: 17.280%; height: 8.390%; }
-.tl-desk__hot--cardfile { left: 15.310%; top: 83.827%; width: 20.740%; height: 11.265%; }
+.tl-desk__hot--cardfile { left: 13.410%; top: 80.890%; width: 21.170%; height: 14.686%; }
 .tl-desk__slot { left: 2%; right: 79%; top: 46%; }
 }
 @container (aspect-ratio < 0.65) {
@@ -874,7 +874,7 @@ body {
 .tl-desk__hot--licenses { left: 69.667%; top: 65.672%; width: 18.667%; height: 5.224%; }
 .tl-desk__hot--coffee { left: 59.967%; top: 1.873%; width: 36.633%; height: 10.157%; }
 .tl-desk__hot--card { left: 59.967%; top: 12.030%; width: 32.800%; height: 9.299%; }
-.tl-desk__hot--cardfile { left: 59.633%; top: 87.448%; width: 26.883%; height: 8.522%; }
+.tl-desk__hot--cardfile { left: 58.300%; top: 85.254%; width: 27.433%; height: 11.119%; }
 .tl-desk__slot { left: 32%; right: 42%; top: 2%; }
 }
 .tl-desk__card, .tl-desk__card--falling { transform-box: fill-box; transform-origin: 50% 100%; }

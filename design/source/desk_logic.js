@@ -49,8 +49,8 @@
             : [{ transform: "translateY(9%) scaleY(-.12)", opacity: 0 }, { transform: "translateY(2%) scaleY(.4)", opacity: 1, offset: .45 }, { transform: "translateY(-1.5%) scaleY(1.02)", offset: .82 }, { transform: "none", opacity: 1 }];
           card.animate(come, { duration: 420, delay: lag + 140, easing: "cubic-bezier(.2,.7,.3,1)", fill: "backwards" });
         });
-        knobTurn += fwd ? 36 : -36;
-        all(".tl-cf-knob", function (k) { k.animate([{ transform: "rotate(" + (knobTurn - (fwd ? 36 : -36)) + "deg)" }, { transform: "rotate(" + knobTurn + "deg)" }], { duration: 460, delay: lag, easing: "cubic-bezier(.3,.7,.3,1)", fill: "forwards" }); });
+        // the knob's grip lines roll one notch, as a drum does when it turns
+        all(".tl-cf-knob", function (k) { k.animate([{ transform: "translateY(0)" }, { transform: "translateY(" + (fwd ? 7 : -7) + "px)" }], { duration: 460, delay: lag, easing: "cubic-bezier(.3,.7,.3,1)" }); });
         all(".tl-cf-fan", function (f) { f.animate([{ transform: "none" }, { transform: "rotate(" + (fwd ? -3 : 3) + "deg)", offset: .4 }, { transform: "none" }], { duration: 520, delay: lag, easing: "ease-in-out" }); });
       }
       flipping++; setTimeout(function () { flipping = Math.max(0, flipping - 1); }, 480);
