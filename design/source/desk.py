@@ -322,17 +322,18 @@ def leg(x0, x1, y0, y1, taper=4):
 def table(t):
     """Returns (behind the shelf things, the shelf's front edge, the front of the table)."""
     x0, x1, ty, inset, ch, sy, H = t["x0"], t["x1"], t["ty"], t["inset"], t["ch"], t["sy"], t["H"]
-    cx = (x0 + x1) / 2; F = ty + 114; cb = F + 54 + ch
+    TD = t.get("td", TOP_D); inset = 12                     # eye level near the table top: a shallow top, barely narrowing
+    cx = (x0 + x1) / 2; F = ty + TD; cb = F + 54 + ch
     TOP = (f"M{x0+inset} {ty+6} C{x0+inset} {ty+2} {x0+inset+4} {ty} {x0+inset+10} {ty} L{x1-inset-10} {ty} C{x1-inset-4} {ty} {x1-inset} {ty+2} {x1-inset} {ty+6} "
            f"L{x1} {F} C{x1+2} {F+4} {x1} {F+6} {x1-6} {F+6} L{x0+6} {F+6} C{x0} {F+6} {x0-2} {F+4} {x0} {F} Z")
     APRON = f"M{x0} {F+6} L{x1} {F+6} L{x1} {F+46} C{x1} {F+52} {x1-4} {F+54} {x1-10} {F+54} L{x0+10} {F+54} C{x0+4} {F+54} {x0} {F+52} {x0} {F+46} Z"
     CARC = f"M{x0+32} {F+54} L{x1-32} {F+54} L{x1-32} {cb} L{x0+32} {cb} Z"
     dx, dy, dw, dh = t["drawer"]
     DRAWER = rrect(dx, dy, dw, dh, 6)
-    STOP = f"M{x0+60} {sy} L{x1-60} {sy} L{x1-26} {sy+26} L{x0+26} {sy+26} Z"
+    STOP = f"M{x0+34} {sy+12} L{x1-34} {sy+12} L{x1-26} {sy+26} L{x0+26} {sy+26} Z"
     SFRONT = f"M{x0+26} {sy+26} L{x1-26} {sy+26} L{x1-26} {sy+50} C{x1-26} {sy+54} {x1-29} {sy+56} {x1-33} {sy+56} L{x0+33} {sy+56} C{x0+29} {sy+56} {x0+26} {sy+54} {x0+26} {sy+50} Z"
     back = [shape(leg(x0+84, x0+110, cb, H + 10, 2), WOOD_D, loose=True), shape(leg(x1-110, x1-84, cb, H + 10, 2), WOOD_D, loose=True), shape(STOP, WOOD_L, edge=WOOD_M, loose=True),
-            f'<g {WOB}><path d="M{x0+68} {sy+6} C{x0+230} {sy+4} {x1-230} {sy+4} {x1-68} {sy+6}" {LNS}/></g>']
+            f'<g {WOB}><path d="M{x0+40} {sy+18} C{x0+230} {sy+17} {x1-230} {sy+17} {x1-40} {sy+18}" {LNS}/></g>']
     sfront = [shape(SFRONT, WOOD_M, edge=WOOD_D, loose=True)]
     front = [shape(leg(x0+32, x0+70, cb, H + 10), WOOD_M, edge=WOOD_D, loose=True), shape(leg(x1-70, x1-32, cb, H + 10), WOOD_M, edge=WOOD_D, loose=True),
              shape(CARC, WOOD_M, edge=WOOD_D, loose=True),
@@ -343,8 +344,8 @@ def table(t):
               f'<circle cx="{kx+1.5}" cy="{ky+1.5}" r="9" fill="{WOOD_D}" opacity=".8"/><g {WOB}><circle cx="{kx}" cy="{ky}" r="9" {LN}/></g>',
               shape(APRON, WOOD_M, edge=WOOD_D, loose=True),
               shape(TOP, WOOD_L, edge=WOOD_M, loose=True)]
-    for f in (.2, .41, .65, .9):     # wood grain
-        y = ty + 114 * f; a = x0 + inset * (1 - f); b = x1 - inset * (1 - f)
+    for f in (.3, .62):              # wood grain
+        y = ty + TD * f; a = x0 + inset * (1 - f); b = x1 - inset * (1 - f)
         front.append(f'<g {WOB}><path d="M{a:.0f} {y:.0f} C{a+150:.0f} {y-3:.0f} {a+260:.0f} {y+3:.0f} {(a+b)/2:.0f} {y:.0f} S{b-120:.0f} {y-3:.0f} {b:.0f} {y+1:.0f}" fill="none" stroke="{INK}" stroke-width="1" opacity=".18"/></g>')
     front.append(f'<g {WOB}><path d="M{x0+8} {F+16} L{x1-8} {F+16}" {LNS}/></g>')
     return "".join(back), "".join(sfront), "".join(front)
@@ -407,13 +408,13 @@ def moved(box, pl):
 # ---------------------------------------------------------------- the guide book, spine out
 BOOK_W, BOOK_T = 200, 30          # length of the spine, thickness of the book
 def book_t(w): return max(BOOK_T, w * .11)          # a 6 x 9 book about an inch thick
-def book_depth(w): return max(26, w * .085)
+def book_depth(w): return max(9, w * .03)
 def book_spine(x0, by, w=BOOK_W, t=None, depth=None, vis=None):
     """The guide lying flat on its back cover, spine toward you: the title reads across the spine. Seen from
     the side of the table, only a sliver of the front cover shows on top: its blue band and cream, no words."""
     t = book_t(w) if t is None else t; depth = book_depth(w) if depth is None else depth
     vis = w if vis is None else vis                              # how much of it shows (the phone may sit in front of the rest)
-    x1 = x0 + w; top = by - t - depth; k = depth * .55          # the far edge is a little shorter, like the table top
+    x1 = x0 + w; top = by - t - depth; k = depth * .3           # the far edge a touch shorter, like the table top
     face = f"M{x0+k:.1f} {top} L{x1-k:.1f} {top} L{x1} {top+depth} L{x0} {top+depth} Z"
     band = f"M{x0+k:.1f} {top} L{x0+k+w*.3:.1f} {top} L{x0+w*.3:.1f} {top+depth} L{x0} {top+depth} Z"
     spine = (f"M{x0} {top+depth} L{x1} {top+depth} C{x1+5} {top+depth+t*.3} {x1+5} {by-t*.3} {x1} {by} "
@@ -480,12 +481,12 @@ def warranty_face(turn=0):
 def drawer_peek(x, y, x0, x1, k):
     """The drawer is open a crack (a dark gap along its top) and the warranty card sticks up out of it."""
     gap = f'<path d="M{x0+6} {y} L{x1-6} {y} L{x1-8} {y+9} L{x0+8} {y+9} Z" fill="#2a1d10" opacity=".78"/>'
-    card = f'<g transform="translate({x-20} {y+8}) rotate(-8)"><g transform="translate(0 -74) scale(.72)">{warranty_face()}</g></g>'
+    card = f'<g transform="translate({x-20} {y+8}) rotate(-8)"><g transform="translate(0 -52) scale(.72)">{warranty_face()}</g></g>'
     clip = f'<clipPath id="tls-peek{k}"><rect x="{x-160}" y="{y-220}" width="320" height="226"/></clipPath>'
     return gap + f'<defs>{clip}</defs><g clip-path="url(#tls-peek{k})">{card}</g>'
 
 def peek_box(x, y):
-    return (x - 34, y - 84, 112, 92)
+    return (x - 34, y - 62, 112, 70)
 
 LAYOUTS = {
     # Landscape tablets and desktops: zoomed in on the phone and the table top. No shelf: the guide book lies
@@ -495,7 +496,7 @@ LAYOUTS = {
                   "drawer": (336, 768, 428, 100), "knob": (374, 818)},
         "phone": {"x": 270, "y": 2, "w": 560},
         "sticker": (510, 820, .78, .78, -3),
-        "bookspine": (78, 664, 440, 262), "peek": (668, 768),
+        "bookspine": (78, 650, 440, 262), "peek": (668, 768),
         "place": {"sticky": (72, 150, 34, 40, 1), "sketch": (92, 360, 46, 252, .92), "cork": (676, 64, 768, 40, 1),
                   "cardfile": (684, 674, 786, 652, .78)},
         "shelf": [], "table_items": ["cardfile"], "sketch": True},
@@ -521,6 +522,14 @@ LAYOUTS = {
                   "cardfile": (684, 674, 360, 1286, .56)},
         "shelf": ["cardfile"], "table_items": [], "sketch": True},
 }
+
+TOP_D = 66                                      # how deep the table top looks (it was 114, seen from above)
+for _L in LAYOUTS.values():
+    _d = 114 - TOP_D; _t = _L["table"]
+    dx_, dy_, dw_, dh_ = _t["drawer"]; _t["drawer"] = (dx_, dy_ - _d, dw_, dh_)
+    kx_, ky_ = _t["knob"]; _t["knob"] = (kx_, ky_ - _d)
+    st = list(_L["sticker"]); st[1] -= _d; _L["sticker"] = tuple(st)
+    px_, py_ = _L["peek"]; _L["peek"] = (px_, py_ - _d)
 
 def scene(name):
     L = LAYOUTS[name]; W_, H_ = L["W"], L["H"]; pl = L["place"]
