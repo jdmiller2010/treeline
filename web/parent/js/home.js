@@ -44,11 +44,10 @@ export async function home(ctx) {
     tone: NOTICE_TONE[n.kind] || "info", title: n.title, body: n.body, dismiss: String(n.id), actions: noticeActions(n) }));
 
   const setupCards = [];
-  if (!d.handsets.length) setupCards.push(emptyState({ art: "treehouse", title: "Add your first phone",
-    body: "Connect a softphone, a phone adapter or the Treeline phone. Friends can't call until something is plugged in.",
-    action: parent ? button({ label: "Add a phone", variant: "primary", icon: "plus", attrs: "data-add-phone" }) : null }));
-  else if (!d.strings.live && !d.strings.waiting_on_me.length && !d.strings.waiting_on_them.length) setupCards.push(emptyState({
-    art: "neighborhood", title: "Invite a friend's family", body: "Share a ladder code with a parent you know. Once you both say yes, the kids can call.",
+  // (No "add your first phone" card: the Phones section below says it when there are none. And no picture on these cards:
+  // the treehouse at the top is this screen's one illustration.)
+  if (d.handsets.length && !d.strings.live && !d.strings.waiting_on_me.length && !d.strings.waiting_on_them.length) setupCards.push(emptyState({
+    art: null, title: "Invite a friend's family", body: "Share a ladder code with a parent you know. Once you both say yes, the kids can call.",
     action: parent ? button({ label: "Make a ladder code", variant: "primary", icon: "plus", attrs: "data-make-code" }) : null }));
 
   const waiting = [...d.strings.waiting_on_me, ...d.strings.waiting_on_them];

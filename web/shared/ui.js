@@ -191,7 +191,7 @@ export function sheet({ id, title, body, actions, stackActions }) {
 
 export function emptyState({ art: name, title, body, action }) {
   return html`<section class="tl-card"><div class="tl-empty">
-  <div class="tl-empty__art">${art(name)}</div>
+  ${name ? html`<div class="tl-empty__art">${art(name)}</div>` : ""}
   <h3 class="tl-empty__title">${title}</h3>
   <p class="tl-empty__body">${body}</p>
   ${action ? html`<div class="tl-empty__action">${action}</div>` : ""}

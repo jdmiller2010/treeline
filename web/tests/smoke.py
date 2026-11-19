@@ -138,6 +138,11 @@ def main():
         s.click("[data-skip]")
         s.click("[data-later]")
         s.wait_for_selector("#app-title")
+        s.wait_for_selector(".tl-home-hero")
+        check(s.locator("h2:has-text('Phones')").count() == 1 and s.locator("text=Add your first phone").count() == 0,
+              "with no phones yet, Home has one Phones section, not a second 'add your first phone' prompt")
+        check(s.locator(".tl-art").count() == 1 and s.locator(".tl-empty__art").count() == 0,
+              "and one picture on the screen: the treehouse at the top")
         s.goto(f"{BASE}/parent/#/strings")
         s.wait_for_selector("text=No strings yet")
         s.click("main [data-redeem]")

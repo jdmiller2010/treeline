@@ -139,7 +139,7 @@ export function treehouseSections(ctx, handsets, grown_ups) {
     ${handsets.length
       ? html`<div class="tl-card tl-card--list">${handsets.map((h) => handsetRow(h, thisId))}</div>
         <p class="tl-card__body tl-measure" style="color:var(--ink-muted)">Use the switch to disconnect a phone for now. A disconnected phone doesn't ring and can't call out; your other phones carry on as usual.</p>`
-      : emptyState({ art: "treehouse", title: "No phones yet", body: "Add a softphone, a phone adapter or the Treeline phone. They all ring together when a friend calls.",
+      : emptyState({ art: null, title: "No phones yet", body: "Add a softphone, a phone adapter or the Treeline phone. They all ring together when a friend calls.",
           action: parent ? button({ label: "Add a phone", variant: "primary", icon: "plus", attrs: "data-add-phone" }) : null })}
   </section>
 
