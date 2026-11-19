@@ -845,12 +845,12 @@ body {
 .tl-desk__hot { position: absolute; display: block; padding: 0; border: 0; border-radius: 14px; background: none; cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .tl-desk__hot:focus-visible { outline: var(--border-focus, 3px) solid var(--focus); outline-offset: 2px; }
 .tl-desk__stage { width: min(100cqw, 123.596cqh); aspect-ratio: 1100 / 890; }
-.tl-desk__phone { left: 24.545%; top: 0.225%; width: 50.909%; }
-.tl-desk__hot--guide { left: 6.364%; top: 65.438%; width: 25.273%; height: 8.494%; }
+.tl-desk__phone { left: 26.818%; top: 3.258%; width: 46.364%; }
+.tl-desk__hot--guide { left: 6.364%; top: 62.742%; width: 23.091%; height: 8.494%; }
 .tl-desk__hot--licenses { left: 57.636%; top: 73.933%; width: 10.182%; height: 7.865%; }
 .tl-desk__hot--coffee { left: 70.909%; top: 6.292%; width: 24.364%; height: 18.652%; }
 .tl-desk__hot--card { left: 70.909%; top: 24.944%; width: 21.818%; height: 17.079%; }
-.tl-desk__hot--cardfile { left: 71.173%; top: 55.382%; width: 20.418%; height: 17.876%; }
+.tl-desk__hot--cardfile { left: 72.445%; top: 54.933%; width: 20.418%; height: 17.876%; }
 /* The slot: the wall above the phone. For the app's few words (what the phone is doing, the connection
    light, a sleeping card). Keep it short: two lines. */
 .tl-desk__slot { position: absolute; left: 2.5%; right: 77%; top: 50%; display: flex; flex-direction: column; align-items: center; gap: var(--space-2); text-align: center; color: var(--ink); }
@@ -870,7 +870,7 @@ body {
 .tl-desk__art > .tl-desk__l--wide, .tl-desk__art > .tl-desk__l--portrait { display: none; }
 .tl-desk__art > .tl-desk__l--tall { display: block; }
 .tl-desk__stage { width: min(100cqw, 44.776cqh); aspect-ratio: 600 / 1340; }
-.tl-desk__phone { left: 4.667%; top: 18.284%; width: 90.667%; }
+.tl-desk__phone { left: 8.333%; top: 19.925%; width: 83.333%; }
 .tl-desk__hot--guide { left: 12.667%; top: 92.910%; width: 46.333%; height: 3.955%; }
 .tl-desk__hot--licenses { left: 69.667%; top: 65.672%; width: 18.667%; height: 5.224%; }
 .tl-desk__hot--coffee { left: 59.967%; top: 1.873%; width: 36.633%; height: 10.157%; }
