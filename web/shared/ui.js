@@ -198,8 +198,8 @@ export function emptyState({ art: name, title, body, action }) {
 </div></section>`;
 }
 
-export function steps(names, current) {
-  return html`<nav class="tl-stepsnav" aria-label="Setup progress">
+export function steps(names, current, label = "Setup progress") {
+  return html`<nav class="tl-stepsnav" aria-label="${label}">
   <p class="tl-steps__summary">Step ${current} of ${names.length}: ${names[current - 1]}</p>
   <ol class="tl-steps">${names.map((n, i) => html`<li class="tl-steps__item${i + 1 < current ? " is-done" : ""}" ${i + 1 === current ? raw('aria-current="step"') : ""}><span class="tl-steps__bar" aria-hidden="true"></span><span class="tl-steps__label">${n}</span></li>`)}</ol>
 </nav>`;
@@ -218,8 +218,22 @@ export function toast(message, tone = "neutral", opts = {}) {
 export const CONTACT = "jdmiller2010@gmail.com";
 export const SUPPORT_URL = "https://buymeacoffee.com/jdmiller";
 
+/** The footer's links: who made it, how to support it, how to reach Jordan, the licenses. */
+export function footerLinks(licenses = "/parent/licenses.html") {
+  return html`<span>Made by Jordan Miller · © 2026</span>
+  <span class="tl-footer__item">Support the project: <a class="tl-footer__link" href="${SUPPORT_URL}" target="_blank" rel="noopener">${icon("coffee", 16)}Buy me a coffee</a></span>
+  <a class="tl-footer__link" href="mailto:${CONTACT}">${icon("mail", 16)}Email Jordan</a>
+  <a class="tl-footer__link" href="${licenses}">Open-source licenses</a>`;
+}
 export function footer(licenses = "/parent/licenses.html") {
-  return html`<p class="caption tl-footer" style="color:var(--ink-muted)">© 2026 Jordan Miller · <a href="mailto:${CONTACT}" style="color:inherit">${CONTACT}</a> · <a href="${SUPPORT_URL}" style="color:inherit" target="_blank" rel="noopener">Support Treeline</a> · <a href="${licenses}" style="color:inherit">Open-source licenses</a></p>`;
+  return html`<p class="caption tl-footer">${footerLinks(licenses)}</p>`;
+}
+
+/** The brand mark and name with the tagline under it, for the top of a page that has no app bar. */
+export const TAGLINE = "Safe calls for neighborhood kids";
+export function brandLine() {
+  const mark = BRAND.replace(/^<a class="tl-brand"[^>]*>/, '<span class="tl-brand">').replace(/<\/a>\s*$/, "</span>");
+  return html`<div class="tl-brandline">${raw(mark)}<p class="tl-tagline">${TAGLINE}</p></div>`;
 }
 
 /** The plain statement the design system requires wherever a phone or the app is used. */

@@ -1,9 +1,10 @@
 // The Treeline softphone, the rotary phone as an app or in a browser: a real dial, real tones, calls over WebRTC.
-// The screen is the design system's softphone room (components/SoftphoneDesk): the phone on a side table, with the
-// guide book, the card file of strings, the no-911 sticker and the cards for credit, support and licenses around it.
+// The screen is an ordinary Treeline page built from the design system: the brand and tagline, the treehouse's name
+// with what the phone is doing, the RotaryPhone on a soft glow with the CardFile of approved strings beside it, the
+// plain no-911 line, a "How to dial" sheet with the guide's pictures, and the footer.
 import { api } from "/shared/api.js";
-import { DESK } from "/shared/assets.js";
-import { CONTACT, SUPPORT_URL, html, raw, str } from "/shared/ui.js";
+import { CARDFILE, ROTARY } from "/shared/assets.js";
+import { brandLine, button, footerLinks, html, icon, presence, raw, sheet, steps, str, tag } from "/shared/ui.js";
 import { forgetPhone, pairScreen, savedPhone } from "./pair.js";
 import * as tones from "./tones.js";
 
@@ -13,8 +14,8 @@ const JOIN = "0001";                      // dial this to join the call your lin
 const HOWL_AFTER = 30000;                 // seconds off the hook, doing nothing, before the howler
 const INTERDIGIT = 6000;                  // wait this long for another digit, then send what was dialed
 
-// The wall says only what's happening (ringing, talking, asleep): how to dial is the guide book's job.
-// While dialing it shows how far along the four numbers are.
+// Under the treehouse's name: what the phone is doing, in a word and a colored dot. While dialing, how far along
+// the four numbers are.
 const progress = (digits) => "● ".repeat(digits.length) + "○ ".repeat(Math.max(0, 4 - digits.length));
 
 const dark = window.matchMedia("(prefers-color-scheme: dark)");
@@ -30,39 +31,91 @@ let ui = null;
 // softphone is removed and added back) doesn't stack listeners and timers.
 let life = new AbortController();
 
-const say = (main, sub = "") => { if (ui) { ui.status.textContent = main; ui.sub.textContent = sub; } document.body.dataset.state = S.phase; };
+const say = (main, sub = "") => { S.words = [main, sub]; showStatus(); document.body.dataset.state = S.phase; };
 const hush = () => say("");
-/** "20:00" → "8 pm", "19:30" → "7:30 pm": the sticky note is in a kid's words. */
+/** "20:00" → "8 pm", "19:30" → "7:30 pm": quiet time in a kid's words. */
 const clock = (hm) => { const [h, m] = String(hm || "0:0").split(":").map(Number); const h12 = ((h + 11) % 12) + 1; return `${h12}${m ? ":" + String(m).padStart(2, "0") : ""} ${h < 12 ? "am" : "pm"}`; };
 const later = (name, ms, fn) => { clearTimeout(S.timers[name]); S.timers[name] = setTimeout(fn, ms); };
 const cancel = (...names) => names.forEach((n) => clearTimeout(S.timers[n]));
 
 // ------------------------------------------------------------------ screen
 
+// How to dial: the guide's pictures, one at a time, in a sheet.
+const GUIDE = [
+  { pic: "light", name: "The light", title: "The little light", lights: true },
+  { pic: "lift", name: "Lift", title: "Lift the handset. Hear the hum?" },
+  { pic: "finger", name: "Finger in", title: "Put a finger in a number." },
+  { pic: "turn", name: "Turn", title: "Turn it to the metal stop. Then let go!" },
+  { pic: "numbers", name: "Four numbers", title: "Dial all four numbers to call a friend." },
+  { pic: "busy", name: "Busy", title: "Beep, beep, beep? They’re busy. Hang up and try later." },
+  { pic: "quiet", name: "Quiet time", title: "At quiet time the phone is asleep." },
+  { pic: "no-911", name: "No 911", title: "This phone can’t call 911. In an emergency, find a grown-up." },
+  { pic: "hang-up", name: "Hang up", title: "All done? Put the handset back. Bye!" },
+];
+const LIGHTS = [["on", "Steady green: ready to call"], ["connecting", "Pulsing orange: connecting, wait"], ["off", "Blinking red: ask a grown-up"], ["ring", "Flashing green: a call! Lift it"]];
+
+function guideStep(i) {
+  const g = GUIDE[i];
+  return html`<div class="ph-guide">${steps(GUIDE.map((x) => x.name), i + 1, "How to dial")}
+  <figure class="ph-guide__pic"><img src="/ui/illustrations/guide/${g.pic}.svg" alt="" width="300" height="270"></figure>
+  <p class="ph-guide__text">${g.title}</p>
+  ${g.lights ? html`<ul class="ph-guide__lights">${LIGHTS.map(([k, t]) => html`<li><span class="ph-lamp ph-lamp--${k}" aria-hidden="true"></span>${t}</li>`)}</ul>` : ""}</div>`;
+}
+
 function draw() {
-  // The room and the phone in it come from the design system: a drawing, a finger wheel that really turns,
-  // a handset that really lifts and trembles when it rings, and things to pick up. We listen to their events.
-  root.innerHTML = str(html`${raw(DESK)}
-  <div class="ph-wake" id="wake" hidden><div class="tl-card" style="max-width:var(--sheet-max);text-align:center"><div class="tl-stack tl-stack--group">
-    <h2 class="tl-card__title">Tap to turn the phone on</h2>
-    <p class="tl-card__body">Your device needs one tap before it can ring.</p>
-    <div class="tl-actions"><button type="button" class="tl-btn tl-btn--primary tl-btn--lg" id="wake-btn"><span class="tl-btn__label">Turn on</span></button></div>
-  </div></div></div>`);
-  const deskEl = root.querySelector("[data-tl-desk]");
-  // What the phone is doing goes on the wall, in the room's slot. The connection is the little light on the
-  // phone itself (green: ready; dark: getting online; flashing: ringing); screen readers get it in words.
-  deskEl.querySelector(".tl-desk__stage").insertAdjacentHTML("beforeend", str(html`<div class="tl-desk__slot ph__slot">
-    <span class="ph__sr" id="reg" role="status"></span>
-    <p class="ph__status" id="status" role="status" aria-live="polite"></p>
-    <p class="ph__sub" id="sub"></p>
-  </div>`));
-  const el = deskEl.querySelector("[data-tl-rotary]");
-  ui = { status: root.querySelector("#status"), sub: root.querySelector("#sub"),
-    reg: root.querySelector("#reg"), wake: root.querySelector("#wake"), el, deskEl,
+  // The phone and the card file come from the design system: a finger wheel that really turns, a handset that really
+  // lifts and trembles when it rings, a little light for the line, and a card file that turns. We listen to their events.
+  root.innerHTML = str(html`<div class="ph">
+  <header class="ph__head">
+    ${brandLine()}
+    <span id="quiet">${tag("sky", "Quiet time", "moon")}</span>
+  </header>
+  <main class="ph__main">
+    <section class="ph__info">
+      <h1 class="ph__name" id="name">Your treehouse</h1>
+      <div class="ph__status">
+        <p class="ph__statusline" id="status" role="status" aria-live="polite"></p>
+        <p class="ph__sub" id="sub"></p>
+      </div>
+    </section>
+    <section class="ph__stage" aria-label="The phone">
+      <div class="ph__glow" aria-hidden="true"></div>
+      <div class="ph__phone">${raw(ROTARY)}</div>
+      <div class="ph__cards">${raw(CARDFILE)}</div>
+    </section>
+    <div class="ph__bottom">
+      <p class="ph__no911">${icon("lock", 16)}<span>This phone can’t call 911 or outside numbers. In an emergency, use a grown-up’s phone.</span></p>
+      <div class="ph__actions">${button({ label: "How to dial", icon: "phone", attrs: { "data-tl-open": "guide", id: "guide-open" } })}</div>
+    </div>
+  </main>
+  <footer class="tl-footer ph__foot">${footerLinks("/phone/licenses.html")}</footer>
+  <span class="ph__sr" id="reg" role="status"></span>
+</div>
+${sheet({ id: "guide", title: "How to call a friend", body: html`<div id="guide-step"></div>`,
+  actions: html`${button({ label: "Back", attrs: { id: "guide-back" } })}${button({ label: "Next", variant: "primary", iconAfter: "chevron-right", attrs: { id: "guide-next" } })}` })}
+<div class="ph-wake" id="wake" hidden><div class="tl-card" style="max-width:var(--sheet-max);text-align:center"><div class="tl-stack tl-stack--group">
+  <h2 class="tl-card__title">Tap to turn the phone on</h2>
+  <p class="tl-card__body">Your device needs one tap before it can ring.</p>
+  <div class="tl-actions"><button type="button" class="tl-btn tl-btn--primary tl-btn--lg" id="wake-btn"><span class="tl-btn__label">Turn on</span></button></div>
+</div></div></div>`);
+  const el = root.querySelector("[data-tl-rotary]");
+  const cardEl = root.querySelector("[data-tl-cardfile]");
+  ui = { status: root.querySelector("#status"), sub: root.querySelector("#sub"), name: root.querySelector("#name"), quiet: root.querySelector("#quiet"),
+    reg: root.querySelector("#reg"), wake: root.querySelector("#wake"), guide: root.querySelector("#guide"), el, cardEl,
     hookButton: el.querySelector(".tl-rotary__hook"), number: el.querySelector(".tl-rotary__number"),
-    api: window.TreelineUI.rotary(el), desk: window.TreelineUI.desk(deskEl), strings: "" };
-  ui.desk.setLinks({ coffee: SUPPORT_URL, email: CONTACT, licenses: "/phone/licenses.html" });
+    api: window.TreelineUI.rotary(el), cards: window.TreelineUI.cardfile(cardEl), strings: "", step: 0 };
   S.dial = (d) => ui.api.dial(d);
+  // the guide: Back and Next walk the pictures; Next on the last one closes it
+  const showStep = (i) => {
+    ui.step = Math.max(0, Math.min(GUIDE.length - 1, i));
+    root.querySelector("#guide-step").innerHTML = str(guideStep(ui.step));
+    root.querySelector("#guide-back").disabled = ui.step === 0;
+    root.querySelector("#guide-next .tl-btn__label").textContent = ui.step === GUIDE.length - 1 ? "Done" : "Next";
+  };
+  showStep(0);
+  root.querySelector("#guide-open").addEventListener("click", () => showStep(0));
+  root.querySelector("#guide-back").addEventListener("click", () => showStep(ui.step - 1));
+  root.querySelector("#guide-next").addEventListener("click", () => { if (ui.step === GUIDE.length - 1) window.TreelineUI.closeSheet(ui.guide); else showStep(ui.step + 1); });
   el.addEventListener("tl-rotary-hook", async (e) => {
     if (e.detail.offHook) { await tones.unlock(); ui.wake.hidden = true; lift(); } else hangUp();
   });
@@ -74,13 +127,32 @@ function draw() {
   }).observe(el.querySelector(".tlp-wheel"), { attributes: true, attributeFilter: ["transform"] });
   el.addEventListener("tl-rotary-digit", (e) => { if (e.detail.offHook) onDigit(e.detail.digit); });
   document.addEventListener("keydown", (e) => {
-    // The phone dials number keys itself when it has focus; this is for when it doesn't (and nothing is picked up).
-    if (e.target.closest?.(".tl-rotary__svg") || ui.desk.isOpen()) return;
+    // The phone dials number keys itself when it has focus; this is for when it doesn't (and the guide isn't open).
+    if (e.target.closest?.(".tl-rotary__svg") || !ui.guide.hidden) return;
     if (/^[0-9]$/.test(e.key) && !e.metaKey && !e.ctrlKey && !e.altKey && !/input|textarea|select/i.test(e.target.tagName)) S.dial?.(Number(e.key));
   }, { signal: life.signal });
   ui.wake.querySelector("#wake-btn").addEventListener("click", async () => { await tones.unlock(); ui.wake.hidden = true; });
   showLine();
   render();
+}
+
+/** What the phone is doing, as the design system's Presence: a dot and a word, with a line under it. */
+function showStatus() {
+  if (!ui) return;
+  const [main, sub] = S.words || ["", ""];
+  let tone = "available", word = main;
+  if (S.phase === "ringing") tone = "ringing";
+  else if (S.phase === "talking" || S.phase === "calling") tone = "on-call";
+  else if (S.phase === "sleep" || (S.phase === "idle" && S.line === "quiet")) tone = "quiet";
+  else if (S.phase === "off" || (S.phase === "idle" && S.line === "disconnected")) tone = "paused";
+  else if (S.phase === "busy" || (S.phase === "idle" && S.lineLight !== "on")) tone = "offline";
+  if (!word) word = tone === "offline" ? (S.lineLight === "off" ? "Can’t connect. Ask a grown-up." : "Connecting…") : S.phase === "dialing" ? "Dialing" : S.hook === "off" ? "Ready to dial" : "Ready to call";
+  let line = sub;
+  if (!line && S.phase === "idle" && tone === "available") line = "Lift the handset and dial a friend’s four numbers.";
+  if (S.phase === "dialing") line = progress(S.digits).trim();
+  ui.status.innerHTML = str(presence(tone, word));
+  ui.sub.textContent = line;
+  ui.sub.classList.toggle("ph__sub--dots", S.phase === "dialing");
 }
 
 /** The words for a hung-up, idle phone: they follow the line's state. */
@@ -97,17 +169,21 @@ function render() {
   // The kit labels the handset button "Lift the handset"; a ringing phone should say what lifting does.
   if (S.hook === "on" && ui.hookButton) ui.hookButton.setAttribute("aria-label", S.phase === "ringing" ? "Answer the phone" : "Lift the handset");
   if (S.hook === "on" && S.phase === "idle") say(...idleWords());
+  showStatus();
   document.body.dataset.state = S.phase;
   document.body.dataset.digits = S.digits;
 }
 
-/** The room's words from the line: the treehouse's name on the drawing, its quiet hours, its card file. */
-function fillRoom(r) {
+/** The page's words from the line: the treehouse's name, its quiet hours, its card file. */
+function fillPage(r) {
   if (!ui) return;
-  if (r.treehouse) ui.desk.setName(r.treehouse);
-  if (r.quiet) ui.desk.setQuiet(r.quiet.enabled ? `${clock(r.quiet.start)} – ${clock(r.quiet.end)}` : "none");
+  if (r.treehouse) { ui.name.textContent = r.treehouse; document.title = `${r.treehouse} · Treeline Phone`; }
+  if (r.quiet) {
+    ui.quiet.hidden = !r.quiet.enabled;
+    if (r.quiet.enabled) ui.quiet.innerHTML = str(tag("sky", `Quiet time ${clock(r.quiet.start)} – ${clock(r.quiet.end)}`, "moon"));
+  }
   const cards = JSON.stringify(r.strings || []);
-  if (cards !== ui.strings) { ui.strings = cards; ui.desk.setContacts(r.strings || []); }
+  if (cards !== ui.strings) { ui.strings = cards; ui.cards.setContacts(r.strings || []); }
 }
 
 // The little light on the phone: steady green when connected; pulsing orange while it's connecting (starting up,
@@ -125,6 +201,7 @@ function showLine() {
   if (!ui) return;
   ui.reg.textContent = S.lineLight === "on" ? "The phone is connected." : S.lineLight === "connecting" ? "The phone is connecting." : "The phone can't connect. Ask a grown-up.";
   ui.api.setLine(S.lineLight);
+  showStatus();
 }
 
 // ------------------------------------------------------------------ line state
@@ -135,7 +212,7 @@ async function refreshLine() {
     const r = await api("GET", "/api/line", undefined, { auth: "basic", basic: `${S.creds.sip_user}:${S.creds.secret}` });
     S.line = r.state; if (r.number !== S.number) { S.number = r.number; }
     S.removed = false;
-    fillRoom(r);
+    fillPage(r);
   } catch (e) {
     if (e.code === "removed") return removed();
     // Offline: keep what we knew.
@@ -278,7 +355,7 @@ function ended() {
 // ------------------------------------------------------------------ answering and ringing
 
 function onIncoming(session) {
-  if (ui?.desk.isOpen()) ui.desk.close();                       // put down the book or card: the phone is ringing
+  if (ui && !ui.guide.hidden) window.TreelineUI.closeSheet(ui.guide);   // close the guide: the phone is ringing
   // Off the hook and busy with something else, or already ringing for another caller: not now.
   const busy = S.hook === "off" && !["dialtone", "dialing", "howl"].includes(S.phase);
   if (busy || S.incoming) { session.terminate({ status_code: 486 }); return; }
@@ -353,7 +430,7 @@ async function boot() {
 // A hook for the browser tests, on this machine only, and without the SIP secret.
 if (location.search.includes("test=1") && ["localhost", "127.0.0.1"].includes(location.hostname)) {
   const view = new Proxy(S, { get: (t, k) => (k === "creds" ? undefined : t[k]), set: (t, k, v) => { t[k] = v; return true; } });
-  window.__phone = { S: view, render: () => render(), desk: () => ui.desk, tonesLevel: () => tones.effectiveLevel(), lift: () => (ui.api.isOffHook() ? ui.api.hangUp() : ui.api.lift()), dial: (d) => S.dial?.(d), rotary: () => ui.api, tones,
+  window.__phone = { S: view, render: () => render(), cards: () => ui.cards, tonesLevel: () => tones.effectiveLevel(), lift: () => (ui.api.isOffHook() ? ui.api.hangUp() : ui.api.lift()), dial: (d) => S.dial?.(d), rotary: () => ui.api, tones,
     async stats() { const pc = S.session?.connection; if (!pc) return null; const r = await pc.getStats(); let rx = 0, tx = 0; r.forEach((x) => { if (x.type === "inbound-rtp" && x.kind === "audio") rx += x.bytesReceived; if (x.type === "outbound-rtp" && x.kind === "audio") tx += x.bytesSent; }); return { rx, tx }; } };
 }
 

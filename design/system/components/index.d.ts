@@ -199,3 +199,16 @@ declare global {
     };
   }
 }
+
+export interface CardFileApi { next(): void; prev(): void; index(): number; setContacts(c: { name: string; number: string }[]): void }
+export interface CardFileProps {
+  /** The approved strings, one card each: a name and the 4-digit number. Empty: "No strings yet, ask a grown-up". */
+  contacts?: { name: string; number: string }[];
+  /** The line under it (default "Tap for the next card"; shown only with two or more cards); false for none. */
+  hint?: string | false;
+  /** Called when it turns to another card. */
+  onCard?: (contact: { name: string; number: string }, index: number) => void;
+  apiRef?: { current: CardFileApi | null };
+  id?: string; className?: string;
+}
+export declare function CardFile(props: CardFileProps): any;

@@ -26,3 +26,5 @@ These SVG files are drawn in `ink` (#2a251c) because an `<img>` can't inherit co
 - `more`: three dots; a row's or card's "more" menu
 - `eye` / `eye-off`: show and hide a password
 - `trend-up`: a number going up, in StatTile notes
+- `coffee`: a cup with steam, for the "Buy me a coffee" support link
+- `mail`: an envelope, for an email link

@@ -59,7 +59,7 @@ Two rules shape this picture. **Asterisk never routes on its own**: its only dia
 | Database | `treeline/db.py` | SQLite in WAL mode, shared by the control app and the API; numbered migrations |
 | PJSIP generator | `treeline/pjsip.py` | Writes one account per handset into `/generated/pjsip_handsets.conf`, then asks Asterisk to reload |
 | Parent app | `web/parent/` | Framework-free hash-routed app on the design system |
-| Softphone | `web/phone/` | The design kit's `SoftphoneDesk` room around its `RotaryPhone` (drawing, finger wheel, handset), Web Audio tones, calls over WebRTC with JsSIP |
+| Softphone | `web/phone/` | A Treeline page around the design kit's `RotaryPhone` (drawing, finger wheel, handset) and `CardFile`, Web Audio tones, calls over WebRTC with JsSIP |
 | Shared web code | `web/shared/` | API client, formatting, and `ui.js`, which builds the design system's exact markup |
 | Deployment | `deploy/` | Caddy, an Asterisk overlay with TLS and SRTP, backups, fail2ban |
 
@@ -271,7 +271,7 @@ stateDiagram-v2
     Idle --> Unpaired: removed by a parent
 ```
 
-The screen is the design system's `SoftphoneDesk`: the phone on a side table in a room whose objects do the rest of the screen's job (the NO 911 sticker on the drawer, the card file of live strings, the treehouse's name on a kid's drawing, quiet hours on a sticky note, the guide book's picture lesson, and cards for the credit, support and licenses). The phone's drawing and dial are its `RotaryPhone`, which reports the handset lifting, each dial pulse and each finished digit as events; the phone adds the logic around them, writes what it's doing on the room's wall, and makes the handset tremble while it rings. `GET /api/line` also gives the room its words: the treehouse's name, its live strings and its quiet hours. The tablet makes its own dial tone, ringback, busy, bell, howler and click with Web Audio. On pickup it asks `GET /api/line` (HTTP Basic with its own account) what to do. The phone needs HTTPS for the microphone, except on `localhost`.
+The screen is an ordinary Treeline page built from the design system: the brand and tagline, the treehouse's name with a `Presence` for what the phone is doing, the `RotaryPhone` on a soft glow with the `CardFile` of live strings beside it, a quiet line saying it can't call 911, a "How to dial" sheet of picture steps, and the footer. The `RotaryPhone` reports the handset lifting, each dial pulse and each finished digit as events; the phone adds the logic around them, shows its line on the little light (steady green, pulsing orange while connecting, blinking red when it can't), and makes the handset tremble while it rings. `GET /api/line` also gives the page its words: the treehouse's name, its live strings and its quiet hours. The tablet makes its own dial tone, ringback, busy, bell, howler and click with Web Audio. On pickup it asks `GET /api/line` (HTTP Basic with its own account) what to do. The phone needs HTTPS for the microphone, except on `localhost`.
 
 ## 8. Parent app and API
 

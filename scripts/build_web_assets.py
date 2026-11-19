@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Turn the design kit's icons, illustrations, brand mark, rotary phone and softphone room into one JS
+"""Turn the design kit's icons, illustrations, brand mark, rotary phone and card file into one JS
 module, web/shared/assets.js, so the apps use the kit's exact markup.
 
 Run after the design kit changes:  python3 scripts/build_web_assets.py
@@ -39,22 +39,22 @@ def brand():
 
 
 def rotary():
-    """The softphone's drawing, from components/RotaryPhone.html (berry, on the hook)."""
+    """The softphone's drawing, from components/RotaryPhone.html (berry, on the hook), without its notice."""
     text = (UI / "components" / "RotaryPhone.html").read_text()
     m = re.search(r"<!-- Berry, on the hook -->\s*(<div class=\"tl-rotary .*?</p>\s*</div>)", text, re.S)
-    return m.group(1)
+    # The page says the no-911 line itself, quietly, under the phone; drop the phone's own warning notice.
+    markup = re.sub(r"\s*<p class=\"tl-rotary__notice\">.*?</p>", "", m.group(1), flags=re.S)
+    assert "tl-rotary__notice" not in markup and "tlp-wheel" in markup
+    return markup
 
 
-def desk():
-    """The softphone's room, from components/SoftphoneDesk.html (the "No strings yet" example), with the
-    example's words taken out: the phone fills in its own name, quiet hours and strings."""
-    text = (UI / "components" / "SoftphoneDesk.html").read_text()
-    m = re.search(r"<!-- No strings yet -->\s*(<div class=\"tl-desk\".*?)(?=\n\s*<!-- |\Z)", text, re.S)
+def cardfile():
+    """The softphone's card file, from components/CardFile.html (the "No strings yet" example): the phone fills in
+    its own strings."""
+    text = (UI / "components" / "CardFile.html").read_text()
+    m = re.search(r"<!-- No strings yet -->\s*<div[^>]*>\s*(<div class=\"tl-cardfile\".*?)</div>\s*(?=\n\s*<!-- |\Z)", text, re.S)
     markup = m.group(1).rstrip()
-    markup = re.sub(r'(class="tl-desk__name"[^>]*>)[^<]*<', r"\1<", markup)
-    markup = re.sub(r'(class="tl-desk__quiettext"[^>]*>)[^<]*<', r"\1<", markup)
-    markup = markup.replace("tl-rotary--ivory", "tl-rotary--berry", 1)    # the example's phone is ivory; ours is berry (red)
-    assert markup.count('class="tl-desk__name"') == 3 and "data-tl-desk" in markup
+    assert markup.count("data-tl-cardfile") == 1 and "tl-cardfile__card" in markup
     return markup
 
 
@@ -65,7 +65,7 @@ def main():
         f"export const ART = {json.dumps(art(), indent=1)};\n"
         f"export const BRAND = {json.dumps(brand())};\n"
         f"export const ROTARY = {json.dumps(rotary())};\n"
-        f"export const DESK = {json.dumps(desk())};\n")
+        f"export const CARDFILE = {json.dumps(cardfile())};\n")
     print("wrote", OUT.relative_to(ROOT), f"({OUT.stat().st_size // 1024} KB)")
 
 

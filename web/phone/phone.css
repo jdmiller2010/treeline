@@ -1,12 +1,72 @@
-/* The rotary phone. The screen is the design system's softphone room (components/SoftphoneDesk); these are
-   only the phone's own words on its wall, and the pairing and wake-up screens. Drawn from the design tokens,
-   so it follows Daylight and Lantern. Ringing is the kit's own: the handset trembles, nothing glows. */
-.ph__slot { gap: 6px; }
-.ph__slot .tl-presence { font-size: 13px; }
-.ph__status { margin: 0; text-align: center; font: 500 clamp(15px, 2.1cqh, 21px)/1.2 var(--font-display); font-variation-settings: "SOFT" 100; color: var(--ink); text-wrap: balance; }
-.ph__status:empty { display: none; }
-.ph__sub { margin: 0; text-align: center; font: 400 clamp(12px, 1.6cqh, 15px)/1.3 var(--font-sans); color: var(--ink-muted); text-wrap: balance; }
+/* The rotary phone screen: an ordinary Treeline page. The brand and tagline at the top, the treehouse's name as the
+   page title with what the phone is doing under it, and the design system's RotaryPhone on a soft glow with the
+   CardFile beside it (under it, on phones). How to dial is a sheet. Built from the design tokens, so it follows
+   Daylight and Lantern; the phone and the card file are objects and keep their own colors. */
+.ph { min-height: 100dvh; box-sizing: border-box; max-width: 1200px; margin: 0 auto; display: flex; flex-direction: column; gap: var(--space-4);
+  padding: max(var(--space-5), env(safe-area-inset-top)) var(--gutter-md) max(var(--space-4), env(safe-area-inset-bottom)); }
+.ph__head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
+
+.ph__main { flex: 1; display: flex; flex-direction: column; gap: var(--space-4); }
+.ph__info { display: flex; flex-direction: column; gap: var(--space-3); }
+.ph__name { margin: 0; font: 420 32px/40px var(--font-display); font-variation-settings: "SOFT" 100; letter-spacing: -.01em; color: var(--ink); text-wrap: balance; }
+.ph__status { display: flex; flex-direction: column; gap: var(--space-1); }
+.ph__status .tl-presence { font-size: 16px; }
+.ph__sub { margin: 0; font: 400 14px/22px var(--font-sans); color: var(--ink-muted); }
 .ph__sub:empty { display: none; }
+.ph__sub--dots { font-size: 18px; letter-spacing: .2em; color: var(--ink); }
+/* The plain no-911 line: always there, quiet, never a warning. */
+.ph__no911 { margin: 0; display: flex; align-items: flex-start; gap: var(--space-2); font: 400 13px/20px var(--font-sans); color: var(--ink-muted); }
+.ph__no911 .tl-icon { flex: none; margin-top: 1px; }
+.ph__actions { display: flex; }
+.ph__bottom { display: flex; flex-direction: column; gap: var(--space-3); }
+.ph__bottom .ph__actions .tl-btn { width: 100%; }
+
+/* The stage: the phone on a soft pool of light, the card file beside it on the same surface. */
+.ph__stage { position: relative; flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0; }
+.ph__glow { position: absolute; left: 0; right: 0; bottom: 0; height: 64px; border-radius: 50%; background: radial-gradient(ellipse at center, var(--wash-sun) 0%, transparent 70%); pointer-events: none; }
+.ph__phone { position: relative; width: min(84vw, 330px, 42vh); }
+.ph__cards { position: relative; width: min(46vw, 180px); margin-top: calc(-1 * var(--space-3)); }
+
+.ph__foot { padding-top: var(--space-3); border-top: var(--border-hair) solid var(--line); }
+
+/* Upright tablets: the phone and the card file side by side, their bases lined up under one glow. */
+@media (min-width: 600px) {
+  .ph { gap: var(--space-5); }
+  .ph__name { font-size: 38px; line-height: 46px; }
+  .ph__stage { flex-direction: row; align-items: flex-end; gap: var(--space-1); padding-bottom: var(--space-4); }
+  .ph__glow { bottom: var(--space-2); height: 96px; }
+  .ph__phone { width: min(56vw, 440px, 44vh); }
+  .ph__cards { width: min(28vw, 210px); margin: 0 0 6.5%; }
+  .ph__foot { justify-content: space-between; font-size: 13px; }
+  .ph__bottom { flex-direction: row; align-items: center; justify-content: space-between; gap: var(--space-4); }
+  .ph__bottom .ph__actions .tl-btn { width: auto; }
+}
+/* Landscape tablets and computers: the words in a column on the left, the phone and card file on the right. */
+@media (min-width: 900px) and (min-aspect-ratio: 1/1) {
+  .ph__main { display: grid; grid-template-columns: minmax(260px, 320px) 1fr; grid-template-areas: "info stage" "bottom stage"; column-gap: var(--space-8); row-gap: var(--space-5); }
+  .ph__info { grid-area: info; align-self: end; gap: var(--space-4); }
+  .ph__stage { grid-area: stage; }
+  .ph__bottom { grid-area: bottom; align-self: start; flex-direction: column; align-items: flex-start; }
+  .ph__phone { width: min(42vw, 460px, 58vh); }
+  .ph__cards { width: min(20vw, 220px); }
+}
+
+/* The how-to-dial sheet: one picture and one line at a time. Nine steps is too many labels for a sheet, so the
+   Steps show their compact form (the bars and "Step 3 of 9: Turn") at every size. */
+.ph-guide { display: flex; flex-direction: column; gap: var(--space-4); }
+.ph-guide .tl-steps__summary { display: block; }
+.ph-guide .tl-steps__label { display: none; }
+.ph-guide__pic { margin: 0; display: grid; place-items: center; padding: var(--space-3); background: var(--surface-sunk); border-radius: var(--radius-lg); }
+.ph-guide__pic img { display: block; width: min(100%, 300px); height: auto; }
+.ph-guide__text { margin: 0; text-align: center; font: italic 400 22px/30px var(--font-display); font-variation-settings: "SOFT" 100; color: var(--ink); text-wrap: balance; }
+.ph-guide__lights { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); font: 400 15px/22px var(--font-sans); color: var(--ink); }
+.ph-guide__lights li { display: flex; align-items: center; gap: var(--space-3); }
+/* The phone's own lamp colors (RotaryPhone), so the key matches the light on the phone. */
+.ph-lamp { flex: none; width: 14px; height: 14px; border-radius: 50%; border: 2px solid #5b5248; box-sizing: border-box; }
+.ph-lamp--on { background: #7fe08a; }
+.ph-lamp--connecting { background: #f2a24a; box-shadow: 0 0 0 4px rgba(242, 162, 74, .25); }
+.ph-lamp--off { background: #e5534b; }
+.ph-lamp--ring { background: #7fe08a; box-shadow: 0 0 0 4px rgba(127, 224, 138, .3); }
 
 .ph-pair { min-height: 100dvh; box-sizing: border-box; padding: var(--space-8) var(--gutter-sm); display: flex; justify-content: center; background: var(--canvas); }
 .ph-qr { background: var(--surface); padding: var(--space-4); border-radius: var(--radius-lg); border: var(--border-hair) solid var(--card-edge); box-shadow: var(--shadow-sm); width: min(100%, 260px); box-sizing: border-box; }
@@ -15,3 +75,4 @@
 .ph-wake { position: fixed; inset: 0; z-index: var(--z-overlay); display: grid; place-items: center; background: var(--scrim); padding: var(--space-6); }
 .ph-wake[hidden] { display: none; }
 .ph__sr { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.ph__statusline { margin: 0; min-height: 24px; }

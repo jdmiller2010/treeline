@@ -502,8 +502,72 @@
     return api;
   }
   // <<< desk
-  function initRotaries() { document.querySelectorAll('[data-tl-rotary]').forEach(function (el) { attachRotary(el); }); document.querySelectorAll('[data-tl-desk]').forEach(function (el) { attachDesk(el); }); }
+  // >>> cardfile
+  // ---------- CardFile: the phone book, a rotary card file of approved strings ----------
+  // Markup: [data-tl-cardfile] with data-contacts='[{"name":"The Parks","number":"3317"}]' and a button holding the drawing.
+  // Tap it (or press an arrow key on it) and it turns to the next card. Event: "tl-cardfile-card" { index, contact }.
+  function attachCardFile(root) {
+    if (root.__tlCardFile) return root.__tlCardFile;
+    var list = [];
+    try { list = JSON.parse(root.getAttribute("data-contacts") || "[]") || []; } catch (e) { list = []; }
+    var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    var i = 0, btn = root.querySelector(".tl-cardfile__btn"), hint = root.querySelector(".tl-cardfile__hint"), flipping = 0;
+    function all(sel, fn) { Array.prototype.forEach.call(root.querySelectorAll(sel), fn); }
+    function show() {
+      var c = list[i];
+      all(".tl-cardfile__name", function (n) { n.textContent = c ? c.name : "No strings yet"; });
+      all(".tl-cardfile__num", function (n) { n.textContent = c ? c.number : "ask a grown-up"; n.setAttribute("font-size", c ? "29" : "21"); });
+      all(".tl-cardfile__count", function (n) { n.textContent = list.length > 1 ? (i + 1) + " of " + list.length : ""; });
+      if (hint) hint.hidden = list.length < 2;
+      if (btn) btn.setAttribute("aria-label", c
+        ? "Phone book card: " + c.name + ", " + String(c.number).split("").join(" ") + (list.length > 1 ? ". Card " + (i + 1) + " of " + list.length + ". Tap for the next card." : ".")
+        : "Phone book: no strings yet. A grown-up can add one in the parent app.");
+    }
+    // It turns like a real one: the front card tips toward you off the rod and drops away, the next swings up out of
+    // the fan behind and settles with a small tick, and the fan rocks. Back: the same, reversed. Reduced motion: it just changes.
+    function go(step) {
+      if (list.length < 2) return;
+      var animate = !reduce && typeof Element.prototype.animate === "function", fwd = step > 0, lag = flipping * 50;
+      if (animate) {
+        all(".tl-cardfile__card", function (card) {
+          var old = card.cloneNode(true);
+          old.classList.remove("tl-cardfile__card"); old.classList.add("tl-cardfile__card--falling");
+          Array.prototype.forEach.call(old.querySelectorAll("[class]"), function (n) { n.removeAttribute("class"); });
+          card.parentNode.appendChild(old);
+          var away = fwd
+            ? [{ transform: "none", opacity: 1 }, { transform: "translateY(2%) scaleY(.35)", opacity: 1, offset: .55 }, { transform: "translateY(9%) scaleY(-.12)", opacity: 0 }]
+            : [{ transform: "none", opacity: 1 }, { transform: "translate(5%, -3%) scaleY(.82) skewX(-10deg)", opacity: .6, offset: .6 }, { transform: "translate(9%, -5%) scaleY(.7) skewX(-16deg)", opacity: 0 }];
+          var a = old.animate(away, { duration: 320, delay: lag, easing: "cubic-bezier(.45,0,.8,.45)", fill: "both" });
+          a.onfinish = function () { old.remove(); };
+          var come = fwd
+            ? [{ transform: "translate(9%, -5%) scaleY(.7) skewX(-16deg)", opacity: 0 }, { transform: "translate(2%, -1%) scaleY(.95) skewX(-4deg)", opacity: 1, offset: .55 }, { transform: "translateY(-1.5%) scaleY(1.02)", offset: .82 }, { transform: "none", opacity: 1 }]
+            : [{ transform: "translateY(9%) scaleY(-.12)", opacity: 0 }, { transform: "translateY(2%) scaleY(.4)", opacity: 1, offset: .45 }, { transform: "translateY(-1.5%) scaleY(1.02)", offset: .82 }, { transform: "none", opacity: 1 }];
+          card.animate(come, { duration: 420, delay: lag + 140, easing: "cubic-bezier(.2,.7,.3,1)", fill: "backwards" });
+        });
+        all(".tl-cf-fan", function (f) { f.animate([{ transform: "none" }, { transform: "rotate(" + (fwd ? -3 : 3) + "deg)", offset: .4 }, { transform: "none" }], { duration: 520, delay: lag, easing: "ease-in-out" }); });
+      }
+      flipping++; setTimeout(function () { flipping = Math.max(0, flipping - 1); }, 480);
+      i = (i + step + list.length) % list.length; show();
+      root.dispatchEvent(new CustomEvent("tl-cardfile-card", { bubbles: true, detail: { index: i, contact: list[i] } }));
+    }
+    if (btn) {
+      btn.addEventListener("click", function () { go(1); });
+      btn.addEventListener("keydown", function (e) {
+        if (e.key === "ArrowRight" || e.key === "ArrowDown") { e.preventDefault(); go(1); }
+        if (e.key === "ArrowLeft" || e.key === "ArrowUp") { e.preventDefault(); go(-1); }
+      });
+    }
+    show();
+    var api = {
+      next: function () { go(1); }, prev: function () { go(-1); }, index: function () { return i; },
+      setContacts: function (c) { list = Array.isArray(c) ? c.slice() : []; i = Math.min(i, Math.max(0, list.length - 1)); root.setAttribute("data-contacts", JSON.stringify(list)); show(); }
+    };
+    root.__tlCardFile = api;
+    return api;
+  }
+  // <<< cardfile
+  function initRotaries() { document.querySelectorAll('[data-tl-rotary]').forEach(function (el) { attachRotary(el); }); document.querySelectorAll('[data-tl-cardfile]').forEach(function (el) { attachCardFile(el); }); document.querySelectorAll('[data-tl-desk]').forEach(function (el) { attachDesk(el); }); }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initRotaries); else initRotaries();
 
-  window.TreelineUI = { rotary: attachRotary, desk: attachDesk, setSwitch: setSwitch, openSheet: openSheet, closeSheet: closeSheet, toast: toast, openMenu: function (t) { setMenu(t, true); }, closeMenus: closeMenus };
+  window.TreelineUI = { rotary: attachRotary, cardfile: attachCardFile, desk: attachDesk, setSwitch: setSwitch, openSheet: openSheet, closeSheet: closeSheet, toast: toast, openMenu: function (t) { setMenu(t, true); }, closeMenus: closeMenus };
 })();

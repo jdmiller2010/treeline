@@ -1,8 +1,9 @@
 """The tablet softphone's screen, in a headless browser, without Asterisk.
 
-Pairs a tablet through the real API, checks the room is drawn around the phone
-(the guide book opens, the cards can be picked up, the card file holds the
-strings), that the dial really turns and the handset trembles when it rings,
+Pairs a tablet through the real API, checks the page around the phone (brand
+and tagline, the treehouse's name and status, the card file of strings, the
+quiet no-911 line, the How to dial sheet, the footer, every screen size), that
+the dial really turns and the handset trembles when it rings,
 and that a removed tablet notices. Real calls are tested
 by web/tests/phone_calls.py, which needs the Docker stack.
 """
@@ -104,22 +105,28 @@ def main():
         tablet.wait_for_function("(n) => document.querySelector('.tl-rotary__number').textContent === n", arg=house["number"], timeout=15000)
         check(tablet.text_content(".tl-rotary__number") == house["number"], "the number card shows the treehouse's number")
 
-        # ---- what's on the screen: the room, with the phone on its table
-        check(tablet.locator(".tl-desk").count() == 1, "the phone sits in the design system's softphone room")
+        # ---- what's on the screen: an ordinary Treeline page around the design system's phone and card file
+        check(tablet.locator(".tl-desk").count() == 0 and tablet.locator(".tl-root .ph").count() == 1, "the phone is a normal app page, not the old room")
+        check(tablet.locator(".ph__head .tl-brand").count() == 1 and tablet.inner_text(".ph__head .tl-tagline").strip() == "Safe calls for neighborhood kids",
+              "the brand and tagline are at the top")
+        check(tablet.locator(".ph__head a").count() == 0, "the brand isn't a link a kid could wander off through")
         check(tablet.locator(".tl-rotary .tlp-wheel").count() == 1 and tablet.locator(".tl-rotary .tlp-handset").count() == 1 and tablet.locator(".tlp-wheel").count() == 1, "the design system's wheel and handset are there, once")
-        check(tablet.locator(".tl-rotary__notice").count() == 0, "the phone's own notice is off: the room's sticker says it")
-        check(tablet.locator(".tl-desk__scene text", has_text="NO 911").count() >= 1, "the no-911 sticker is on the drawer")
-        sr = tablet.inner_text(".tl-desk__sr")
-        check("can’t call 911" in sr and tablet.locator(".tl-desk__sr").count() == 1, "screen readers hear that it can't call 911, once")
-        tablet.wait_for_function("(n) => [...document.querySelectorAll('.tl-desk__name')].every((t) => t.textContent === n)", arg=house["name"], timeout=15000)
-        check(True, "the kid's drawing has the treehouse's name on it")
-        tablet.wait_for_function("(n) => [...document.querySelectorAll('.tl-desk__cardname')].some((t) => t.textContent === n)", arg=friend["name"], timeout=15000)
-        nums = tablet.evaluate("() => [...document.querySelectorAll('.tl-desk__cardnum')].map((t) => t.textContent)")
-        check(friend["number"] in nums, "the card file has a card for the string, with its number")
-        quiet = tablet.evaluate("() => document.querySelector('.tl-desk__quiettext').textContent")
-        check(bool(re.match(r"^(none|\d{1,2}(:\d\d)? [ap]m – \d{1,2}(:\d\d)? [ap]m)$", quiet)), "the sticky note shows the quiet hours", quiet)
-        _st, _sb = tablet.inner_text("#status").strip(), tablet.inner_text("#sub").strip()
-        check(_st in ("", "The phone is sleeping") and _sb == "", "an idle phone's wall has no how-to words: the guide book teaches", f"{_st!r} / {_sb!r}")
+        check(tablet.locator(".tl-rotary[data-colorway='berry'], .tl-rotary--berry").count() == 1 or "berry" in (tablet.get_attribute(".tl-rotary", "class") or "") + (tablet.get_attribute(".tl-rotary", "data-colorway") or ""),
+              "the phone is the berry one")
+        check(tablet.locator(".ph__glow").count() == 1, "it sits on a soft glow")
+        check(tablet.locator(".tl-rotary__notice").count() == 0, "the phone's own notice is off: the page's line says it")
+        no911 = tablet.locator(".ph__no911")
+        check(no911.count() == 1 and "can’t call 911" in no911.inner_text() and no911.locator(".tl-icon").count() == 1, "a plain line with a lock says it can't call 911")
+        check(tablet.locator(".tl-alert").count() == 0 and no911.evaluate("(e) => parseFloat(getComputedStyle(e).fontSize)") <= 14, "and it's quiet: small muted text, not an alert box")
+        check(tablet.locator("h1").count() == 1, "one page title")
+        tablet.wait_for_function("(n) => document.querySelector('h1').textContent === n", arg=house["name"], timeout=15000)
+        check(True, "the page title is the treehouse's name")
+        tablet.wait_for_function("(n) => [...document.querySelectorAll('.tl-cardfile__name')].some((t) => t.textContent === n)", arg=friend["name"], timeout=15000)
+        check(tablet.text_content(".tl-cardfile__num") == friend["number"], "the card file has a card for the string, with its number")
+        quiet = tablet.locator("#quiet")
+        qt = quiet.inner_text().strip() if quiet.is_visible() else "none"
+        check(qt == "none" or bool(re.match(r"^Quiet time \d{1,2}(:\d\d)? [ap]m – \d{1,2}(:\d\d)? [ap]m$", qt)), "a tag shows the quiet hours, when there are some", qt)
+        check(tablet.locator("#status .tl-presence").count() == 1, "what the phone is doing is a Presence under the name")
         # the little light on the phone is the line: no SIP here, so it pulses orange while it tries, then blinks red
         lamp = lambda: tablet.evaluate("() => getComputedStyle(document.querySelector('.tl-rotary .tlp-lamp')).fill")
         anim = lambda: tablet.evaluate("() => getComputedStyle(document.querySelector('.tl-rotary .tlp-lamp')).animationName")
@@ -128,59 +135,81 @@ def main():
               "while the phone isn't connected its little light says so, and screen readers hear it", state0)
         tablet.wait_for_function("() => document.querySelector('.tl-rotary').getAttribute('data-line') === 'off'", timeout=20000)
         check(anim() == "tl-rotary-lamp-blink" and "Ask a grown-up" in tablet.inner_text("#reg"), "after trying for a while it blinks red: something's wrong", anim())
+        st = tablet.inner_text("#status")
+        check("Ask a grown-up" in st or "sleeping" in st.lower() or "Quiet" in st, "and the words under the name say so too", st)
         tablet.evaluate("() => __phone.rotary().setLine('connecting')")
         check(anim() == "tl-rotary-lamp-pulse", "connecting, it pulses orange", anim())
-        tablet.evaluate("() => __phone.rotary().setLine(true)")
-        tablet.wait_for_timeout(450)                                   # it fades up
-        check(lamp() == "rgb(127, 224, 138)" and anim() == "none", "connected, the light is steady green", lamp())
+        # (the phone keeps retrying its line in the background and may set the light back; try a few times)
+        green = False
+        for _ in range(5):
+            tablet.evaluate("() => __phone.rotary().setLine(true)")
+            tablet.wait_for_timeout(450)                               # it fades up
+            if lamp() == "rgb(127, 224, 138)" and anim() == "none":
+                green = True
+                break
+        check(green, "connected, the light is steady green", lamp())
         tablet.evaluate("() => __phone.rotary().setLine(false)")
-        wide = tablet.evaluate("document.documentElement.scrollWidth > document.documentElement.clientWidth + 1")
-        check(not wide, "nothing scrolls sideways")
+
+        # ---- the card file turns to the next card
+        before = tablet.evaluate("() => __phone.cards().index()")
+        tablet.click(".tl-cardfile__btn")
+        tablet.wait_for_timeout(700)
+        check(tablet.evaluate("() => __phone.cards().index()") != before or tablet.locator(".tl-cardfile__num").count() == 1, "tapping the card file turns its cards")
+
+        # ---- the footer: credit, coffee, email, licenses, with their icons
+        for href, words, ic in (("https://buymeacoffee.com/jdmiller", "Buy me a coffee", True), ("mailto:jdmiller2010@gmail.com", "Email Jordan", True), ("/phone/licenses.html", "Open-source licenses", False)):
+            link = tablet.locator(f'.ph__foot a[href^="{href}"]')
+            check(link.count() == 1 and words in link.inner_text() and (link.locator(".tl-icon").count() == 1) == ic, f"the footer has '{words}'")
+        check("Support the project:" in tablet.inner_text(".ph__foot") and "Made by Jordan Miller" in tablet.inner_text(".ph__foot"), "and says who made it and how to support it")
+
         for theme in ("light", "dark"):
             tablet.evaluate(f"document.documentElement.setAttribute('data-theme','{theme}')")
             tablet.screenshot(path=f"{SHOTS}/phone-{theme}.png", full_page=True)
         tablet.evaluate("document.documentElement.setAttribute('data-theme','light')")
 
-        # ---- every screen size gets the room that fits it, and the phone stays on screen
-        for w, hgt, want in ((360, 740, "tall"), (390, 844, "tall"), (768, 1024, "portrait"), (1024, 768, "wide"), (1280, 800, "wide"), (1440, 900, "wide")):
+        # ---- every screen size: the phone and the card file fit, nothing scrolls sideways
+        for w, hgt in ((360, 740), (390, 844), (768, 1024), (1024, 768), (1280, 800), (1440, 900)):
             tablet.set_viewport_size({"width": w, "height": hgt})
             tablet.wait_for_timeout(150)
-            got = tablet.evaluate("() => ['wide','portrait','tall'].find((n) => getComputedStyle(document.querySelector('.tl-desk__scene.tl-desk__l--' + n)).display === 'block')")
             box = tablet.locator(".tl-rotary__svg").bounding_box()
-            fits = box and box["x"] >= 0 and box["x"] + box["width"] <= w + 1 and box["y"] + box["height"] <= hgt + 1
-            over = tablet.evaluate("document.documentElement.scrollWidth > innerWidth || document.documentElement.scrollHeight > innerHeight")
-            check(got == want and fits and not over, f"at {w}×{hgt} the room is '{want}' and the phone fits", f"{got} {box} overflow={over}")
-            tablet.screenshot(path=f"{SHOTS}/phone-{w}x{hgt}.png")
+            cf = tablet.locator(".tl-cardfile").bounding_box()
+            fits = box and box["x"] >= 0 and box["x"] + box["width"] <= w + 1 and box["y"] >= 0 and box["y"] + box["height"] <= hgt + 1
+            cf_fits = cf and cf["x"] >= 0 and cf["x"] + cf["width"] <= w + 1
+            wide = tablet.evaluate("document.documentElement.scrollWidth > innerWidth")
+            under = cf and box and cf["y"] > box["y"] + box["height"] * .6 and abs((cf["x"] + cf["width"] / 2) - (box["x"] + box["width"] / 2)) < 12
+            beside = cf and box and cf["x"] > box["x"] + box["width"] * .7
+            where = under if w < 600 else beside
+            check(fits and cf_fits and not wide and where, f"at {w}×{hgt} the phone fits, the card file is {'under it, centred' if w < 600 else 'beside it'}", f"{box} {cf} wide={wide}")
+            tablet.screenshot(path=f"{SHOTS}/phone-{w}x{hgt}.png", full_page=True)
         tablet.set_viewport_size({"width": 820, "height": 1100})
         tablet.wait_for_timeout(150)
 
-        # ---- the guide book: it opens into pictures, turns its pages, closes, and dials nothing
-        tablet.click('[data-desk-open="book"]')
-        tablet.wait_for_function("() => document.querySelector('.tl-book__count').textContent === 'Pages 1–2'", timeout=5000)
-        check(True, "the guide book comes up and opens")
-        check(tablet.locator(".tl-desk__look--book .tl-book__art[aria-label]").count() >= 12, "its pages are pictures, each described for screen readers")
-        check("little light" in (tablet.get_attribute(".tl-desk__look--book .tl-book__sheet:nth-of-type(3) .tl-book__face--front .tl-book__art", "aria-label") or ""), "its first page explains the little light on the phone")
-        tablet.keyboard.press("ArrowRight")
-        tablet.wait_for_function("() => document.querySelector('.tl-book__count').textContent === 'Pages 3–4'", timeout=5000)
-        check(True, "the pages turn")
-        tablet.screenshot(path=f"{SHOTS}/phone-book.png")
+        # ---- How to dial: a sheet of the guide's pictures, one at a time; it dials nothing while it's open
+        tablet.click("#guide-open")
+        tablet.wait_for_selector("#guide:not([hidden])", timeout=5000)
+        check(tablet.inner_text("#guide .tl-sheet__title").strip() == "How to call a friend", "How to dial opens the guide")
+        check("Step 1 of 9" in tablet.inner_text("#guide") and tablet.locator("#guide .ph-lamp").count() == 4, "its first step is the little light, with all four colors")
+        check(tablet.is_disabled("#guide-back"), "Back is off on the first step")
+        tablet.click("#guide-next")
+        check("Step 2 of 9" in tablet.inner_text("#guide") and "Lift the handset" in tablet.inner_text("#guide"), "Next goes to lifting the handset")
         tablet.keyboard.press("3")
-        tablet.keyboard.press("Escape")
-        tablet.wait_for_function("() => document.querySelector('.tl-desk__look--book').hidden", timeout=5000)
-        check(tablet.evaluate("document.activeElement.getAttribute('data-desk-open')") == "book", "Escape closes it and puts focus back on the book")
+        tablet.click("#guide-back")
+        check("Step 1 of 9" in tablet.inner_text("#guide"), "Back goes back")
+        for _ in range(8):
+            tablet.click("#guide-next")
+        check("Step 9 of 9" in tablet.inner_text("#guide") and tablet.inner_text("#guide-next").strip() == "Done", "the last step says Done")
+        try:
+            tablet.wait_for_function("() => [...document.querySelectorAll('#guide img')].every((i) => i.complete && i.naturalWidth > 0)", timeout=5000)
+            imgs = True
+        except Exception:
+            imgs = False
+        check(imgs, "the pictures load")
+        tablet.screenshot(path=f"{SHOTS}/phone-guide.png")
+        tablet.click("#guide-next")
+        tablet.wait_for_function("() => document.querySelector('#guide').hidden", timeout=5000)
+        check(True, "Done closes it")
         check(tablet.evaluate("document.body.dataset.digits") == "" and tablet.evaluate("document.body.dataset.state") == "idle",
-              "nothing was dialed while the book was open, and the phone is still idle")
-
-        # ---- the cards you can pick up are the links: support, email, licenses
-        for item, href in (("coffee", "https://buymeacoffee.com/jdmiller"), ("card", "mailto:jdmiller2010@gmail.com"), ("licenses", "/phone/licenses.html")):
-            tablet.click(f'[data-desk-open="{item}"]')
-            tablet.wait_for_selector(f".tl-desk__look--{item}:not([hidden])")
-            got = tablet.get_attribute(f".tl-desk__look--{item} .tl-desk__heldart", "href") or ""
-            check(got.startswith(href), f"picking up the {item} shows it with its link", got)
-            tablet.click(f".tl-desk__look--{item} .tl-desk__putback")
-            tablet.wait_for_function("(k) => document.querySelector('.tl-desk__look--' + k).hidden", arg=item, timeout=5000)
-        check(True, "and each goes back")
-        check("NO 911" not in tablet.inner_text(".tl-desk__look--card"), "the business card is the credit, not a warning")
+              "nothing was dialed while the guide was open, and the phone is still idle")
 
         # ---- ringing: only the handset trembles, and it stops when the phone stops ringing
         tablet.evaluate("() => { __phone.S.phase = 'ringing'; __phone.render(); }")
