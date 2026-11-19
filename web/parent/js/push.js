@@ -1,5 +1,6 @@
 // Notifications on this device (Web Push). Email always works; this adds a nudge on the phone or computer.
 import { ApiError, del, get, post } from "/shared/api.js";
+import { MOVED_PUSH_KEY } from "/shared/pwa.js";
 
 const b64 = (s) => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(s.length / 4) * 4, "=")), (c) => c.charCodeAt(0));
 
@@ -20,9 +21,29 @@ export async function pushState() {
 export async function enablePush() {
   const { key } = await get("/api/push/key");
   if ((await Notification.requestPermission()) !== "granted") throw new Error("Notifications are blocked for this site. Allow them in your browser's settings and try again.");
+  await subscribeThisDevice(key);
+}
+
+async function subscribeThisDevice(key) {
+  key = key || (await get("/api/push/key")).key;
   const reg = await navigator.serviceWorker.ready;
   const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64(key) });
   await post("/api/push/subscribe", sub.toJSON());
+}
+
+/** A parent who had alerts on before the two apps were joined: the old worker's subscription went with it. Subscribe this device again
+ *  (permission was already given, so nothing is asked), and tell the server to forget the old endpoint. Tries again next time if it cannot. */
+export async function carryOverPush() {
+  let moved = [];
+  try { moved = JSON.parse(localStorage.getItem(MOVED_PUSH_KEY) || "[]"); } catch { return false; }
+  if (!moved.length) return false;
+  if (!("Notification" in window) || Notification.permission !== "granted") { try { localStorage.removeItem(MOVED_PUSH_KEY); } catch { /* fine */ } return false; }
+  try {
+    await subscribeThisDevice();
+    for (const endpoint of moved) await del("/api/push/subscribe", { endpoint }).catch(() => {});
+    localStorage.removeItem(MOVED_PUSH_KEY);
+    return true;
+  } catch { return false; }
 }
 
 /** Quietly forget this device's subscription (when signing out). */

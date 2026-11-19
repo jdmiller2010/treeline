@@ -9,7 +9,7 @@
 #   ./dev ui start|stop|status|reset|smoke|pwa   a local API on a throwaway database, the parent-app browser test, and the installable-app test
 #   ./dev check              regenerate generated files, check syntax, fail if anything was stale
 #   ./dev clean              empty the dev database (refuses while a test run is going)
-#   ./dev all                check, unit, sip, web, ui smoke
+#   ./dev all                check, unit, sip, web, ui smoke, ui pwa
 #
 # Anything that uses Asterisk or the dev database holds one lock, so two runs can't
 # trample each other (scenarios, browser tablets and cleanups all share them).
@@ -97,16 +97,14 @@ ui_stop() {
   rm -f "$STATE/ui.pid"; echo "stopped"
 }
 ui_reset() { ui_stop; rm -f "$STATE/ui/test.db"*; ui_start; }       # a fresh database, only ever while stopped
-ui_pwa() {
+ui_test() {   # ui_test SCRIPT [VAR=value ...]: a throwaway local API, then a browser test against it
+  local script="$1"; shift
   ui_reset
   ui_py
-  BASE="http://127.0.0.1:$UI_PORT" "$VENV/bin/python" web/tests/pwa.py
+  env BASE="http://127.0.0.1:$UI_PORT" "$@" "$VENV/bin/python" "$script"
 }
-ui_smoke() {
-  ui_reset
-  ui_py
-  BASE="http://127.0.0.1:$UI_PORT" SHOTS="${SHOTS:-$STATE/shots}" TREELINE_UI_DB="$STATE/ui/test.db" "$VENV/bin/python" web/tests/smoke.py
-}
+ui_pwa() { ui_test web/tests/pwa.py; }
+ui_smoke() { ui_test web/tests/smoke.py SHOTS="${SHOTS:-$STATE/shots}" TREELINE_UI_DB="$STATE/ui/test.db"; }
 cmd_ui() {
   case "${1:-status}" in
     start) ui_start ;; stop) ui_stop ;; reset) ui_reset ;; smoke) ui_smoke ;; pwa) ui_pwa ;;
@@ -146,7 +144,7 @@ cmd_clean() {
   locked clean_run
 }
 
-cmd_all() { cmd_check; cmd_unit; cmd_sip; cmd_web phone_ui.py; cmd_web phone_calls.py; cmd_ui smoke; }
+cmd_all() { cmd_check; cmd_unit; cmd_sip; cmd_web phone_ui.py; cmd_web phone_calls.py; cmd_ui smoke; cmd_ui pwa; }
 
 case "${1:-help}" in
   up) shift; cmd_up "$@" ;; restart) cmd_restart ;; unit) shift; cmd_unit "$@" ;;

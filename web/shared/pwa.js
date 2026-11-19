@@ -17,7 +17,7 @@ const localTest = () => ["localhost", "127.0.0.1"].includes(location.hostname);
 
 /** Running as an installed app (from the Home Screen), not in a browser tab. */
 export function isStandalone() {
-  if (localTest() && sessionStorage.getItem("treeline.test.standalone") === "1") return true;      // for the browser tests, on this machine only
+  try { if (localTest() && sessionStorage.getItem("treeline.test.standalone") === "1") return true; } catch { /* storage blocked: not a test */ }   // for the browser tests, on this machine only
   return ["standalone", "fullscreen", "minimal-ui"].some((m) => matchMedia(`(display-mode: ${m})`).matches) || navigator.standalone === true;
 }
 
@@ -30,11 +30,26 @@ export function platform(ua = navigator.userAgent, touchPoints = navigator.maxTo
   return "other";
 }
 
-/** Register the app's one service worker, and retire the old per-app ones from before the two apps were joined. */
+export const MOVED_PUSH_KEY = "treeline.push.moved";     // endpoints of alert subscriptions that belonged to a retired worker
+
+/** Register the app's one service worker, and retire the old per-app ones from before the two apps were joined.
+ *  Unregistering a worker removes its push subscription, so each one is noted first: the dashboard re-subscribes this device under the
+ *  new worker and tells the server to drop the old endpoint (see carryOverPush), and a parent's alerts do not stop. */
 export async function registerApp() {
   if (!("serviceWorker" in navigator)) return null;
   try {
-    for (const r of await navigator.serviceWorker.getRegistrations()) if (new URL(r.scope).pathname !== "/") await r.unregister();
+    for (const r of await navigator.serviceWorker.getRegistrations()) {
+      if (new URL(r.scope).pathname === "/") continue;
+      try {
+        const sub = await r.pushManager.getSubscription();
+        if (sub) {
+          const moved = new Set(JSON.parse(localStorage.getItem(MOVED_PUSH_KEY) || "[]"));
+          moved.add(sub.endpoint);
+          localStorage.setItem(MOVED_PUSH_KEY, JSON.stringify([...moved]));
+        }
+      } catch { /* no push here, or storage blocked */ }
+      await r.unregister();
+    }
     return await navigator.serviceWorker.register("/sw.js", { scope: "/" });
   } catch { return null; }
 }

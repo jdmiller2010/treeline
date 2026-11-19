@@ -3,12 +3,20 @@
 //   - kind "call": a call is waiting for a softphone that was asleep. Shown until someone taps it; tapping opens the phone.
 //   - anything else: an alert for a parent (a 911 attempt, a phone offline, a string to approve); tapping opens the dashboard.
 // The API is never cached: a call log must be live.
-const CACHE = "treeline-app-v2";
+const CACHE = "treeline-app-v3";
+const MAX_CACHED = 150;                      // the cache cannot grow without limit
 
 self.addEventListener("install", () => { self.skipWaiting(); });
 self.addEventListener("activate", (e) => {
   e.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim()));
 });
+
+async function keep(request, response) {
+  const cache = await caches.open(CACHE);
+  await cache.put(request, response);
+  const keys = await cache.keys();
+  await Promise.all(keys.slice(0, Math.max(0, keys.length - MAX_CACHED)).map((k) => cache.delete(k)));       // oldest first
+}
 
 self.addEventListener("fetch", (e) => {
   const url = new URL(e.request.url);
@@ -16,9 +24,9 @@ self.addEventListener("fetch", (e) => {
   e.respondWith(
     fetch(e.request).then((res) => {
       // Only whole, successful pages and files: a partial (206) response can't be cached.
-      if (res.status === 200 && res.type === "basic") { const copy = res.clone(); e.waitUntil(caches.open(CACHE).then((c) => c.put(e.request, copy)).catch(() => {})); }
+      if (res.status === 200 && res.type === "basic") e.waitUntil(keep(e.request, res.clone()).catch(() => {}));
       return res;
-    }).catch(() => caches.match(e.request, { ignoreSearch: true })));
+    }).catch(() => caches.match(e.request, { ignoreSearch: e.request.mode === "navigate" })));      // offline: the exact copy; a page may differ by its #/? part
 });
 
 self.addEventListener("push", (e) => {

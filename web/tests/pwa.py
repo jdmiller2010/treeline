@@ -2,6 +2,7 @@
 
   ./dev ui pwa        (a local API on a throwaway database; no phones or calls are needed)
 """
+import base64
 import json
 import os
 import struct
@@ -41,6 +42,21 @@ def new_page(browser, init=None, ua=None, **kw):
     return ctx, ctx.new_page()
 
 
+KEY = base64.urlsafe_b64encode(bytes(65)).decode().rstrip("=")           # a well-formed push key, for the carry-over test
+# A fake push service: the old worker's scope (/parent/) has a subscription; the new one (/) can subscribe.
+def fake_push(permission):
+    """The fake push service, with the notification permission set to a given state (this headless browser reports 'denied' whatever is granted)."""
+    return FAKE_PUSH.replace("(() => {", "(() => {\n  Object.defineProperty(Notification, 'permission', { configurable: true, get: () => '" + permission + "' });", 1)
+
+
+FAKE_PUSH = """(() => {
+  Object.defineProperty(ServiceWorkerRegistration.prototype, 'pushManager', { configurable: true, get() {
+    const old = new URL(this.scope).pathname === '/parent/';
+    return { getSubscription: async () => (old ? { endpoint: 'https://push.example/old', toJSON() { return { endpoint: 'https://push.example/old' }; } } : null),
+             subscribe: async () => ({ endpoint: 'https://push.example/new', toJSON() { return { endpoint: 'https://push.example/new', keys: { p256dh: 'p', auth: 'a' } }; } }) };
+  } });
+})();"""
+BLOCK_SESSION_STORAGE = "Object.defineProperty(window, 'sessionStorage', { configurable: true, get() { throw new DOMException('denied', 'SecurityError'); } });"
 FAKE_PHONE = "localStorage.setItem('treeline.phone', JSON.stringify({sip_user:'hfake', secret:'x', server:'127.0.0.1', ws_url:'ws://127.0.0.1:1/ws', realm:'treeline', handset_id:1}));"
 FAKE_TOKEN = "localStorage.setItem('treeline.token', 'not-a-real-token');"
 STANDALONE = "sessionStorage.setItem('treeline.test.standalone', '1');"
@@ -149,7 +165,53 @@ def main():
         page.goto(BASE + "/phone/"); page.wait_for_selector(".ph-code")
         check(page.inner_text("#install-slot").strip() == "", "an installed app shows no install prompt")
         ctx.close()
+
+        # ---- a parent who had alerts on keeps them: the old worker's push subscription is carried over, not lost
+        for granted in (True, False):
+            ctx, page = new_page(browser, FAKE_TOKEN + fake_push("granted" if granted else "default"))
+            seen = []
+            page.route("**/api/push/key", lambda r: r.fulfill(json={"key": KEY}))
+            page.route("**/api/push/subscribe", lambda r: (seen.append((r.request.method, r.request.post_data)), r.fulfill(json={"ok": True}))[1])
+            page.goto(BASE + "/phone/"); page.wait_for_selector(".ph-code")
+            page.evaluate("async () => { await navigator.serviceWorker.register('/sw.js', { scope: '/parent/' }); }")          # the old per-app registration
+            res = page.evaluate("""async () => {
+              const { registerApp, MOVED_PUSH_KEY } = await import('/shared/pwa.js');
+              await registerApp();
+              const noted = JSON.parse(localStorage.getItem(MOVED_PUSH_KEY) || '[]');
+              const { carryOverPush } = await import('/parent/js/push.js');
+              const done = await carryOverPush();
+              return { noted, done, left: localStorage.getItem(MOVED_PUSH_KEY), scopes: (await navigator.serviceWorker.getRegistrations()).map((r) => new URL(r.scope).pathname) }; }""")
+            if granted:
+                posted = [b for m, b in seen if m == "POST"]
+                deleted = [b for m, b in seen if m == "DELETE"]
+                check(res["noted"] == ["https://push.example/old"] and res["scopes"] == ["/"], "retiring the old worker first notes its push subscription", str(res))
+                check(res["done"] is True and res["left"] is None and len(posted) == 1 and "push.example/new" in posted[0] and len(deleted) == 1 and "push.example/old" in deleted[0],
+                      "and the device is subscribed again under the new worker and the server is told to drop the old one, so alerts don't stop", str((res, seen)))
+            else:
+                check(res["noted"] == ["https://push.example/old"] and res["done"] is False and res["left"] is None and not seen,
+                      "if notifications aren't allowed there is nothing to carry over, and nothing is sent", str((res, seen)))
+            ctx.close()
+
+        # ---- blocked storage (a private window, cleared site data) must not blank the app
+        ctx, page = new_page(browser, BLOCK_SESSION_STORAGE)
+        problems = []
+        page.on("pageerror", lambda e: problems.append(str(e)))
+        page.goto(BASE + "/parent/"); page.wait_for_selector("#email", timeout=8000)
+        page.goto(BASE + "/phone/"); page.wait_for_selector(".ph-code", timeout=8000)
+        check(not problems, "with sessionStorage blocked the dashboard's sign-in and the first screen still draw", str(problems))
+        ctx.close()
         browser.close()
+
+    # ---- without JavaScript the launcher still leads somewhere (and / no longer redirects)
+    with urllib.request.urlopen(BASE + "/", timeout=10) as r:
+        page_html = r.read().decode()
+        check(r.geturl() == BASE + "/" and 'src="/launch.js"' in page_html and '<noscript>' in page_html and 'href="/phone/"' in page_html,
+              "the launcher is served at / (no redirect), and its noscript fallback links to the first screen")
+
+    # ---- ./dev all runs this test
+    dev = open(os.path.join(os.path.dirname(__file__), "..", "..", "dev")).read()
+    check("cmd_ui pwa" in [t.strip(";") for t in dev.split("cmd_all()")[1].split("\n")[0].replace("; ", ";").split(";") if t.strip()][0:0] or "cmd_ui pwa;" in dev.split("cmd_all()")[1].split("\n")[0],
+          "./dev all runs this test")
 
     # ---- the static-host build carries the same app
     out = tempfile.mkdtemp()
@@ -158,6 +220,9 @@ def main():
     dist = out + "/dist"
     have = all(os.path.exists(f"{dist}/{f}") for f in ("index.html", "launch.js", "sw.js", "manifest.webmanifest", "shared/pwa.js", "shared/install.js"))
     check(r.returncode == 0 and have and "launch.js" in open(f"{dist}/index.html").read(), "the static-host build carries the launcher, the worker, the manifest and the shared files", (r.stderr or r.stdout)[-200:])
+    hosting = json.load(open(f"{dist}/firebase.json"))["hosting"]["headers"]
+    fresh = {h["source"] for h in hosting if {"key": "Cache-Control", "value": "no-cache"} in h["headers"]}
+    check({"**/sw.js", "/", "/index.html", "/launch.js", "/manifest.webmanifest"} <= fresh, "and the static host revalidates the worker, the launcher and the manifest on every load", str(fresh))
 
     print(f"\n{'all ' + str(count[0]) + ' checks passed' if not errors else str(len(errors)) + ' of ' + str(count[0]) + ' checks failed'}")
     sys.exit(1 if errors else 0)

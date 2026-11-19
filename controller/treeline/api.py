@@ -1291,7 +1291,6 @@ def site_files(path):
     if path.startswith("api/"):
         raise ApiError("That page isn't here.", 404)
     root = os.path.join(WEB, "site")
-    target = path or "parent/"
     if path in ("", "index.html"):
-        return _send(root, "index.html")          # the launcher: it opens whichever mode this device is in
-    return _send(root, target)
+        return _send(root, "index.html")          # the launcher: it opens whichever mode this device is in (its <noscript> links to /phone/)
+    return _send(root, path)

@@ -11,7 +11,7 @@ import { calls } from "./calls.js";
 import { quiet } from "./quiet.js";
 import { phonebook } from "./house.js";
 import { account, privacy, about, actionLog, pairClaim, stringLink } from "./account.js";
-import { forgetPushQuietly } from "./push.js";
+import { carryOverPush, forgetPushQuietly } from "./push.js";
 
 const root = document.getElementById("root");
 
@@ -182,4 +182,4 @@ async function signOut() {
 window.addEventListener("hashchange", render);
 window.addEventListener("tl-signed-out", () => { ctx.me = null; render(); });
 if (lockedToPhone()) location.replace("/phone/");     // an installed app that is a phone stays a phone until a parent code is entered there
-else { registerApp(); render(); }
+else { registerApp().then(() => { if (token.get()) carryOverPush(); }); render(); }

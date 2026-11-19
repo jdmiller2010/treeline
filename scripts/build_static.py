@@ -48,7 +48,9 @@ def build(api, out):
     (out / "firebase.json").write_text(json.dumps({"hosting": {
         "public": ".", "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
         "headers": [{"source": "**", "headers": headers},
-                    {"source": "**/sw.js", "headers": [{"key": "Cache-Control", "value": "no-cache"}]}]}}, indent=2) + "\n")
+                    # the worker, the launcher and the manifest are always revalidated, so a deploy reaches devices at once
+                    *[{"source": src, "headers": [{"key": "Cache-Control", "value": "no-cache"}]}
+                      for src in ("**/sw.js", "/", "/index.html", "/launch.js", "/manifest.webmanifest")]]}}, indent=2) + "\n")
     return out
 
 

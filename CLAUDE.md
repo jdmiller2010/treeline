@@ -17,6 +17,7 @@ Treeline: a house-to-house phone network for kids, with parents holding the keys
 ./dev sip [scenario]     # scripted SIP phones (real calls; 17 scenarios)
 ./dev web [script.py]    # browser softphones on real WebRTC calls (phone_calls.py default, phone_ui.py)
 ./dev ui smoke           # parent-app browser test on a local API with a throwaway DB (./dev ui start|stop|reset)
+./dev ui pwa             # the installable app: manifest, one service worker, the launcher and the install prompts (BROWSER=webkit|msedge|firefox to change engine)
 ./dev check              # regenerate generated files, syntax-check Python/JS/compose; fails if something was stale
 ./dev all                # everything
 ```
