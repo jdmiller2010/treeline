@@ -806,13 +806,18 @@ body {
   6%, 14%, 22%, 30%, 38% { transform: translate(.6px, -.5px) rotate(.7deg); }
 }
 @media (prefers-reduced-motion: reduce) { .tl-rotary.is-ringing[data-hook="on"] .tlp-handset { animation: none; } }
-/* The line lamp: a little jewel light on the front of the phone. Dark until the app says the line is up
-   (online prop, api.setLine); then a soft green. While the phone rings it flashes gently. */
+/* The line lamp: a little jewel light on the front of the phone (online prop, api.setLine). Steady green:
+   connected, ready to call. Pulsing orange: connecting, wait. Blinking red: it can't connect, something's wrong.
+   Flashing green: a call is ringing. With reduced motion the colors stay but nothing pulses or blinks. */
 .tl-rotary .tlp-lamp { transition: fill .3s ease; }
 .tl-rotary[data-line="on"] .tlp-lamp { fill: #7fe08a; filter: drop-shadow(0 0 3px rgba(127, 224, 138, .85)); }
+.tl-rotary[data-line="connecting"] .tlp-lamp { fill: #f2a24a; animation: tl-rotary-lamp-pulse 1.8s ease-in-out infinite; }
+.tl-rotary[data-line="off"] .tlp-lamp { fill: #e5534b; animation: tl-rotary-lamp-blink 1s steps(1, end) infinite; }
 .tl-rotary.is-ringing .tlp-lamp { fill: #7fe08a; animation: tl-rotary-lamp 1.2s ease-in-out infinite; }
 @keyframes tl-rotary-lamp { 0%, 100% { fill: #8ef29a; filter: drop-shadow(0 0 4px rgba(142, 242, 154, .95)); } 50% { fill: #3f6b45; filter: none; } }
-@media (prefers-reduced-motion: reduce) { .tl-rotary.is-ringing .tlp-lamp { animation: none; } }
+@keyframes tl-rotary-lamp-pulse { 0%, 100% { fill: #f6b860; filter: drop-shadow(0 0 4px rgba(246, 184, 96, .9)); } 50% { fill: #9a6a35; filter: none; } }
+@keyframes tl-rotary-lamp-blink { 0% { fill: #ef5a50; filter: drop-shadow(0 0 4px rgba(239, 90, 80, .9)); } 50% { fill: #5a2a26; filter: none; } }
+@media (prefers-reduced-motion: reduce) { .tl-rotary.is-ringing .tlp-lamp, .tl-rotary[data-line] .tlp-lamp { animation: none; } }
 .tl-rotary .tlp-wheel { cursor: grab; }
 .tl-rotary.is-dialing .tl-rotary__svg, .tl-rotary.is-dialing .tlp-wheel { cursor: grabbing; }
 /* A real button over the handset, so a keyboard or screen reader can lift and hang up too. */

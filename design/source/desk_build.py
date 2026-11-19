@@ -219,7 +219,7 @@ d = d.replace("\nexport declare function SoftphoneDesk(props: SoftphoneDeskProps
 if "SoftphoneDeskProps" not in d:
     types = '''
 export interface DeskContact { name: string; number: string; }
-export interface SoftphoneDeskApi { setOnline(on: boolean): void; isOnline(): boolean; next(): void; prev(): void; setContacts(c: DeskContact[]): void; index(): number; open(item: "book" | "coffee" | "card" | "licenses"): void; close(): void; isOpen(): string | null; setName(name: string): void; setQuiet(text: string): void; setLinks(l: { coffee?: string; email?: string; licenses?: string }): void; }
+export interface SoftphoneDeskApi { setOnline(on: boolean | "connecting"): void; isOnline(): boolean; next(): void; prev(): void; setContacts(c: DeskContact[]): void; index(): number; open(item: "book" | "coffee" | "card" | "licenses"): void; close(): void; isOpen(): string | null; setName(name: string): void; setQuiet(text: string): void; setLinks(l: { coffee?: string; email?: string; licenses?: string }): void; }
 export interface SoftphoneDeskProps {
   /** The treehouse's own 4 digits, shown in the middle of the dial. */
   number?: string;
@@ -244,8 +244,8 @@ export interface SoftphoneDeskProps {
   /** Something was picked up ("book", "coffee", "card", "licenses") or put back. */
   onOpen?: (item: string) => void; onClose?: (item: string) => void; onCoffee?: (e: any) => void;
   deskRef?: { current: SoftphoneDeskApi | null };
-  /** The line lamp on the phone: lit (default) when connected, dark when not. */
-  online?: boolean;
+  /** The line lamp on the phone: true (default, steady green), "connecting" (pulsing orange), false (blinking red: can't connect). */
+  online?: boolean | "connecting";
   /** A few words on the wall (what the phone is doing). */
   children?: any;
   /** Fill the parent's height instead of the screen's. */

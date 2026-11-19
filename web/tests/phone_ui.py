@@ -120,13 +120,19 @@ def main():
         check(bool(re.match(r"^(none|\d{1,2}(:\d\d)? [ap]m – \d{1,2}(:\d\d)? [ap]m)$", quiet)), "the sticky note shows the quiet hours", quiet)
         _st, _sb = tablet.inner_text("#status").strip(), tablet.inner_text("#sub").strip()
         check(_st in ("", "The phone is sleeping") and _sb == "", "an idle phone's wall has no how-to words: the guide book teaches", f"{_st!r} / {_sb!r}")
-        # the little light on the phone is the line: no SIP here, so it's dark
+        # the little light on the phone is the line: no SIP here, so it pulses orange while it tries, then blinks red
         lamp = lambda: tablet.evaluate("() => getComputedStyle(document.querySelector('.tl-rotary .tlp-lamp')).fill")
-        check(tablet.get_attribute(".tl-rotary", "data-line") == "off" and "reconnecting" in tablet.inner_text("#reg"),
-              "while the phone isn't connected its little light is dark, and screen readers hear it")
+        anim = lambda: tablet.evaluate("() => getComputedStyle(document.querySelector('.tl-rotary .tlp-lamp')).animationName")
+        state0 = tablet.get_attribute(".tl-rotary", "data-line")
+        check(state0 in ("connecting", "off") and ("connecting" in tablet.inner_text("#reg") or "can't connect" in tablet.inner_text("#reg")),
+              "while the phone isn't connected its little light says so, and screen readers hear it", state0)
+        tablet.wait_for_function("() => document.querySelector('.tl-rotary').getAttribute('data-line') === 'off'", timeout=20000)
+        check(anim() == "tl-rotary-lamp-blink" and "Ask a grown-up" in tablet.inner_text("#reg"), "after trying for a while it blinks red: something's wrong", anim())
+        tablet.evaluate("() => __phone.rotary().setLine('connecting')")
+        check(anim() == "tl-rotary-lamp-pulse", "connecting, it pulses orange", anim())
         tablet.evaluate("() => __phone.rotary().setLine(true)")
         tablet.wait_for_timeout(450)                                   # it fades up
-        check(lamp() == "rgb(127, 224, 138)", "connected, the light is green", lamp())
+        check(lamp() == "rgb(127, 224, 138)" and anim() == "none", "connected, the light is steady green", lamp())
         tablet.evaluate("() => __phone.rotary().setLine(false)")
         wide = tablet.evaluate("document.documentElement.scrollWidth > document.documentElement.clientWidth + 1")
         check(not wide, "nothing scrolls sideways")

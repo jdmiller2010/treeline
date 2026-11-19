@@ -117,9 +117,9 @@ export interface StatTileProps { label: string; value: React.ReactNode; unit?: s
 export declare function StatTile(props: StatTileProps): React.ReactElement;
 export interface TabsProps { label: string; tabs: Array<{ value: string; label: string; content: React.ReactNode; badge?: number }>; value?: string; defaultValue?: string; onChange?: (v: string) => void; id?: string; className?: string }
 export declare function Tabs(props: TabsProps): React.ReactElement;
-export interface RotaryPhoneApi { lift(): void; hangUp(): void; dial(digit: number): void; isOffHook(): boolean; setRinging(on: boolean): void; isRinging(): boolean; setLine(on: boolean): void; isLineOn(): boolean }
+export interface RotaryPhoneApi { lift(): void; hangUp(): void; dial(digit: number): void; isOffHook(): boolean; setRinging(on: boolean): void; isRinging(): boolean; setLine(state: boolean | "on" | "connecting" | "off"): void; isLineOn(): boolean; lineState(): "on" | "connecting" | "off" }
 export interface DeskContact { name: string; number: string; }
-export interface SoftphoneDeskApi { setOnline(on: boolean): void; isOnline(): boolean; next(): void; prev(): void; setContacts(c: DeskContact[]): void; index(): number; open(item: "book" | "coffee" | "card" | "licenses"): void; close(): void; isOpen(): string | null; setName(name: string): void; setQuiet(text: string): void; setLinks(l: { coffee?: string; email?: string; licenses?: string }): void; }
+export interface SoftphoneDeskApi { setOnline(on: boolean | "connecting"): void; isOnline(): boolean; next(): void; prev(): void; setContacts(c: DeskContact[]): void; index(): number; open(item: "book" | "coffee" | "card" | "licenses"): void; close(): void; isOpen(): string | null; setName(name: string): void; setQuiet(text: string): void; setLinks(l: { coffee?: string; email?: string; licenses?: string }): void; }
 export interface SoftphoneDeskProps {
   /** The treehouse's own 4 digits, shown in the middle of the dial. */
   number?: string;
@@ -144,8 +144,8 @@ export interface SoftphoneDeskProps {
   /** Something was picked up ("book", "coffee", "card", "licenses") or put back. */
   onOpen?: (item: string) => void; onClose?: (item: string) => void; onCoffee?: (e: any) => void;
   deskRef?: { current: SoftphoneDeskApi | null };
-  /** The line lamp on the phone: lit (default) when connected, dark when not. */
-  online?: boolean;
+  /** The line lamp on the phone: true (default, steady green), "connecting" (pulsing orange), false (blinking red: can't connect). */
+  online?: boolean | "connecting";
   /** A few words on the wall (what the phone is doing). */
   children?: any;
   /** Fill the parent's height instead of the screen's. */
@@ -154,8 +154,8 @@ export interface SoftphoneDeskProps {
 }
 
 export interface RotaryPhoneProps {
-  /** The line lamp: true lights it (connected, ready), false leaves it dark. Unset: dark. */
-  online?: boolean;
+  /** The line lamp: true (steady green, connected), "connecting" (pulsing orange), false (blinking red, can't connect). Unset: dark. */
+  online?: boolean | "connecting";
   /** The phone is ringing: its handset trembles a little, in bursts like the bell. */
   ringing?: boolean;
   /** The treehouse's own 4-digit number, shown in the middle of the dial. */ number?: string;

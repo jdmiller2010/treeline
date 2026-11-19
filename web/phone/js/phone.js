@@ -79,7 +79,7 @@ function draw() {
     if (/^[0-9]$/.test(e.key) && !e.metaKey && !e.ctrlKey && !e.altKey && !/input|textarea|select/i.test(e.target.tagName)) S.dial?.(Number(e.key));
   }, { signal: life.signal });
   ui.wake.querySelector("#wake-btn").addEventListener("click", async () => { await tones.unlock(); ui.wake.hidden = true; });
-  setRegistration();
+  showLine();
   render();
 }
 
@@ -110,10 +110,21 @@ function fillRoom(r) {
   if (cards !== ui.strings) { ui.strings = cards; ui.desk.setContacts(r.strings || []); }
 }
 
+// The little light on the phone: steady green when connected; pulsing orange while it's connecting (starting up,
+// or retrying after the line drops); blinking red once it has tried for a while without getting through.
+const GIVE_UP_MS = 15000;
 function setRegistration() {
+  if (S.registered) { clearTimeout(S.timers.lineLost); S.timers.lineLost = 0; S.lineLight = "on"; }
+  else if (!S.timers.lineLost && S.lineLight !== "off") {          // timed from when the line was lost, not from each retry
+    S.lineLight = "connecting";
+    S.timers.lineLost = setTimeout(() => { S.timers.lineLost = 0; if (!S.registered) { S.lineLight = "off"; showLine(); } }, GIVE_UP_MS);
+  }
+  showLine();
+}
+function showLine() {
   if (!ui) return;
-  ui.reg.textContent = S.registered ? "The phone is connected." : "The phone is reconnecting.";
-  ui.api.setLine(S.registered);                                    // the little light on the phone
+  ui.reg.textContent = S.lineLight === "on" ? "The phone is connected." : S.lineLight === "connecting" ? "The phone is connecting." : "The phone can't connect. Ask a grown-up.";
+  ui.api.setLine(S.lineLight);
 }
 
 // ------------------------------------------------------------------ line state
@@ -314,13 +325,13 @@ function startUa() {
 
 async function start(creds) {
   life.abort(); life = new AbortController(); clearInterval(S.timers.refresh);
-  S.creds = creds; S.hook = "on"; S.phase = "idle"; S.incoming = null; S.session = null; S.registered = false;
+  S.creds = creds; S.hook = "on"; S.phase = "idle"; S.incoming = null; S.session = null; S.registered = false; S.lineLight = "connecting";
   S.insecure = !window.isSecureContext || !navigator.mediaDevices;
   try { const cfg = await api("GET", "/api/phone/config", undefined, { auth: "none" }); S.iceServers = cfg.ice_servers || []; } catch { /* a LAN needs none */ }
   draw();
   say(...idleWords());
   if (S.insecure) say("This device can't use its microphone", "Open the phone from a secure (https) address. See docs/DEPLOY.md.");   // for the grown-up setting it up
-  stopUa(); startUa();
+  stopUa(); clearTimeout(S.timers.lineLost); S.timers.lineLost = 0; startUa(); setRegistration();
   refreshLine();
   S.timers.refresh = setInterval(() => { if (S.hook === "on") refreshLine(); }, 15000);
   // Keep the device awake: a phone that sleeps can't ring.

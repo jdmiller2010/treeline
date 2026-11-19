@@ -53,7 +53,7 @@ def dial_window(n, svg, cx=150, cy=140, r=116):
             f'<g {WOB}><circle cx="{cx}" cy="{cy}" r="{r}" {LN}/></g>')
 
 def phone(n, lifted=False, x=40, y=10, w=220, view="0 -70 400 510", extra=""):
-    s = rotary.svg(number="4821", lifted=lifted, colors="moss", cls="x")
+    s = rotary.svg(number="4821", lifted=lifted, colors="berry", cls="x")      # the same red phone as on the table
     s = s.replace('id="tlp-', f'id="tlb-p{n}-').replace("url(#tlp-", f"url(#tlb-p{n}-").replace(' class="x"', "")
     s = s.replace('class="tlp-', 'class="tlbook-')          # a picture of a phone, not the phone: none of its parts' names
     vb = [float(v) for v in view.split()]
@@ -122,12 +122,19 @@ def pages():
            f'<g {WOB}><rect x="40" y="62" width="220" height="150" rx="14" {LN}/></g>'
            f'<circle cx="{40 + (300-214)*220/172:.1f}" cy="{62 + (362-300)*220/172:.1f}" r="16" fill="none" stroke="{BERRY}" stroke-width="3"/>')
     def lamp(cx, cy, fill, rays=False):
-        r_ = "".join(f'<path d="M{cx + 11*math.cos(a):.1f} {cy + 11*math.sin(a):.1f} L{cx + 16*math.cos(a):.1f} {cy + 16*math.sin(a):.1f}" stroke="#4fbf62" stroke-width="2" stroke-linecap="round"/>' for a in [i * math.pi / 4 for i in range(8)]) if rays else ""
+        """rays: True for a blink or flash (little rays in the light's color), "glow" for a soft pulsing halo."""
+        if rays == "glow":
+            r_ = f'<circle cx="{cx}" cy="{cy}" r="14" fill="{fill}" opacity=".22"/><circle cx="{cx}" cy="{cy}" r="11" fill="{fill}" opacity=".3"/>'
+        else:
+            r_ = "".join(f'<path d="M{cx + 11*math.cos(a):.1f} {cy + 11*math.sin(a):.1f} L{cx + 16*math.cos(a):.1f} {cy + 16*math.sin(a):.1f}" stroke="{fill}" stroke-width="2" stroke-linecap="round"/>' for a in [i * math.pi / 4 for i in range(8)]) if rays else ""
         return f'{r_}<circle cx="{cx}" cy="{cy}" r="8" fill="#5b5248"/><circle cx="{cx}" cy="{cy}" r="5.5" fill="{fill}"/><circle cx="{cx-1.8}" cy="{cy-1.8}" r="1.5" fill="#fff" opacity=".6"/>'
-    rows = [("#7fe08a", False, "Green: ready to call"), ("#3a3530", False, "Dark: getting online, wait"), ("#9cf5a6", True, "Flashing: a call! Lift it")]
-    legend = "".join(lamp(58, 246 + i * 30, f, r_) + f'<text x="84" y="{251 + i*30}" {SANS} font-size="14" fill="{INK}">{t}</text>' for i, (f, r_, t) in enumerate(rows))
+    rows = [("#7fe08a", False, "Green: ready to call"),
+            ("#f2a24a", "glow", "Orange glow: connecting, wait"),
+            ("#e5534b", True, "Red blink: ask a grown-up"),
+            ("#5fd06e", True, "Green flash: a call! Lift it")]
+    legend = "".join(lamp(58, 238 + i * 28, f, r_) + f'<text x="84" y="{243 + i*28}" {SANS} font-size="14" fill="{INK}">{t}</text>' for i, (f, r_, t) in enumerate(rows))
     out.append(page("L", f'<text x="{PW/2}" y="42" text-anchor="middle" {SERIF} font-size="24" font-style="italic" fill="{INK}">The little light</text>' + win + legend,
-                    "The little light on the phone. Green means it's ready to call. Dark means it's getting online, so wait. Flashing means a call is coming in: lift the handset.", 1))
+                    "The little light on the phone. Steady green means it's ready to call. A pulsing orange glow means it's connecting, so wait. Blinking red means it can't connect: ask a grown-up. Flashing green means a call is coming in: lift the handset.", 1))
     # 2 lift the handset
     hum = crayon("M40 66 q8 -8 16 0 t16 0 t16 0 M34 86 q8 -8 16 0 t16 0 t16 0", SKY, 2.4)
     out.append(page(2, phone(2, True, 46, 20, 212) + hum + caption(["Lift the handset.", "Hear the hum?"], 300), "Step 1: lift the handset and listen for the hum of the dial tone.", 2))

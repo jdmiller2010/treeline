@@ -299,9 +299,10 @@
     setLift(state.offHook ? 1 : 0); setTurn(0);
     // Ringing: only the handset trembles, a little, in bursts like the bell (see bundle.css).
     function setRinging(on) { root.classList.toggle("is-ringing", !!on); }
-    // The line lamp on the front: lit when the phone is connected and ready; it flashes while it rings.
-    function setLine(on) { root.setAttribute("data-line", on ? "on" : "off"); }
-    var api = { lift: function () { setHook(true); }, hangUp: function () { setHook(false); }, dial: dialDigit, setRinging: setRinging, isRinging: function () { return root.classList.contains("is-ringing"); }, setLine: setLine, isLineOn: function () { return root.getAttribute("data-line") === "on"; },
+    // The line lamp on the front: steady green when connected, pulsing orange while connecting, blinking red when
+    // it can't connect; it flashes green while it rings. setLine(true | false | "on" | "connecting" | "off").
+    function setLine(state) { root.setAttribute("data-line", state === "connecting" ? "connecting" : (state === true || state === "on") ? "on" : "off"); }
+    var api = { lift: function () { setHook(true); }, hangUp: function () { setHook(false); }, dial: dialDigit, setRinging: setRinging, isRinging: function () { return root.classList.contains("is-ringing"); }, setLine: setLine, isLineOn: function () { return root.getAttribute("data-line") === "on"; }, lineState: function () { return root.getAttribute("data-line") || "off"; },
                 isOffHook: function () { return state.offHook; }, setHook: setHook };
     root.__tlRotary = api;
     return api;
@@ -482,7 +483,7 @@
     show();
     var online = true;
     // The line: lights the lamp on the phone on the table (the kit's demo starts it lit).
-    function setOnline(on) { online = !!on; all("[data-tl-rotary]", function (r) { r.setAttribute("data-line", online ? "on" : "off"); }); }
+    function setOnline(on) { var v = on === "connecting" ? "connecting" : on ? "on" : "off"; online = v === "on"; all("[data-tl-rotary]", function (r) { r.setAttribute("data-line", v); }); }
     if (!root.querySelector('[data-tl-rotary][data-line]')) setOnline(true);
 
     // Words the app fills in: the name on the kid's drawing, the sticky note, and where the cards' links go.

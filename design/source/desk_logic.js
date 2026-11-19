@@ -172,7 +172,7 @@
     show();
     var online = true;
     // The line: lights the lamp on the phone on the table (the kit's demo starts it lit).
-    function setOnline(on) { online = !!on; all("[data-tl-rotary]", function (r) { r.setAttribute("data-line", online ? "on" : "off"); }); }
+    function setOnline(on) { var v = on === "connecting" ? "connecting" : on ? "on" : "off"; online = v === "on"; all("[data-tl-rotary]", function (r) { r.setAttribute("data-line", v); }); }
     if (!root.querySelector('[data-tl-rotary][data-line]')) setOnline(true);
 
     // Words the app fills in: the name on the kid's drawing, the sticky note, and where the cards' links go.
