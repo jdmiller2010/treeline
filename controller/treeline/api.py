@@ -23,8 +23,9 @@ from zoneinfo import ZoneInfo, available_timezones
 from flask import Flask, Response, g, jsonify, redirect, request, send_from_directory
 
 from . import ari as ari_mod
-from . import db, households, mail, pjsip, rules
+from . import db, households, mail, pjsip, prod, rules
 
+prod.enforce()          # TREELINE_ENV=production: refuse to start with any development setting
 log = logging.getLogger("treeline")
 app = Flask(__name__, static_folder=None)
 

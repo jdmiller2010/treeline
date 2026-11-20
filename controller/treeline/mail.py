@@ -7,6 +7,7 @@ each message is written to the outbox folder and the log instead.
 import logging
 import os
 import smtplib
+import ssl
 import time
 from email.message import EmailMessage
 
@@ -31,7 +32,10 @@ def send(to, subject, body):
     try:
         with smtplib.SMTP(host, int(os.environ.get("TREELINE_SMTP_PORT", "587")), timeout=15) as s:
             if os.environ.get("TREELINE_SMTP_TLS", "1") == "1":
-                s.starttls()
+                # A verifying context: the certificate must chain to the system's CAs and match `host`.
+                # smtplib's default (no context) checks neither, so a man in the middle could read the SMTP
+                # password and every message (SECURITY.md R1-1).
+                s.starttls(context=ssl.create_default_context())
             user = os.environ.get("TREELINE_SMTP_USER")
             if user:
                 s.login(user, os.environ.get("TREELINE_SMTP_PASS", ""))

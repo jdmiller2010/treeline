@@ -7,13 +7,14 @@ import time
 import websocket
 
 from treeline import ari as ari_mod
-from treeline import db, households, jobs
+from treeline import db, households, jobs, prod
 from treeline.calls import Engine
 
 log = logging.getLogger("treeline")
 
 
 def main():
+    prod.enforce()       # TREELINE_ENV=production: refuse to start with any development setting
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     client = ari_mod.Ari()
     engine = Engine(client)
