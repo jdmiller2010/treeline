@@ -48,6 +48,10 @@ class RealInputs(unittest.TestCase):
         self.assertIn("gpgv", text)
         self.assertIn("sha256sum -c", text)
         self.assertIn("a network fetch was attempted", text)   # the fake downloader that fails the build
+        # What make_build_h stamps into the binary must not depend on who runs the build (found when the CI runner, uid 1001
+        # with no name, produced different bytes from a developer's uid 1000 "ubuntu"): date, hostname, kernel and user.
+        for stamped in ('"$SHIM/date"', '"$SHIM/uname"', '"$SHIM/id"'):
+            self.assertIn(stamped, text)
         for forbidden in ("curl ", "git clone", "pip install", "apt-get install"):
             self.assertNotIn(forbidden, text)   # fetching is run-build.sh's job, before the container loses its network
         run = ab.read_text(os.path.join(ab.BUILD, "run-build.sh"))

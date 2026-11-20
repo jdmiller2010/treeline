@@ -48,7 +48,9 @@ cp "$CACHE/$AST_TAR" "$CACHE/$PJ_TAR" "$IN/"; cp "$SIG" "$IN/$AST_TAR.asc"
 chmod 755 "$IN"; chmod 644 "$IN"/*
 
 # ASTERISK_BUILD_CPUS (for example 0-3) limits the CPUs the build sees: used to check the result does not depend on them.
-docker run --rm --network none ${ASTERISK_BUILD_CPUS:+--cpuset-cpus "$ASTERISK_BUILD_CPUS"} --hostname treeline-build --user "$(id -u):$(id -g)" -e HOME=/tmp \
+# ASTERISK_BUILD_USER (uid:gid) runs the build as someone else, to check the result does not depend on who runs it
+# (the output directory must then be writable by that user).
+docker run --rm --network none ${ASTERISK_BUILD_CPUS:+--cpuset-cpus "$ASTERISK_BUILD_CPUS"} --hostname treeline-build --user "${ASTERISK_BUILD_USER:-$(id -u):$(id -g)}" -e HOME=/tmp \
   --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp --tmpfs /work:exec,size=6g \
   -v "$IN:/in:ro" -v "$OUT:/out" -v "$HERE/build.sh:/build.sh:ro" "$TAG" /build.sh
 echo "artifact: $OUT/asterisk-$(lock BUILD_ID).tar.gz"

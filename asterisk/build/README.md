@@ -43,7 +43,9 @@ Asterisk's compiled-in directories point at `/etc`, `/var` and `/var/lib/asteris
 installed `asterisk.conf` sets every directory explicitly, including `astdatadir`.
 
 Measured on 2026-11-20: a build takes about a minute on 16 CPUs and a little over a minute on 4, the artifact is 3.5 MB, and
-builds with different CPU counts give the same bytes.
+builds with different CPU counts, and run by different users, give the same bytes. (The second was found by CI:
+Asterisk stamps the user who ran the build into its binary, and a runner's user is not a developer's. `build.sh` fixes
+the date, host name, kernel and user; `ASTERISK_BUILD_CPUS` and `ASTERISK_BUILD_USER` let `run-build.sh` check both.)
 
 ## Changing it
 

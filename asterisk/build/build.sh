@@ -56,7 +56,7 @@ mkdir "$WORK/cache"; cp "$PJ_TAR" "$WORK/cache/"   # a verified copy where Aster
 
 echo "[${SECONDS}s] == 3. a sealed, repeatable environment"
 # A fake downloader: configure insists on finding one, so any attempt to fetch something fails the build.
-# `date` and `uname` are what Asterisk stamps into build.h: fixed here so a second build can match this one.
+# `date`, `uname` and `id` are what Asterisk stamps into build.h: fixed here so a second build can match this one.
 SHIM="$WORK/shims"; mkdir "$SHIM"
 printf '#!/bin/sh\necho "build.sh: a network fetch was attempted: wget $*" >&2\nexit 1\n' > "$SHIM/wget"
 cat > "$SHIM/date" <<SH
@@ -65,6 +65,12 @@ for a in "\$@"; do case "\$a" in -u|--utc) exec /usr/bin/date -u -d "@$EPOCH" "+
 exec /usr/bin/date "\$@"
 SH
 printf '#!/bin/sh\ncase "$1" in -n) echo treeline-build;; -r) echo 0;; *) /usr/bin/uname "$@";; esac\n' > "$SHIM/uname"
+# make_build_h also records who ran the build (`id` with no arguments): a runner's user and a developer's are different.
+cat > "$SHIM/id" <<'SH'
+#!/bin/sh
+[ "$#" -eq 0 ] && { echo "uid=2000(build) gid=2000(build) groups=2000(build)"; exit 0; }
+exec /usr/bin/id "$@"
+SH
 chmod 755 "$SHIM"/*
 export PATH="$SHIM:$PATH" SOURCE_DATE_EPOCH="$EPOCH" TZ=UTC LC_ALL=C
 export CFLAGS="-O2 -ffile-prefix-map=$WORK=/build"
