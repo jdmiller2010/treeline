@@ -104,6 +104,7 @@ def main():
         page.goto(f"{BASE}/parent/")
         page.wait_for_selector("#email")
         check("Treeline can't call 911" in page.inner_text("body") or "can't call 911" in page.inner_text("body"), "sign-in says plainly that 911 isn't available")
+        check(page.locator("a[href='/privacy/']").count() >= 1, "the sign-in page links to the public privacy policy (Google checks the home page for it)")
         no_sideways_scroll(page, "sign-in 390")
         check(page.locator("#step-email").is_visible() and not page.locator("#step-code").is_visible(),
               "sign-in shows the email step only: the code step stays hidden until a code is sent")
@@ -144,6 +145,22 @@ def main():
         check("beta code" in gp.inner_text("#google-box"), "coming back from Google without being set up explains what to do")
         shoot(gp, "signin-google-390")
         gctx.close()
+
+        # ---- the public privacy policy: the link Google's sign-in setup asks for, readable without signing in
+        pctx = browser.new_context(viewport={"width": 390, "height": 844})
+        pp = pctx.new_page()
+        watch(pp, "privacy")
+        pp.goto(f"{BASE}/privacy/")
+        pp.wait_for_selector("#policy h2")
+        body = pp.inner_text("main")
+        check(pp.locator("h1").count() == 1 and "Privacy and safety" in pp.inner_text("h1"), "the privacy policy opens without signing in, with one h1")
+        for words in ("never records", "What does Treeline get from Google?", "Amazon Web Services", "Delete everything", "can't call 911", "@gmail.com"):
+            check(words in body, f"the privacy policy covers: {words}")
+        check(pp.locator("#policy details").count() == 0, "on the public page every answer is open, not folded away")
+        check(pp.locator(".tl-footer a[href='/privacy/']").count() == 1, "its footer links back to it, with the contact address")
+        no_sideways_scroll(pp, "privacy 390")
+        shoot(pp, "privacy-390")
+        pctx.close()
         # The green fill is a design token (--tl-canopy-fill). A stray character in treeline.css once made the
         # browser drop the whole block of --tl-* variables, and every green button, switch and checkbox became
         # transparent: an outline that only turned green while pressed.
