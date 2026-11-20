@@ -25,6 +25,7 @@ Everything not yet fixed, from every review. Move a row to its review's "Remedia
 | R2-4 | At startup a file another process was creating could be read as an old-layout file and refused (availability) | Low | 2026-11-19 | **Fixed** in 0284536: one snapshot for the marker read. Test: `test_db.Migrations.test_several_processes_creating_the_same_new_file_at_once_make_it_once` |
 | R2-5 | The central ledger still holds both families' raw facts (including the callee's own rules) for three days, and the API process can open any household file by id: isolation between families on the read path still depends on every call site passing the signed-in family's id | Informational | 2026-11-19 | Open (by design; all current call sites use the session's treehouse, and notes to *other* families are write-only) |
 | R2-6 | Household files, their backups and pre-migration copies are not encrypted at rest | Informational | 2026-11-19 | Backups: as R1-4. Live files and pre-migration copies: only the attached-disk encryption AWS documents, **not verified**. Open until the real account shows it |
+| R5-5 | DMARC policy is `p=none`: mail spoofing the domain is not rejected (phishing risk to parents) | Low | 2026-11-20 | Open; planned as infra package 11 (see Review 5) |
 | R6-1 | Login CSRF: Google sign-in not tied to the browser that started it | Medium | 2026-11-20 | **Fixed**, see Review 6 |
 | R6-2 | Root-run tools followed symlinks in the app user's state folder | Low | 2026-11-20 | **Fixed**, see Review 6 |
 | R3-x | See Review 3 above for R3-1 to R3-10 | | | see the review |
@@ -71,6 +72,7 @@ Also fixed, not security: deploys now rebuild the operator messages (`test_14b`)
 | R5-2 | The bucket accepted TLS older than 1.2 (only plain HTTP was denied) | **Fixed** in the template: a second deny on `s3:TlsVersion < 1.2` (`test_tls_older_than_1_2_is_denied...`). Unverified on AWS |
 | R5-3 | Any certificate authority could issue for the domain | **Fixed** in the template: CAA `0 issue "letsencrypt.org"` on the apex (covers subdomains). If the issuer ever changes, change this first or issuance fails |
 | R5-4 | The beta code could be printed to a pipe or log | **Fixed**: `bootstrap.sh` refuses without a terminal unless `TREELINE_PRINT_BETA_CODE=1` (tested) |
+| R5-5 | The domain's DMARC policy is `p=none` (monitor only), so receiving mail servers do not reject mail that only pretends to come from `@treelinephone.com`. Someone could send parents a convincing fake Treeline email (phishing) | **Open**, planned: [INFRA_REVIEW_PLAN.md](INFRA_REVIEW_PLAN.md) package 11 (reports first, then `quarantine`, then `reject` with `sp=reject`), once real mail is flowing. Until then, Treeline's own mail is DKIM-signed by SES |
 
 Not changed: the plan's packages 1, 7, 8 and 9 (first-deploy risk reducers, SES readiness, deploy credentials, short-lived VM credentials) are left for follow-up after the first real deploy.
 
