@@ -1,0 +1,9 @@
+[Unit]
+Description=Treeline dead-man ping (only if the app is healthy and backups are arriving)
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/treeline/treeline-health
+SuccessExitStatus=1
+TimeoutStartSec=60

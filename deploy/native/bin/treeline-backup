@@ -1,0 +1,170 @@
+#!/opt/treeline/tools/bin/python -I
+"""Treeline backups: the central database and every household file, encrypted with age, to S3, write-only.
+
+    treeline-backup make      as the `treeline` user: SQLite online copies -> `age` -> spool/ (no plaintext is kept)
+    treeline-backup upload    as root: put the spool's new files in the bucket, record success, prune the spool at 7 days
+
+Run hourly by treeline-backup.service (the two steps are ExecStart and ExecStartPost=+). `make` has no AWS credentials and
+needs none: age encrypts to a PUBLIC key. Only the owner's private key (kept offline, in a password manager) can open a
+backup, and the VM's IAM user can only write, so a stolen VM can read neither the bucket nor old backups.
+Layout, the same in the spool and in the bucket:  central/<stamp>.db.age   households/<id>/<stamp>.db.age
+"""
+
+import datetime as dt
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+import treeline_common as common  # noqa: E402
+
+KEEP_DAYS = 7
+RECIPIENT_RE = re.compile(r"^age1[a-z0-9]{58}$")
+NAME_RE = re.compile(r"^(\d{8}T\d{6}Z)\.db\.age$")
+STAMP = "%Y%m%dT%H%M%SZ"
+
+
+def spool_dir():
+    return os.path.join(common.STATE, "spool")
+
+
+def encrypt(plain, out, recipient):
+    """age-encrypt `plain` to `out` (written beside it and renamed, so a half-written file is never uploaded)."""
+    if not RECIPIENT_RE.match(recipient or ""):
+        raise SystemExit("TREELINE_BACKUP_RECIPIENT is not an age public key (age1...): refusing to back up unencrypted")
+    tmp = out + ".part"
+    os.makedirs(os.path.dirname(out), mode=0o700, exist_ok=True)
+    os.close(os.open(tmp, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600))
+    try:
+        done = subprocess.run(["age", "-r", recipient, "-o", tmp, plain], capture_output=True, text=True)
+        if done.returncode != 0:
+            raise RuntimeError("age failed: " + done.stderr.strip()[-200:])
+        os.replace(tmp, out)
+    except BaseException:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+        raise
+
+
+def make(recipient, now=None, db=None, households=None, backup_module=None):
+    """Copy every database file, encrypt each copy into the spool, remove the plaintext. Returns (files, failure).
+    `failure` is set AFTER trying everything if any file failed (the others are still spooled)."""
+    if not RECIPIENT_RE.match(recipient or ""):
+        raise SystemExit("TREELINE_BACKUP_RECIPIENT is not an age public key (age1...): refusing to back up unencrypted")
+    if backup_module is None:
+        sys.path.insert(0, os.path.join(common.OPT, "current", "controller"))
+        import backup as backup_module
+    now = now or dt.datetime.now(dt.timezone.utc)
+    os.makedirs(spool_dir(), mode=0o700, exist_ok=True)
+    work = tempfile.mkdtemp(prefix=".work-", dir=spool_dir())
+    os.chmod(work, 0o700)
+    failure = None
+    try:
+        try:
+            backup_module.backup(db=db or backup_module.DB, dest=work, keep_days=KEEP_DAYS, now=now, households=households)
+        except RuntimeError as err:
+            failure = str(err)
+        out = []
+        for folder, _, names in os.walk(work):
+            for name in sorted(names):
+                plain = os.path.join(folder, name)
+                dest = os.path.join(spool_dir(), os.path.relpath(plain, work) + ".age")
+                encrypt(plain, dest, recipient)
+                out.append(dest)
+        return out, failure
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
+def pending(uploaded):
+    found = []
+    base = spool_dir()
+    for folder, dirs, names in os.walk(base):
+        dirs[:] = [d for d in dirs if not d.startswith(".")]
+        for name in names:
+            if NAME_RE.match(name):
+                found.append(os.path.relpath(os.path.join(folder, name), base))
+    return sorted(p for p in found if p not in uploaded)
+
+
+def load_uploaded():
+    try:
+        with open(os.path.join(spool_dir(), "uploaded.json"), encoding="utf-8") as f:
+            return set(json.load(f))
+    except (OSError, ValueError):
+        return set()
+
+
+def owner():
+    import pwd
+    try:
+        pw = pwd.getpwnam("treeline")
+        return pw.pw_uid, pw.pw_gid
+    except KeyError:
+        return None, None
+
+
+def save_uploaded(done):
+    common.atomic_write(os.path.join(spool_dir(), "uploaded.json"), json.dumps(sorted(done)), 0o600, *owner())
+
+
+def upload(s3, bucket, now=None):
+    now = now or dt.datetime.now(dt.timezone.utc)
+    done = load_uploaded()
+    for key in pending(done):
+        with open(os.path.join(spool_dir(), key), "rb") as f:
+            body = f.read()
+        if not body.startswith(b"age-encryption.org/v1"):
+            raise SystemExit(f"{key} is not an age file: refusing to upload it")
+        s3.put_object(Bucket=bucket, Key=key, Body=body, ServerSideEncryption="AES256")
+        done.add(key)
+        save_uploaded(done)
+    prune(done, now)
+    common.atomic_write(os.path.join(spool_dir(), "last-success"), now.isoformat(timespec="seconds"), 0o600, *owner())
+    return len(done)
+
+
+def prune(uploaded, now):
+    cutoff = (now - dt.timedelta(days=KEEP_DAYS)).strftime(STAMP)
+    base = spool_dir()
+    for key in sorted(uploaded):
+        m = NAME_RE.match(os.path.basename(key))
+        if m and m.group(1) < cutoff:
+            try:
+                os.remove(os.path.join(base, key))
+            except FileNotFoundError:
+                pass
+            uploaded.discard(key)
+            folder = os.path.dirname(os.path.join(base, key))
+            if folder != os.path.join(base, "central") and os.path.isdir(folder) and not os.listdir(folder):
+                os.rmdir(folder)
+    save_uploaded(uploaded)
+
+
+def main(argv):
+    if argv == ["make"]:
+        os.umask(0o077)
+        files, failure = make(os.environ.get("TREELINE_BACKUP_RECIPIENT", ""))
+        print(f"spooled {len(files)} encrypted file(s)")
+        if failure:
+            print("FAILED: " + failure, file=sys.stderr)
+            return 1
+        return 0
+    if argv == ["upload"]:
+        import treeline_aws as aws
+        bucket = os.environ.get("TREELINE_BACKUP_BUCKET", "")
+        if not re.match(r"^[a-z0-9][a-z0-9.-]{2,62}$", bucket):
+            raise SystemExit("TREELINE_BACKUP_BUCKET is not set or not a bucket name")
+        n = upload(aws.client("s3"), bucket)
+        print(f"uploaded; {n} file(s) in the spool are in the bucket")
+        return 0
+    print(__doc__)
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

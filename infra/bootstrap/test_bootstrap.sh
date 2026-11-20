@@ -19,6 +19,9 @@ export PATH="$T/bin:$PATH" FAKE_AWS_STATE="$T/state.json" TREELINE_LOCAL_DIR="$T
 export TREELINE_PARAM_GOOGLE_CLIENT_ID="123456789-abcdefg1234.apps.googleusercontent.com"
 export TREELINE_PARAM_ALLOWED_EMAILS="Parent.One@treeline.invalid, parent.two@treeline.invalid"
 export TREELINE_PARAM_BACKUP_AGE_RECIPIENT="age1$(printf 'q%.0s' $(seq 58))"
+export TREELINE_PARAM_ADMIN_CIDR="203.0.113.9/32"
+export TREELINE_PARAM_ALERT_EMAIL="owner@treeline.invalid"
+export TREELINE_PARAM_HEALTHCHECK_URL="https://ping.treeline.invalid/0123abcd-0000-4000-8000-000000000000"
 
 fails=0
 pass() { printf 'ok   %s\n' "$1"; }
@@ -38,7 +41,11 @@ expect "request files were 0600" test "$(sort -u "$FAKE_AWS_STATE.argv.modes" | 
 expect "request files were on the tmpfs directory" test "$(awk '{print $2}' "$FAKE_AWS_STATE.argv.modes" | sort -u)" = "$TREELINE_TMPFS"
 expect "request files were deleted" test -z "$(find "$TREELINE_TMPFS" -mindepth 1 | head -1)"
 expect "stdin is refused by the fake as by the real CLI (regression: file:///dev/stdin)" bash -c "! echo '{}' | '$T/bin/aws' ssm put-parameter --cli-input-json file:///dev/stdin 2>/dev/null"
-expect "7 parameters exist" test "$(state '.params | length')" = 7
+expect "12 parameters exist" test "$(state '.params | length')" = 12
+expect "the SSH address and the alert email are stored (email as SecureString)" test "$(state '.params["/treeline/admin_cidr"].Type + .params["/treeline/alert_email"].Type')" = "StringSecureString"
+expect "the optional allowlist starts as none" test "$(state '.params["/treeline/beta_cidrs"].Value')" = none
+expect "the dead-man URL is a SecureString" test "$(state '.params["/treeline/healthcheck_url"].Type')" = SecureString
+expect "the bucket name is stored, with the account in it, as a plain String" test "$(state '.params["/treeline/backup_bucket"].Value + .params["/treeline/backup_bucket"].Type')" = "treeline-backups-123456789012-us-west-2String"
 expect "emails were cleaned up" test "$(state '.params["/treeline/allowed_emails"].Value')" = "parent.one@treeline.invalid,parent.two@treeline.invalid"
 expect "secret types are SecureString" test "$(state '.params["/treeline/vapid_private"].Type + .params["/treeline/smtp_password"].Type + .params["/treeline/smtp_user"].Type')" = "SecureStringSecureStringSecureString"
 expect "both IAM users exist with a policy" test "$(state '[.users[] | select(.policy != null)] | length')" = 2
@@ -85,6 +92,12 @@ if "$BOOT" check >"$T/out" 2>&1; then fail "check must notice a widened policy";
 "$BOOT" apply >/dev/null 2>&1
 expect "apply puts the policy back" bash -c "! jq -e '.users[\"treeline-vm\"].policy.Statement[] | select(.Action == \"s3:*\")' '$FAKE_AWS_STATE' >/dev/null"
 
+# 6b. a bucket parameter that points at the wrong bucket is reported and corrected
+jq '.params["/treeline/backup_bucket"].Value = "somebody-elses-bucket"' "$FAKE_AWS_STATE" > "$T/s" && mv "$T/s" "$FAKE_AWS_STATE"
+if "$BOOT" check >"$T/out" 2>&1; then fail "check must notice a wrong bucket name"; else pass "check notices a wrong bucket name"; fi
+"$BOOT" apply >/dev/null 2>&1
+expect "apply corrects the bucket name" test "$(state '.params["/treeline/backup_bucket"].Value')" = "treeline-backups-123456789012-us-west-2"
+
 # 7. a lost SMTP parameter reissues the key (the secret can't be shown twice)
 old_id="$(state '.keys["treeline-ses-smtp"][0].id')"
 jq 'del(.params["/treeline/smtp_password"])' "$FAKE_AWS_STATE" > "$T/s" && mv "$T/s" "$FAKE_AWS_STATE"
@@ -106,6 +119,13 @@ expect "the kept key is the newest" grep -q "$(state '.keys["treeline-vm"][0].id
 if FAKE_AWS_ARN="arn:aws:iam::123456789012:root" "$BOOT" check >"$T/out" 2>&1; then fail "root must be refused"; else expect "root user is refused" grep -q "root user" "$T/out"; fi
 rm -f "$FAKE_AWS_STATE" "$FAKE_AWS_STATE.argv"
 if TREELINE_PARAM_GOOGLE_CLIENT_ID="<your client id>" "$BOOT" apply >"$T/out" 2>&1; then fail "a placeholder value must be refused"; else pass "a placeholder value is refused"; fi
+if TREELINE_PARAM_HEALTHCHECK_URL="http://plain.example.invalid/ping" "$BOOT" apply >"$T/out" 2>&1; then fail "a non-https dead-man URL must be refused"; else pass "a non-https dead-man URL is refused"; fi
+rm -f "$FAKE_AWS_STATE" "$FAKE_AWS_STATE.argv"
+for bad_cidr in 0.0.0.0/0 10.0.0.0/8 203.0.113.9 "not-a-cidr"; do
+  rm -f "$FAKE_AWS_STATE" "$FAKE_AWS_STATE.argv"
+  if TREELINE_PARAM_ADMIN_CIDR="$bad_cidr" "$BOOT" apply >"$T/out" 2>&1; then fail "SSH address '$bad_cidr' must be refused"; else pass "SSH address '$bad_cidr' is refused"; fi
+done
+rm -f "$FAKE_AWS_STATE" "$FAKE_AWS_STATE.argv"
 if TREELINE_PARAM_ALLOWED_EMAILS="not-an-email" "$BOOT" apply >"$T/out" 2>&1; then fail "a bad email list must be refused"; else pass "a bad email list is refused"; fi
 if TREELINE_PARAM_BACKUP_AGE_RECIPIENT="AGE-SECRET-KEY-1ABC" "$BOOT" apply >"$T/out" 2>&1; then fail "an age PRIVATE key must be refused"; else pass "an age private key is refused as the recipient"; fi
 

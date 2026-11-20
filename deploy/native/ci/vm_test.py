@@ -654,5 +654,94 @@ class F_Deploy(VmTestCase):
         self.assertNotIn(".staging", " ".join(self.releases()))
 
 
+class G_Backup(VmTestCase):
+    """Work package 4: encrypted hourly backups, write-only upload, the dead-man ping, and a restore drill."""
+    BUCKET = "treeline-backups-ci-us-west-2"
+
+    def setUp(self):
+        self.wait_healthy()
+
+    def s3(self):
+        return self.tmp / "aws" / "s3" / self.BUCKET
+
+    def set_params(self, **extra):
+        params = json.loads((self.tmp / "params.json").read_text())
+        params.update(extra)
+        (self.tmp / "params.json").write_text(json.dumps(params))
+
+    def test_1_the_hourly_backup_is_encrypted_uploaded_and_leaves_no_plaintext(self):
+        # the owner's key pair is made OUTSIDE the VM's reach: generated here, the private half copied out and deleted
+        vm("age-keygen -o /root/backup.agekey 2>/root/recipient.txt; chmod 600 /root/backup.agekey")
+        recipient = vm("grep -o 'age1[a-z0-9]*' /root/recipient.txt").stdout.strip()
+        run("docker", "cp", f"{VM}:/root/backup.agekey", str(self.tmp / "backup.agekey"))
+        vm("shred -u /root/backup.agekey /root/recipient.txt")
+        self.set_params(**{"/treeline/backup_age_recipient": recipient, "/treeline/backup_bucket": self.BUCKET,
+                           "/treeline/healthcheck_url": "http://fakeaws:9000/ping/ci-check"})
+        # a household, made by the app's own code, so there is more than the central file
+        vm("cd /opt/treeline/current/controller && TREELINE_DB=/var/lib/treeline/treeline.db runuser -u treeline -- /opt/treeline/current/venv/bin/python -c "
+           "\"from treeline import db, households; c = db.connect(); households.create(7)\"")
+        r = vm("systemctl start treeline-backup.service 2>&1; echo RC=$?; journalctl -u treeline-backup -n 12 --no-pager | cut -c1-200", check=False)
+        self.assertIn("RC=0", r.stdout, r.stdout)
+        keys = sorted(str(p.relative_to(self.s3())) for p in self.s3().rglob("*.age"))
+        self.assertTrue(any(k.startswith("central/") for k in keys), keys)
+        self.assertTrue(any(k.startswith("households/7/") for k in keys), keys)
+        for p in self.s3().rglob("*.age"):
+            self.assertTrue(p.read_bytes().startswith(b"age-encryption.org/v1"))
+            self.assertNotIn(b"SQLite format 3", p.read_bytes())
+        # no plaintext copy anywhere on the VM (the spool holds only .age files, work directories are gone)
+        names = vm("find /var/lib/treeline/spool -type f -printf '%f\\n'").stdout.split()
+        self.assertTrue(all(n.endswith(".age") or n in ("uploaded.json", "last-success") for n in names), names)
+        self.assertEqual(vm("ls -A /var/lib/treeline/spool | grep -c '^.work' || true").stdout.strip().splitlines()[-1], "0")
+        # nothing the VM holds can open a backup
+        self.assertEqual(vm("find / -xdev \\( -name '*.agekey' -o -name 'AGE-SECRET*' \\) -not -path '/proc/*' 2>/dev/null | wc -l").stdout.strip(), "0")
+        self.assertEqual(vm("grep -rl 'AGE-SECRET-KEY' /etc /var/lib/treeline /opt/treeline/tools 2>/dev/null | wc -l").stdout.strip(), "0")
+        reqs = (self.tmp / "aws" / "requests.log").read_text()
+        self.assertNotIn("DELETE", reqs)
+        self.assertNotRegex(reqs, r"GET /treeline-backups[^ ]*\?[^ ]*list-type")           # the VM never lists the bucket
+
+    def test_2_the_restore_drill_decrypts_and_verifies_what_was_uploaded(self):
+        run("docker", "cp", str(ROOT / "infra" / "restore" / "restore.py"), f"{VM}:/root/restore.py")
+        run("docker", "cp", str(self.tmp / "backup.agekey"), f"{VM}:/root/drill.agekey")
+        try:
+            creds = "AWS_ACCESS_KEY_ID=" + "AKI" + "AFAKEDRILL00000000 AWS_SECRET_ACCESS_KEY=" + "x" * 40
+            for kind, extra in (("central", ""), ("household", "--id 7")):
+                out = vm(f"{creds} /opt/treeline/tools/bin/python /root/restore.py --bucket {self.BUCKET} --kind {kind} {extra} "
+                         f"--identity /root/drill.agekey --out /root/restored --endpoint http://fakeaws:9000 2>&1")
+                self.assertIn("checked: integrity, marker, schema version", out.stdout, out.stdout)
+            listing = vm("ls /root/restored").stdout
+            self.assertRegex(listing, r"central-\d{8}T\d{6}Z\.db")
+            self.assertRegex(listing, r"household-7-\d{8}T\d{6}Z\.db")
+            wrong = vm(f"{creds} /opt/treeline/tools/bin/python /root/restore.py --bucket {self.BUCKET} --kind household --id 8 --identity /root/drill.agekey --out /root/r2 --endpoint http://fakeaws:9000 2>&1", check=False)
+            self.assertNotEqual(wrong.returncode, 0)
+        finally:
+            vm("shred -u /root/drill.agekey; rm -rf /root/restored /root/r2 /root/restore.py", check=False)
+
+    def test_3_the_dead_man_is_pinged_only_while_healthy_and_backed_up(self):
+        log = self.tmp / "aws" / "requests.log"
+        pings = lambda: log.read_text().count("GET /ping/ci-check")
+        before = pings()
+        self.assertIn("pinged", vm("treeline-health 2>&1").stdout)
+        self.assertEqual(pings(), before + 1)
+        stale = "2020-01-01T00:00:00+00:00"
+        vm(f"printf %s {stale} > /var/lib/treeline/spool/last-success")
+        r = vm("treeline-health 2>&1; echo RC=$?")
+        self.assertIn("NOT pinging", r.stdout)
+        self.assertEqual(pings(), before + 1, "a stale backup must not be pinged as healthy")
+        vm("systemctl start treeline-backup.service")                       # fresh success again
+        self.assertIn("pinged", vm("treeline-health 2>&1").stdout)
+        vm("systemctl stop treeline-api")
+        try:
+            r = vm("treeline-health 2>&1; echo RC=$?")
+            self.assertIn("NOT pinging", r.stdout)
+            self.assertEqual(pings(), before + 2, "an unhealthy app must not be pinged as healthy")
+        finally:
+            vm("systemctl start treeline-api")
+        self.wait_healthy()
+
+    def test_4_the_timers_are_installed(self):
+        for t in ("treeline-backup.timer", "treeline-health.timer"):
+            self.assertEqual(vm(f"systemctl is-enabled {t}").stdout.strip(), "enabled")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

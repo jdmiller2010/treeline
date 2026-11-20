@@ -50,7 +50,7 @@ def main():
         p = st["params"].get(opt(rest, "--name"))
         if p is None:
             fail("ParameterNotFound", "Parameter not found.")
-        print(p["Type"])
+        print(p["Value"] if "Value" in (opt(rest, "--query") or "") else p["Type"])
 
     elif (svc, cmd) == ("ssm", "put-parameter"):
         # The real CLI (v2.35.17) rejects file:///dev/stdin ("Invalid JSON received"); a regular file works.
@@ -112,6 +112,12 @@ def main():
         u, kid = opt(rest, "--user-name"), opt(rest, "--access-key-id")
         st["keys"][u] = [k for k in st["keys"].get(u, []) if k["id"] != kid]
         save(st)
+
+    elif (svc, cmd) == ("route53", "list-hosted-zones-by-name"):
+        print("/hostedzone/Z0123456789ABCDEFGHIJ\ttreelinephone.com.")
+
+    elif (svc, cmd) == ("lightsail", "get-bundles"):
+        print("nano_3_0\t0.5\t2\t5.0\tLINUX_UNIX")
 
     else:
         fail("Unsupported", "fake aws does not implement: " + " ".join(args))

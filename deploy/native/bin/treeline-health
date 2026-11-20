@@ -1,0 +1,70 @@
+#!/opt/treeline/tools/bin/python -I
+"""The dead-man ping. Every 5 minutes (treeline-health.timer): if the app is healthy AND a backup reached the bucket in the last
+3 hours, ping the URL in SSM /treeline/healthcheck_url. If anything is wrong we send nothing, and the monitor (which expects a
+ping every 5 minutes) alerts: it also fires if the whole machine is down, which nothing on the machine could report.
+"""
+
+import datetime as dt
+import json
+import os
+import sys
+import urllib.error
+import urllib.request
+
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+import treeline_common as common  # noqa: E402
+
+HEALTH = os.environ.get("TREELINE_HEALTH_URL", "http://127.0.0.1:8080/api/health")
+MAX_BACKUP_AGE = dt.timedelta(hours=3)
+
+
+def backup_age(now=None, spool=None, host_env_path=None):
+    """How long since the last backup reached the bucket; before the first one, since the install."""
+    now = now or dt.datetime.now(dt.timezone.utc)
+    spool = spool or os.path.join(common.STATE, "spool")
+    try:
+        with open(os.path.join(spool, "last-success"), encoding="utf-8") as f:
+            return now - dt.datetime.fromisoformat(f.read().strip())
+    except (OSError, ValueError):
+        pass
+    try:
+        installed = os.path.getmtime(host_env_path or os.path.join(common.ETC, "host.env"))
+    except OSError:
+        return dt.timedelta.max
+    return now - dt.datetime.fromtimestamp(installed, dt.timezone.utc)
+
+
+def check(now=None):
+    """None if all is well, else the reason."""
+    try:
+        with urllib.request.urlopen(HEALTH, timeout=5) as resp:
+            body = json.loads(resp.read())
+            if resp.status != 200 or body.get("ok") is not True:
+                return f"/api/health says {body}"
+    except urllib.error.HTTPError as err:
+        return f"/api/health says HTTP {err.code}"
+    except (urllib.error.URLError, OSError, ValueError) as err:
+        return f"/api/health unreachable: {err}"
+    age = backup_age(now)
+    if age > MAX_BACKUP_AGE:
+        return f"the last backup that reached the bucket is {age} old"
+    return None
+
+
+def main():
+    reason = check()
+    if reason:
+        print(f"NOT pinging: {reason}", file=sys.stderr)
+        return 1
+    import treeline_aws as aws
+    url = aws.fetch(aws.client("ssm"), {"healthcheck_url": "URL"})["URL"]
+    ci = common.host_settings().get("TREELINE_CI") == "1"            # the CI job's fake monitor is plain http
+    if not url.startswith("https://") and not (ci and url.startswith("http://")):
+        raise SystemExit("the dead-man URL is not https")
+    with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "treeline-health"}), timeout=15) as resp:
+        print(f"pinged ({resp.status})")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

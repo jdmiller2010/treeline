@@ -1,0 +1,31 @@
+[Unit]
+Description=Treeline backup: copy, encrypt (age) and upload the databases
+After=network-online.target treeline-api.service
+Wants=network-online.target
+RequiresMountsFor=/var/lib/treeline
+
+[Service]
+Type=oneshot
+User=treeline
+Group=treeline
+UMask=0077
+EnvironmentFile=/etc/treeline/app.env
+# The age PUBLIC key and the bucket name come from SSM (root fetches them; neither is secret). `make` refuses to run without a recipient.
+EnvironmentFile=-/run/treeline/backup-env
+ExecStartPre=+/usr/local/lib/treeline/treeline-fetch-secrets --profile backup --out /run/treeline/backup-env --mode 0640 --group treeline
+ExecStart=/usr/local/lib/treeline/treeline-backup make
+# As root, only after `make` succeeded: upload the encrypted files (the VM user may write to the bucket, nothing else).
+ExecStartPost=+/usr/local/lib/treeline/treeline-backup upload
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/treeline
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+LockPersonality=yes
+CapabilityBoundingSet=
+TimeoutStartSec=20min
+Nice=10

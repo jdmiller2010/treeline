@@ -5,7 +5,7 @@
 #
 #   infra/bootstrap/bootstrap.sh check            read-only; says what is missing; exit 1 if anything is
 #   infra/bootstrap/bootstrap.sh apply            creates what is missing (asks for values); safe to rerun
-#   infra/bootstrap/bootstrap.sh set NAME         replace one value: google_client_id, allowed_emails,
+#   infra/bootstrap/bootstrap.sh set NAME         replace one value: google_client_id, allowed_emails, admin_cidr, beta_cidrs, alert_email, healthcheck_url,
 #                                                 backup_age_recipient, vapid (new key pair), smtp (new key)
 #   infra/bootstrap/bootstrap.sh rotate-vm-key    make a second key for the VM user (then install-vm-key, then finish-rotate)
 #   infra/bootstrap/bootstrap.sh finish-rotate    delete the VM user's older key(s)
@@ -81,6 +81,9 @@ PROMPTED=(
   "google_client_id|String|the Google OAuth client ID (public)|Google Cloud Console > APIs & Services > Credentials; looks like 123-abc.apps.googleusercontent.com"
   "allowed_emails|SecureString|Google accounts allowed to sign in, comma-separated|the beta families' parents, e.g. parent1@example.com,parent2@example.com"
   "backup_age_recipient|String|the age PUBLIC key that backups are encrypted to|run: age-keygen -o treeline-backup.agekey   then keep that FILE in your password manager and paste only the age1... line it prints"
+  "admin_cidr|String|the address SSH may be reached from, as a CIDR (SSH is never open to the world)|your public IPv4 address with /32, e.g. 203.0.113.9/32 (search the web for 'what is my IP'); change it with: bootstrap.sh set admin_cidr"
+  "alert_email|SecureString|where the AWS budget alert goes|your own email address"
+  "healthcheck_url|SecureString|the dead-man ping URL (a free healthchecks-style check: it alerts you when pings STOP)|create a check that expects a ping every 5 minutes with a grace of 15, and paste its ping URL (https://...)"
 )
 
 valid() {   # valid NAME VALUE -> 0 if it looks right
@@ -90,6 +93,10 @@ valid() {   # valid NAME VALUE -> 0 if it looks right
   case "$n" in
     google_client_id) [[ "$v" =~ ^[0-9]+-[a-z0-9]+\.apps\.googleusercontent\.com$ ]] ;;
     backup_age_recipient) [[ "$v" =~ ^age1[a-z0-9]{58}$ ]] ;;
+    admin_cidr) [[ "$v" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}/([0-9]|[12][0-9]|3[0-2])$ ]] && [[ "$v" != "0.0.0.0/"* ]] && [[ "${v#*/}" -ge 16 ]] ;;
+    beta_cidrs) [[ "$v" == none ]] || { IFS=, read -ra nets <<<"$v"; [ "${#nets[@]}" -gt 0 ] || return 1; for e in "${nets[@]}"; do [[ "$e" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}/([0-9]|[12][0-9]|3[0-2])$ ]] || return 1; done; } ;;
+    alert_email) [[ "$v" =~ ^[^@\ ,]+@[^@\ ,]+\.[^@\ ,]+$ ]] ;;
+    healthcheck_url) [[ "$v" =~ ^https://[A-Za-z0-9._~:/?#@!$\&\(\)*+,\;=%-]+$ ]] && [[ "$v" != *[[:space:]]* ]] ;;
     allowed_emails)
       IFS=, read -ra list <<<"$v"
       [ "${#list[@]}" -gt 0 ] || return 1
@@ -133,6 +140,31 @@ ensure_prompted() {
     else v="$(ask "$n" "$label" "$hint")"; put_param "$n" "$t" "$v" false; ok "$PREFIX/$n created"
     fi
   done
+}
+
+# Optional settings that start with a harmless default. beta_cidrs is the optional firewall allowlist for 443 and the call
+# audio ports (comma-separated IPv4 CIDRs); "none" means open to everyone (the beta is gated by an access code instead).
+ensure_defaults() {
+  local have rc
+  have=$(param_type beta_cidrs) && rc=0 || rc=$?
+  if [ $rc -eq 0 ]; then ok "$PREFIX/beta_cidrs"
+  elif [ $rc -ne 3 ]; then exit 1
+  elif [ "$MODE" = check ]; then bad "$PREFIX/beta_cidrs is missing (apply creates it as: none)"
+  else put_param beta_cidrs String none false; ok "$PREFIX/beta_cidrs created (none: no allowlist)"
+  fi
+}
+
+# ---------------------------------------------------------------- the backup bucket's name
+# The VM needs the bucket name, which has the account id in it; the id must not be in the repo, so it is stored in SSM
+# (a plain String) from here, where the account is known. The CDK stack must create the bucket with this exact name.
+ensure_bucket_param() {
+  local have rc
+  have=$(probe aws ssm get-parameter --name "$PREFIX/backup_bucket" --query Parameter.Value --output text) && rc=0 || rc=$?
+  if [ $rc -eq 0 ] && [ "$have" = "$BUCKET" ]; then ok "$PREFIX/backup_bucket"; return; fi
+  [ $rc -eq 0 ] || [ $rc -eq 3 ] || exit 1
+  if [ "$MODE" = check ]; then bad "$PREFIX/backup_bucket is $([ $rc -eq 3 ] && echo missing || echo different)"; return; fi
+  put_param backup_bucket String "$BUCKET" true
+  ok "$PREFIX/backup_bucket set"
 }
 
 # ---------------------------------------------------------------- generated values
@@ -292,6 +324,8 @@ run_all() {
   say; say "Parameters in SSM Parameter Store ($PREFIX/*)"
   ensure_prompted
   ensure_vapid
+  ensure_bucket_param
+  ensure_defaults
   ensure_smtp_user_and_params
   say; say "IAM user for the VM ($VM_USER): reads $PREFIX/*, writes backups only"
   if ensure_user "$VM_USER" "$(vm_policy)"; then ensure_vm_key; fi
@@ -314,6 +348,8 @@ cmd_set() {
     vapid) warn "a new key pair means every parent must turn notifications on again"
            new_vapid; ok "new VAPID key pair stored" ;;
     smtp)  ensure_user "$SMTP_USER" "$(smtp_policy)"; issue_smtp ;;
+    beta_cidrs) v="$(ask beta_cidrs "the allowlist for 443 and the call audio ports (comma-separated IPv4 CIDRs), or: none" "for example 198.51.100.0/24,203.0.113.0/24; none opens them to everyone")"
+           put_param beta_cidrs String "$v" true; ok "$PREFIX/beta_cidrs updated (run infra/deploy.sh to apply it)" ;;
     *)     for row in "${PROMPTED[@]}"; do
              IFS='|' read -r n t label hint <<<"$row"
              if [ "$n" = "$name" ]; then v="$(ask "$n" "$label" "$hint")"; put_param "$n" "$t" "$v" true; ok "$PREFIX/$n updated"; return; fi

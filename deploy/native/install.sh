@@ -193,7 +193,7 @@ install -d -m 0755 "$OPT/tools"
 if [ ! -x "$OPT/tools/bin/python" ]; then python3 -m venv "$OPT/tools"; fi
 "$OPT/tools/bin/pip" install --quiet --disable-pip-version-check --no-cache-dir --require-hashes --no-deps -r "$HERE/requirements-tools.lock"
 for f in "$HERE"/bin/*; do install -m 0755 -o root -g root "$f" "$LIB/$(basename "$f")"; done
-for t in treeline-deploy treeline-config treeline-certsync; do ln -sf "$LIB/$t" "/usr/local/sbin/$t"; done
+for t in treeline-deploy treeline-config treeline-certsync treeline-backup treeline-health; do ln -sf "$LIB/$t" "/usr/local/sbin/$t"; done
 # The tools' shebang is the tools venv's Python; the library modules sit beside the scripts.
 install -d -m 0755 /run/treeline
 
@@ -240,10 +240,10 @@ if [ ! -d "$OPT/releases/$(python3 -I -c 'import json,sys; print(json.load(open(
   "$LIB/treeline-deploy" adopt "$REL"
 fi
 "$LIB/treeline-config" apply --release "$OPT/current"
-systemctl enable asterisk caddy treeline-api treeline-controller treeline-certsync.timer treeline-deploy.timer >/dev/null 2>&1
+systemctl enable asterisk caddy treeline-api treeline-controller treeline-certsync.timer treeline-deploy.timer treeline-backup.timer treeline-health.timer >/dev/null 2>&1
 if [ "$START" = 1 ]; then
   systemctl restart asterisk caddy
-  systemctl start treeline-certsync.timer treeline-deploy.timer
+  systemctl start treeline-certsync.timer treeline-deploy.timer treeline-backup.timer treeline-health.timer treeline-backup.timer treeline-health.timer
   if [ -f "$ETC/aws-credentials" ]; then
     systemctl restart treeline-api treeline-controller
     say "started. Check: curl -fsS https://$DOMAIN/api/health"

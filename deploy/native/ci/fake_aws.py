@@ -14,8 +14,13 @@ import socketserver
 import sys
 import urllib.parse
 
-PORT, PARAMS, STATE = int(sys.argv[1]), json.load(open(sys.argv[2])), sys.argv[3]
+PORT, PARAMS_PATH, STATE = int(sys.argv[1]), sys.argv[2], sys.argv[3]
 os.makedirs(os.path.join(STATE, "s3"), exist_ok=True)
+
+
+def params():
+    with open(PARAMS_PATH) as f:                 # re-read every time: a test changes the parameters while this runs
+        return json.load(f)
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
@@ -58,6 +63,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             req = json.loads(data or b"{}")
             op = target.split(".", 1)[1]
             names = req.get("Names") or ([req["Name"]] if "Name" in req else [])
+            PARAMS = params()
             found = [{"Name": n, "Type": "SecureString", "Value": PARAMS[n], "Version": 1} for n in names if n in PARAMS]
             if op == "GetParameters":
                 body = {"Parameters": found, "InvalidParameters": [n for n in names if n not in PARAMS]}
@@ -88,6 +94,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def do_GET(self):
         self._log()
+        if self.path.startswith("/ping/"):                           # a stand-in for the dead-man monitor
+            return self._send(200, b"OK")
         if self.path.startswith("/releases/"):                      # a stand-in for GitHub Releases (install.sh --ci --release-base)
             f = os.path.normpath(os.path.join(STATE, self.path.lstrip("/").split("?")[0]))
             if f.startswith(os.path.join(STATE, "releases") + os.sep) and os.path.isfile(f):
