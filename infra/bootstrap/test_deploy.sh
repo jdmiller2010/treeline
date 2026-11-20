@@ -33,8 +33,15 @@ if "$D" deploy >"$T/out" 2>&1; then fail "deploy must refuse on an account with 
 expect "cdk was never run" test ! -e "$T/cdk.log"
 expect "the message says how to fix it" grep -q "bootstrap.sh apply" "$T/out"
 
-# 2. after apply: cdk runs, with the settings in its environment
+# 2. after apply, but before CDK's own one-time setup: refused with the command to run; that command bootstraps the right account
 "$T/infra/bootstrap/bootstrap.sh" apply >/dev/null 2>&1
+if "$D" deploy >"$T/out" 2>&1; then fail "deploy must refuse without the CDKToolkit stack"; else expect "it says to run deploy.sh bootstrap" grep -q "infra/deploy.sh bootstrap" "$T/out"; fi
+expect "and cdk deploy was not run" bash -c "! grep -q 'ARGS: deploy' '$T/cdk.log' 2>/dev/null"
+"$D" bootstrap >/dev/null 2>&1
+expect "deploy.sh bootstrap runs cdk bootstrap for this account and region" grep -q "ARGS: bootstrap aws://123456789012/us-west-2" "$T/cdk.log"
+export FAKE_CDK_TOOLKIT=1
+
+# 2b. now cdk runs, with the settings in its environment
 "$D" deploy >"$T/out" 2>&1 || { cat "$T/out"; fail "deploy failed on a bootstrapped account"; }
 expect "cdk deploy ran with the approval rule" grep -q "ARGS: deploy --require-approval broadening --all" "$T/cdk.log"
 expect "the SSH address reached the app through the environment" grep -q "TREELINE_ADMIN_CIDR=203.0.113.9/32" "$T/cdk.log"
