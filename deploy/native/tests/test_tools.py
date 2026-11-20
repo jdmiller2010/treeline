@@ -15,6 +15,7 @@ import helpers
 
 fetch = helpers.load("treeline-fetch-secrets")
 certsync = helpers.load("treeline-certsync")
+deploy = helpers.load("treeline-deploy")
 config = helpers.load("treeline-config")
 import treeline_common as common  # noqa: E402
 import treeline_release as rel  # noqa: E402
@@ -295,6 +296,116 @@ class Releases(unittest.TestCase):
         rel.switch(str(link), str(b))
         self.assertEqual(os.path.realpath(link), str(b))
         self.assertFalse((self.d / "current.new").exists())
+
+
+class DeployAgentLogic(unittest.TestCase):
+    """The parts of the agent that are plain logic; the real switch, health check and rollback run in the VM job."""
+
+    def test_versions_sort_numerically_and_prereleases_sort_before_releases(self):
+        order = ["v0.0.9", "v0.0.10", "v0.1.0", "v1.0.0-rc1", "v1.0.0", "v1.0.1"]
+        self.assertEqual(sorted(reversed(order), key=deploy.vkey), order)
+        with self.assertRaises(ValueError):
+            deploy.vkey("latest")
+
+    def test_the_deploy_window_may_wrap_midnight_and_empty_means_always(self):
+        import datetime as dt
+        at = lambda h: dt.datetime(2026, 1, 1, h, 30, tzinfo=dt.timezone.utc)
+        self.assertTrue(deploy.in_window("", at(14)))
+        self.assertTrue(deploy.in_window("09-12", at(9)))
+        self.assertFalse(deploy.in_window("09-12", at(12)))
+        self.assertTrue(deploy.in_window("22-02", at(23)))
+        self.assertTrue(deploy.in_window("22-02", at(1)))
+        self.assertFalse(deploy.in_window("22-02", at(3)))
+
+    def test_it_will_only_download_from_github_over_https(self):
+        for url in ("http://github.com/x", "https://evil.example.invalid/x", "file:///etc/passwd", "ftp://github.com/x", "https://github.com.evil.invalid/x"):
+            with self.assertRaises(deploy.Refused):
+                deploy.https_get(url)
+
+    def test_the_ci_release_base_is_refused_on_anything_but_a_ci_install(self):
+        with self.assertRaises(deploy.Refused):
+            deploy.source({"TREELINE_RELEASE_BASE": "http://example.invalid/releases"})
+        self.assertEqual(deploy.source({"TREELINE_RELEASE_BASE": "http://x/r", "TREELINE_CI": "1"}), ("http://x/r", True))
+        with self.assertRaises(deploy.Failed):
+            deploy.source({})
+        with self.assertRaises(deploy.Failed):
+            deploy.source({"TREELINE_RELEASE_REPO": "../../etc"})
+
+    def test_calls_in_progress_counts_channels_and_treats_an_unanswered_question_as_busy(self):
+        import http.server
+        import threading
+
+        class Ari(http.server.BaseHTTPRequestHandler):
+            channels = []
+
+            def do_GET(self):
+                if self.headers.get("Authorization") is None:
+                    self.send_response(401)
+                    self.send_header("WWW-Authenticate", 'Basic realm="x"')
+                    self.end_headers()
+                    return
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(json.dumps(Ari.channels).encode())
+
+            def log_message(self, *a):
+                pass
+
+        server = http.server.HTTPServer(("127.0.0.1", 0), Ari)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.shutdown)
+        url = f"http://127.0.0.1:{server.server_port}/ari"
+        Ari.channels = []
+        self.assertEqual(deploy.calls_in_progress(url, "u", "p"), 0)
+        Ari.channels = [{"id": "a"}, {"id": "b"}]
+        self.assertEqual(deploy.calls_in_progress(url, "u", "p"), 2)
+        self.assertIsNone(deploy.calls_in_progress("http://127.0.0.1:9/ari", "u", "p"), "unknown must not look like idle")
+
+    def test_wait_for_quiet_raises_busy_for_a_call_and_for_not_knowing(self):
+        real = deploy.calls_in_progress
+        try:
+            for answer, text in ((1, "a call is in progress"), (None, "could not ask")):
+                deploy.calls_in_progress = lambda a=answer: a
+                with self.assertRaises(deploy.Busy) as caught:
+                    deploy.wait_for_quiet({}, window=False)
+                self.assertIn(text, str(caught.exception))
+            deploy.calls_in_progress = lambda: 0
+            deploy.wait_for_quiet({}, window=False)
+        finally:
+            deploy.calls_in_progress = real
+
+    def test_pre_migration_copies_are_restored_at_the_version_the_old_code_expects_and_only_if_all_exist(self):
+        d = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, d, True)
+        real = deploy.common.STATE
+        deploy.common.STATE = str(d)
+        self.addCleanup(setattr, deploy.common, "STATE", real)
+        import sqlite3
+        def make(path, version, marker):
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.unlink(missing_ok=True)
+            c = sqlite3.connect(path)
+            c.execute("CREATE TABLE t(x)"); c.execute("INSERT INTO t VALUES (?)", (marker,))
+            c.execute(f"PRAGMA user_version={version}"); c.commit(); c.close()
+        make(d / "treeline.db", 2, "migrated")
+        make(d / "pre-migrate" / "treeline-v1-20260101T000000-aaaaaa.db", 1, "old-older")
+        make(d / "pre-migrate" / "treeline-v1-20260102T000000-bbbbbb.db", 1, "old-newer")
+        make(d / "pre-migrate" / "treeline-v2-20260103T000000-cccccc.db", 2, "wrong-version")
+        done = deploy.restore_data_from_pre_migrate({"treeline.db": 2}, {"treeline.db": 1}, owner=None)
+        self.assertEqual(done, ["treeline.db"])
+        c = sqlite3.connect(d / "treeline.db")
+        self.assertEqual(c.execute("PRAGMA user_version").fetchone()[0], 1)
+        self.assertEqual(c.execute("SELECT x FROM t").fetchone()[0], "old-newer")      # the newest copy at the old version
+        # a household with no copy: nothing at all is changed (all-or-nothing)
+        make(d / "treeline.db", 2, "migrated-again")
+        make(d / "households" / "7.db", 2, "h")
+        with self.assertRaises(deploy.Failed):
+            deploy.restore_data_from_pre_migrate({"treeline.db": 2, "households/7.db": 2}, {"treeline.db": 1, "households/7.db": 1}, owner=None)
+        self.assertEqual(sqlite3.connect(d / "treeline.db").execute("SELECT x FROM t").fetchone()[0], "migrated-again")
+
+    def test_expected_versions_come_from_the_old_releases_own_schema(self):
+        self.assertEqual(deploy.expected_versions(["treeline.db", "households/3.db"], {"central": 4, "household": 2}),
+                         {"treeline.db": 4, "households/3.db": 2})
 
 
 if __name__ == "__main__":
