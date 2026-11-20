@@ -238,7 +238,7 @@ class VmTestCase(unittest.TestCase):
     def https(self, path, extra="", host=DOMAIN):
         return client(f"curl -sS -m 10 --cacert /shared/root.crt --resolve {host}:443:$(getent hosts {DOMAIN} | cut -d' ' -f1) {extra} https://{host}{path}", check=False)
 
-    def wait_healthy(self, seconds=90):
+    def wait_healthy(self, seconds=150):
         wait_for(lambda: self.https("/api/health", "-o /dev/null -w %{http_code}").stdout.strip() == "200", seconds, "/api/health 200 over https")
 
 

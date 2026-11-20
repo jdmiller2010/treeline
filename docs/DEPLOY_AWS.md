@@ -1,7 +1,9 @@
 # Deploying Treeline to AWS: the plan
 
-Status: **being implemented, one work package per branch.** Nothing here has been run on AWS or on a public server; see
-"Verification record" at the end for what was checked against the real components and what could not be.
+Status: **work packages 1 to 4 and 6 are built; 5 (Google sign-in) is not started** (waiting for the owner's answers to the open
+details below); 7 needs the real account. Everything runs only in the VM-imitating CI job (`./dev vm`), unit tests and
+offline CDK assertions. **Nothing has been run on AWS or on a public server**; the "Verification record" at the end says
+what was checked against the real components and what could not be, and the "Owner checklist" is what is left.
 This replaces the Docker-based production plan in [DEPLOY.md](DEPLOY.md) and
 `deploy/docker-compose.prod.yml`, which are retired when this is built (keep their still-valid parts:
 the softphone/tablet setup, the pilot checklist and the monitoring notes).
@@ -84,8 +86,8 @@ Asterisk; ARI stays on localhost.
    redirect), 443/tcp, UDP 10000-10100 (call audio); 443 and the UDP range are limited to
    `/treeline/beta_cidrs` **when that optional list is set** (80 stays open: ACME and the redirect). 22/tcp is restricted to the owner's address, read from
    SSM `/treeline/admin_cidr` (a plain `String`, added to `bootstrap.sh`; never committed). 5061/tcp stays
-   closed until an adapter is tried. The instance is created **IPv4-only** so no IPv6 firewall can be left
-   open by mistake; if IPv6 is ever turned on, the rules must be mirrored. With no allowlist set (the beta is
+   closed until an adapter is tried. IPv6 stays closed because no rule lists an IPv6 CIDR (see work package 6);
+   if IPv6 is ever wanted, the rules must be mirrored. With no allowlist set (the beta is
    gated by an access code, see Sign-in), the web server, the `/ws` WebSocket and the media ports are
    reachable by anyone: the defences are that nothing is served without sign-in or a registered handset, the
    rate limits, and fail2ban.
@@ -200,7 +202,7 @@ owner's password manager, open, check. Local spool pruned at 7 days.
 encryption, a 7-day lifecycle rule, versioning off, the SES identity and DKIM records, DNS records, the state
 disk, a budget alert) and **Host** (replaceable: the instance, static IP, firewall rules (22 from `/treeline/admin_cidr`),
 the disk attachment). Import the existing hosted zone, do not create one.
-The instance is **IPv4-only** and its default firewall rules are replaced (requirement 7). `infra/deploy.sh` runs `bootstrap.sh check --quiet` first. `cdk.context.json` and `cdk.out/` are gitignored
+The instance's default firewall rules are replaced (requirement 7). (CloudFormation's `AWS::Lightsail::Instance` has no IPv4-only property, so the IPv6 firewall is kept closed by giving every rule IPv4 CIDRs only; `PutInstancePublicPorts` replaces the rules of both firewalls. **Unverified on AWS.**) The static IP and the A records are in **Host**, not Foundation: CloudFormation attaches a static IP from the IP's side (`AttachedTo`), so it cannot live in a stack that the instance's stack depends on. A replaced host gets a new address; DNS follows it. `infra/deploy.sh` runs `bootstrap.sh check --quiet` first. `cdk.context.json` and `cdk.out/` are gitignored
 (already). CDK's CLI is npm: add an exception to CLAUDE.md's "no `npm install`" rule **scoped to `infra/`**
 and pin the version. Keep the bucket name identical to the one in `bootstrap.sh`.
 
@@ -256,3 +258,30 @@ Checked in work on this spec, **against the real components**, not recalled. "No
 | `awscli` apt package on 24.04 | **None** (no candidate) | `apt-cache policy` |
 | Lightsail instance metadata service for the public address | **Not verified**; the installer takes the address from an option or DNS if it is absent | needs a real instance |
 | IAM `kms:Decrypt` with `kms:ViaService` on the AWS-managed SSM key, and SES `SendRawEmail` authorisation in the sandbox | **Not verified** | needs a real account |
+
+## First install (the owner, once the VM exists)
+
+The first release is verified by hand, with a public key you already know, before anything from it runs as root.
+
+1. On your computer: download `treeline-vX.Y.Z.tar.gz` and its `.sig` from the GitHub Release. Verify with the public key you committed:
+   `ssh-keygen -Y verify -f deploy/native/release_signers -I treeline-release -n treeline-release -s treeline-vX.Y.Z.tar.gz.sig < treeline-vX.Y.Z.tar.gz`
+   (it must print "Good signature"). Copy both files to the VM (`scp`; SSH is open to your address only).
+2. On the VM: `mkdir rel && tar -xzf treeline-vX.Y.Z.tar.gz -C rel && sudo ./rel/deploy/native/install.sh --domain app.treelinephone.com --state-device auto --release-repo OWNER/REPO` (use your GitHub owner and repository; `--public-ip` if the metadata service does not answer). It formats the attached disk **only if blank**, installs packages, and stops before starting the app because the VM key is missing.
+3. On your computer: `infra/bootstrap/bootstrap.sh install-vm-key ubuntu@app.treelinephone.com`, then on the VM `sudo systemctl start treeline-api treeline-controller`, then `curl -fsS https://app.treelinephone.com/api/health`.
+4. Later releases: tag `vX.Y.Z` on `main`; the release job (a reviewer approves) signs it; the VM's deploy agent picks it up in its window (default 09-12 UTC) when no call is in progress. `sudo treeline-deploy --version vX.Y.Z` does it now; `sudo treeline-deploy status` shows what is running.
+
+**Rollback.** An unhealthy release rolls back by itself. If it had migrated data, the agent restores the data layer's pre-migration copies at the old version (all or nothing; refuses if one is missing). A manual `sudo treeline-deploy --rollback` is refused once the data layout moved: stop the services, restore from a backup with `infra/restore/restore.py` and the matching pre-migration copy, deploy the previous release.
+
+**Restore drill** (do it before real families, and after any change to backups). On your computer, with your admin profile and the age private key: `python3 infra/restore/restore.py --bucket treeline-backups-<account>-us-west-2 --kind central --identity ~/treeline-backup.agekey --out ./restore` (and `--kind household --id N`). It prints row counts and says what it checked. It never writes over a live file.
+
+## Owner checklist: what only the real account can do
+
+1. Make the release signing key: `ssh-keygen -t ed25519 -N '' -f release-signing -C treeline-release`. Put the **public** line into `deploy/native/release_signers` as `treeline-release namespaces="treeline-release" <public key>` (own commit). Put the **private** file's contents into the `release` environment secret `RELEASE_SIGNING_KEY`, then delete the file. In GitHub: the `release` environment with you as required reviewer and deployment tags `v*`; tag protection for `v*`; Actions defaults read-only; secret scanning and push protection (docs/REPO_RULES.md).
+2. Generate the backup key: `age-keygen -o treeline-backup.agekey`; keep the **file** in your password manager (without it no backup can be opened); paste only the `age1...` line to bootstrap.
+3. Make a dead-man check at a healthchecks-style service (period 5 minutes, grace 15 minutes) and keep its https ping URL for bootstrap.
+4. `AWS_PROFILE=... infra/bootstrap/bootstrap.sh apply` (first run against real IAM, SSM and the real CLI: read what it prints); then `infra/deploy.sh diff` and `infra/deploy.sh deploy` (first run against real CloudFormation and Lightsail; the bundle shown must still be what you want).
+5. Request SES production access (until granted, SES sends only to verified addresses); check DKIM shows verified.
+6. First install (above), then verify, writing down what you saw: the certificate was issued (`https://app.treelinephone.com`); `/api/health`; **a call between a phone on mobile data and a browser on another network with audio both ways** (this is the NAT check: `external_media_address`, `local_net`, `ice_host_candidates`, UDP 10000-10100); Asterisk memory during a call on the small bundle (`free -m`, swap use; resize if it swaps); the state disk really is a separate encrypted attached disk (`lsblk`, the Lightsail console) and nothing sensitive is on the system disk; a backup appears in S3 and the restore drill works; a deploy of a second release and a rollback; an alert email arrives; the dead-man alerts when you stop the timer; the Lightsail firewall shows only 22 (your address), 80, 443 and UDP 10000-10100 on IPv4 and nothing on IPv6; `ss -ltnu` on the VM shows nothing unexpected.
+7. Decide, with the work package 5 answers, how Google sign-in and the beta access code work; until it is built the production app has **no sign-in at all** (the emailed-code routes still exist and would send mail), so do not point real families at it.
+8. Record the results in README (Phase 4) and docs/SECURITY.md; delete the retired Docker files (`deploy/docker-compose.prod.yml`, `deploy/Caddyfile`, `deploy/asterisk/`).
+9. Optional: `/treeline/beta_cidrs` (an allowlist for 443 and the call audio ports), `bootstrap.sh set beta_cidrs`, then `infra/deploy.sh deploy host`.
