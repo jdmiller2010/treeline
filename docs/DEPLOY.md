@@ -1,5 +1,7 @@
 # Deploying Treeline
 
+> **Superseded for production.** The AWS plan is in [DEPLOY_AWS.md](DEPLOY_AWS.md): a native install on Lightsail, not Docker. This page describes the earlier Docker plan and is kept until that is built; its softphone setup, pilot and monitoring notes still apply.
+
 This puts Treeline on one small cloud machine so families can use it every day, on softphones or phone adapters. It follows Phase 4 of [PLAN.md](PLAN.md).
 
 > **What has and hasn't been tested.** Everything here was written against the same Docker images and configuration that pass the project's tests on a development machine: the call rules, the API, the parent app, the softphone and real calls. The production pieces below (Caddy and Let's Encrypt, SIP over TLS, SRTP, the backup service, fail2ban) were **not** run on a public server, because the work was done without one. Expect to fix small things on first deploy, and read the logs.
