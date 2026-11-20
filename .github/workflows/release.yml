@@ -1,0 +1,63 @@
+# Builds and signs a release when a version tag is pushed, and attaches both files to a GitHub Release. The VM's deploy
+# agent runs as root and verifies this signature (ssh-keygen -Y verify) against a public key installed on the VM, so
+# whoever can run this job can get root on the VM. Hence:
+#   - the job runs in the protected GitHub environment `release` (set a required reviewer and deployment-tag rules on it,
+#     docs/DEPLOY_AWS.md "Owner checklist"), and only for a tag that points at a commit already on `main`;
+#   - the signing key is the one secret (RELEASE_SIGNING_KEY, in that environment, an unencrypted ed25519 private key) and
+#     it is only ever in the environment of the one step that signs, written to a 0600 file in a temp directory;
+#   - GitHub-provided values (the tag name) go through env:, never straight into a command; there is no
+#     pull_request_target, and the workflow has no other trigger.
+name: release
+
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: release
+    permissions:
+      contents: write      # only to attach the two files to the release
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: The tag must point at a commit that is on main
+        env:
+          TAG_SHA: ${{ github.sha }}
+        run: |
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor "$TAG_SHA" origin/main || { echo "tag is not on main; refusing to sign"; exit 1; }
+
+      - name: Repo rules and the tools' tests
+        run: |
+          python3 scripts/check_repo_rules.py
+          (cd deploy/native/tests && python3 -W error::ResourceWarning -m unittest)
+
+      - name: Build and sign
+        env:
+          VERSION: ${{ github.ref_name }}
+          RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
+        run: |
+          [ -n "$RELEASE_SIGNING_KEY" ] || { echo "RELEASE_SIGNING_KEY is not set in the release environment"; exit 1; }
+          keydir="$(mktemp -d)"; chmod 700 "$keydir"; trap 'rm -rf "$keydir"' EXIT
+          ( umask 077; printf '%s\n' "$RELEASE_SIGNING_KEY" > "$keydir/key" )
+          scripts/build_release.sh "$VERSION" --sign "$keydir/key" --out dist
+          # the public key in the repo must be the one that verifies what we just signed, or no VM would accept it
+          ssh-keygen -Y verify -f deploy/native/release_signers -I treeline-release -n treeline-release \
+            -s "dist/treeline-$VERSION.tar.gz.sig" < "dist/treeline-$VERSION.tar.gz"
+
+      - name: Attach to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ github.ref_name }}
+        run: |
+          gh release create "$VERSION" "dist/treeline-$VERSION.tar.gz" "dist/treeline-$VERSION.tar.gz.sig" \
+            --verify-tag --title "$VERSION" --notes "Signed release. Deployed by the VM's deploy agent after it verifies the signature."

@@ -1,0 +1,53 @@
+# The safety net for the AWS deployment (docs/DEPLOY_AWS.md, work package 3): it runs the real install script and the
+# real deploy agent inside an Ubuntu 24.04 container that runs systemd, with a fake SSM/S3 and a local ACME CA next to
+# it, and fails if install breaks, a bad signature is accepted, ARI or port 8080 is reachable from another host, port 80
+# serves anything but a redirect, a failed health check does not roll back, or production starts with a dev setting.
+#
+# It cannot test NAT, Let's Encrypt, SES, Lightsail's firewall or disk, or the real AWS: see the spec's "What can and
+# cannot be tested before AWS". It follows docs/REPO_RULES.md: `pull_request` (never `pull_request_target`), read-only
+# token, no secrets, no self-hosted runner.
+name: vm imitation
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    name: controller unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r controller/requirements.txt
+      - run: cd controller && python -m unittest discover -s tests -t .
+
+  native-tools:
+    name: tests for the VM's tools
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: cd deploy/native/tests && python3 -W error::ResourceWarning -m unittest -v
+
+  vm:
+    name: the VM imitation (systemd in Docker)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: install.sh, the deploy agent, routing, ports, secrets, rollback
+        run: python3 -m unittest -v deploy/native/ci/vm_test.py
