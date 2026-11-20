@@ -162,6 +162,12 @@ class Settings(unittest.TestCase):
             with self.assertRaises(config.ConfigError, msg=bad):
                 config.from_environment(dict(ENV, **bad))
 
+    def test_the_cdk_feature_flags_are_configured_not_left_to_legacy_defaults(self):
+        """`cdk flags --safe --set` (flags that cannot change an existing resource). The synthesized resources were identical before and after."""
+        flags = {k: v for k, v in json.loads((ROOT / "cdk.json").read_text())["context"].items() if k.startswith("@aws-cdk")}
+        self.assertGreaterEqual(len(flags), 60)
+        self.assertTrue(flags["@aws-cdk/aws-s3:createDefaultLoggingPolicy"])
+
     def test_nothing_environment_specific_is_in_the_repository(self):
         # (the repo-rules scan covers the whole tree; this is the CDK app's own check, and its templates carry no account either)
         for path in [ROOT / "app.py", *(ROOT / "treeline_infra").glob("*.py"), ROOT / "cdk.json"]:
