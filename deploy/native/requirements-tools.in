@@ -1,0 +1,2 @@
+# The root-run tools (secrets fetch, backup, deploy agent) need only boto3.
+boto3>=1.35
