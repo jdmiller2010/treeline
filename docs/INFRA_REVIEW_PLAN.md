@@ -5,6 +5,15 @@ re-verified against the code at the end of work package 5**. Nothing here has be
 confirmed; **needs AWS** means only the first real `cdk diff` or deploy can settle it. Each work package below is one branch or
 commit set with its own test, and updates [SECURITY.md](SECURITY.md) when it is a security change.
 
+## Done (2026-11-20) and left for follow-up
+
+**Implemented and tested offline:** packages 2, 3, 4, 5, 6 and 10 (F5, F6, F7, F8, F9, F13, F14, N1, N2, N3), in three commits on
+`deploy-aws/07-infra-hardening`. The feature-flag change was checked by synthesizing both stacks before and after: the resources are
+identical, so nothing is replaced. One flag is left unset on purpose (`core:defaultCrossStackReferences`: the stacks share no references).
+Security details are in SECURITY.md Review 5. **Left for follow-up (troubleshooting after the first real deploy, or when decided):**
+package 1 (F1 disk attachment, F3 pre-flight, F4 IMDSv2, F2 note), package 7 (SES readiness), package 8 (deploy credentials, a decision),
+package 9 (short-lived VM credentials, a spike). F11, F12, F15 and F16 need no code change now.
+
 ## What changed since the first review (work package 5)
 
 WP5 touched `infra/bootstrap/bootstrap.sh`, its two test scripts and `infra/README.md` only. The CDK app (`app.py`, `treeline_infra/`,

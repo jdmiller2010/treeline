@@ -706,6 +706,12 @@ class G_Backup(VmTestCase):
         # nothing the VM holds can open a backup
         self.assertEqual(vm("find / -xdev \\( -name '*.agekey' -o -name 'AGE-SECRET*' \\) -not -path '/proc/*' 2>/dev/null | wc -l").stdout.strip(), "0")
         self.assertEqual(vm("grep -rl 'AGE-SECRET-KEY' /etc /var/lib/treeline /opt/treeline/tools 2>/dev/null | wc -l").stdout.strip(), "0")
+        # the VM cannot overwrite a backup: a second write of a key that exists is refused by the bucket (as the policy does), and
+        # the upload tool treats its own retry as success
+        vm("rm -f /var/lib/treeline/spool/uploaded.json")
+        again = vm("systemctl start treeline-backup.service 2>&1; echo RC=$?", check=False)
+        self.assertIn("RC=0", again.stdout, again.stdout)
+        self.assertGreaterEqual(len(list(self.s3().rglob("*.age"))), len(keys), "the first backups are still there, unchanged")
         reqs = (self.tmp / "aws" / "requests.log").read_text()
         self.assertNotIn("DELETE", reqs)
         self.assertNotRegex(reqs, r"GET /treeline-backups[^ ]*\?[^ ]*list-type")           # the VM never lists the bucket

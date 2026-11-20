@@ -112,6 +112,19 @@ def save_uploaded(done):
     common.atomic_write(os.path.join(spool_dir(), "uploaded.json"), json.dumps(sorted(done)), 0o600, *owner())
 
 
+def put_once(s3, bucket, key, body):
+    """Write the key only if it does not exist (the bucket policy requires `If-None-Match: *`, so a stolen key cannot overwrite a
+    backup). If it already exists, an earlier try of OURS reached the bucket (the answer was lost): that is success, not an error.
+    Anything else, including a 403 from the policy, is a real failure."""
+    try:
+        s3.put_object(Bucket=bucket, Key=key, Body=body, ServerSideEncryption="AES256", IfNoneMatch="*")
+    except Exception as err:  # noqa: BLE001 -- botocore's ClientError, or a test double
+        code = getattr(err, "response", {}).get("Error", {}).get("Code", "")
+        if code in ("PreconditionFailed", "412", "ConditionalRequestConflict"):
+            return
+        raise
+
+
 def upload(s3, bucket, now=None):
     now = now or dt.datetime.now(dt.timezone.utc)
     done = load_uploaded()
@@ -120,7 +133,7 @@ def upload(s3, bucket, now=None):
             body = f.read()
         if not body.startswith(b"age-encryption.org/v1"):
             raise SystemExit(f"{key} is not an age file: refusing to upload it")
-        s3.put_object(Bucket=bucket, Key=key, Body=body, ServerSideEncryption="AES256")
+        put_once(s3, bucket, key, body)
         done.add(key)
         save_uploaded(done)
     prune(done, now)

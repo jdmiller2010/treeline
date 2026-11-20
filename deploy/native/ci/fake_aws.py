@@ -87,6 +87,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
         data = self._body()
         if not path:
             return self._send(400)
+        key = urllib.parse.unquote(urllib.parse.urlparse(self.path).path.lstrip("/")).split("/", 1)[-1]
+        if key.startswith(("central/", "households/")):          # what the bucket policy does (infra/treeline_infra/foundation.py)
+            if self.headers.get("If-None-Match") != "*":
+                return self._send(403, b"<Error><Code>AccessDenied</Code></Error>", "application/xml")
+            if os.path.exists(path):
+                return self._send(412, b"<Error><Code>PreconditionFailed</Code></Error>", "application/xml")
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "wb") as f:
             f.write(data)

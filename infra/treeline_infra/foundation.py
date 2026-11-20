@@ -1,4 +1,4 @@
-from aws_cdk import Aws, Duration, RemovalPolicy, Stack, aws_budgets as budgets, aws_lightsail as lightsail, aws_route53 as route53, aws_s3 as s3, aws_ses as ses
+from aws_cdk import Aws, Duration, RemovalPolicy, Stack, aws_budgets as budgets, aws_iam as iam, aws_lightsail as lightsail, aws_route53 as route53, aws_s3 as s3, aws_ses as ses
 from constructs import Construct
 
 from . import config
@@ -27,6 +27,15 @@ class Foundation(Stack):
                 s3.LifecycleRule(id="abort-partial-uploads", abort_incomplete_multipart_upload_after=Duration.days(1)),
             ],
         )
+
+        # A backup is written once. Without this, a stolen VM key could overwrite a known recent backup (versioning is off). Every
+        # PutObject under these prefixes must say `If-None-Match: *` (write only if the key does not exist); treeline-backup does.
+        # AWS notes that with this policy, copies into these prefixes stop working: nothing here copies.
+        self.bucket.add_to_resource_policy(iam.PolicyStatement(
+            sid="BackupsAreWrittenOnce", effect=iam.Effect.DENY, principals=[iam.AnyPrincipal()],
+            actions=["s3:PutObject"],
+            resources=[self.bucket.arn_for_objects("central/*"), self.bucket.arn_for_objects("households/*")],
+            conditions={"Null": {"s3:if-none-match": "true"}}))
 
         # The hosted zone already exists (the domain is registered in Route 53): import it, never create one.
         self.zone = route53.HostedZone.from_hosted_zone_attributes(self, "Zone", hosted_zone_id=cfg["zone_id"], zone_name=config.ZONE_NAME)

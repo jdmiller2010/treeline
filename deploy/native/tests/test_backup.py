@@ -39,7 +39,15 @@ def make_db(path, rows, marker_table="t"):
     c.close()
 
 
+class ClientError(Exception):
+    def __init__(self, code):
+        super().__init__(code)
+        self.response = {"Error": {"Code": code}}
+
+
 class FakeS3:
+    """Behaves like the bucket policy: a write must say IfNoneMatch="*", and a key that exists is not overwritten."""
+
     def __init__(self, fail_on=None):
         self.objects, self.fail_on, self.calls = {}, fail_on, []
 
@@ -47,6 +55,10 @@ class FakeS3:
         self.calls.append(kw)
         if self.fail_on and self.fail_on in kw["Key"]:
             raise OSError("connection reset")
+        if kw.get("IfNoneMatch") != "*":
+            raise ClientError("AccessDenied")
+        if kw["Key"] in self.objects:
+            raise ClientError("PreconditionFailed")
         self.objects[kw["Key"]] = kw["Body"]
 
 
@@ -133,6 +145,29 @@ class Backups(unittest.TestCase):
         before = len(s3.calls)
         backup.upload(s3, "treeline-backups-123456789012-us-west-2", now=self.now)
         self.assertEqual(len(s3.calls), before, "files already uploaded must not be sent again")
+
+    def test_every_write_says_if_none_match_and_an_existing_backup_is_never_overwritten(self):
+        self.make()
+        s3 = FakeS3()
+        backup.upload(s3, "b", now=self.now)
+        self.assertTrue(all(c["IfNoneMatch"] == "*" for c in s3.calls))
+        original = dict(s3.objects)
+        # the same files sent again (the record of uploads was lost): the bucket says "exists", which is success, and nothing changes
+        (self.state / "spool" / "uploaded.json").unlink()
+        self.assertEqual(backup.upload(s3, "b", now=self.now), 3)
+        self.assertEqual(s3.objects, original)
+        # a different object under a key that exists is refused by the bucket, and the tool does not pretend otherwise
+        with self.assertRaises(ClientError):
+            s3.put_object(Bucket="b", Key="central/20260110T120000Z.db.age", Body=b"age-encryption.org/v1 other")
+
+    def test_an_access_denied_from_the_policy_is_a_failure_not_a_success(self):
+        self.make()
+        class Denying(FakeS3):
+            def put_object(self, **kw):
+                raise ClientError("AccessDenied")
+        with self.assertRaises(ClientError):
+            backup.upload(Denying(), "b", now=self.now)
+        self.assertFalse((self.state / "spool" / "last-success").exists())
 
     def test_a_failed_upload_is_not_recorded_as_success_and_is_retried(self):
         self.make()

@@ -28,6 +28,19 @@ Everything not yet fixed, from every review. Move a row to its review's "Remedia
 | R3-x | See Review 3 above for R3-1 to R3-10 | | | see the review |
 | R2-7 | "Delete all my data" removes the live file at once, but backups of it (central, and the household's own) live up to 7 days; the VM cannot delete them | Informational | 2026-11-19 | Accepted, documented ([DATA_LAYER.md](DATA_LAYER.md), `infra/README.md`) and warned about in the app when retention is shortened |
 
+## Review 5: 2026-11-20, infra hardening from the infra review (reviewed by its author, not independently)
+
+**Scope.** [INFRA_REVIEW_PLAN.md](INFRA_REVIEW_PLAN.md) packages 2 to 6 and 10: the backup bucket policy, the TLS floor, CAA and DNS TTL, CDK feature flags, `bootstrap.sh` output, `deploy.sh`, `restore.py`. Offline only: the template assertions, the fake `aws`, the VM job's fake S3. **Not verified on AWS.**
+
+| Ref | Finding | Status |
+|---|---|---|
+| R5-1 | A stolen VM key could overwrite a known recent backup (versioning is off) | **Fixed**: the bucket policy denies `PutObject` under `central/*` and `households/*` unless the request says `If-None-Match: *`; `treeline-backup` sends it and treats "already exists" on its own retry as success. Tests: `infra/tests` (policy statement and its agreement with the VM's IAM prefixes), `test_backup` (every write has the header; an existing key is never changed; an access-denied is a failure), `vm_test.G_Backup` (a second upload of the same keys leaves them unchanged). Whether S3 enforces the policy exactly as the fake does is **unverified on AWS** |
+| R5-2 | The bucket accepted TLS older than 1.2 (only plain HTTP was denied) | **Fixed** in the template: a second deny on `s3:TlsVersion < 1.2` (`test_tls_older_than_1_2_is_denied...`). Unverified on AWS |
+| R5-3 | Any certificate authority could issue for the domain | **Fixed** in the template: CAA `0 issue "letsencrypt.org"` on the apex (covers subdomains). If the issuer ever changes, change this first or issuance fails |
+| R5-4 | The beta code could be printed to a pipe or log | **Fixed**: `bootstrap.sh` refuses without a terminal unless `TREELINE_PRINT_BETA_CODE=1` (tested) |
+
+Not changed: the plan's packages 1, 7, 8 and 9 (first-deploy risk reducers, SES readiness, deploy credentials, short-lived VM credentials) are left for follow-up after the first real deploy.
+
 ## Review 4: 2026-11-20, Google sign-in and the beta access code (reviewed by its author, not independently)
 
 **Scope.** Work package 5 of [DEPLOY_AWS.md](DEPLOY_AWS.md): `controller/treeline/google.py`, the `/api/auth/*` routes in `api.py`, `prod.py`, `web/parent/js/signin.js`, and the `bootstrap.sh` handling of the Google secret and the access code. Not covered: Google's own side (consent screen, redirect URI registration), and anything on AWS.

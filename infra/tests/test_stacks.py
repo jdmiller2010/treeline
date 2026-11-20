@@ -70,6 +70,19 @@ class Foundation(unittest.TestCase):
         self.assertIn({"Bool": {"aws:SecureTransport": "false"}}, conditions)
         self.assertIn({"NumericLessThan": {"s3:TlsVersion": 1.2}}, conditions)
 
+    def test_a_backup_can_only_be_written_once_so_a_stolen_key_cannot_overwrite_one(self):
+        (policy,) = self.t.find_resources("AWS::S3::BucketPolicy").values()
+        (stmt,) = [st for st in policy["Properties"]["PolicyDocument"]["Statement"] if st.get("Sid") == "BackupsAreWrittenOnce"]
+        self.assertEqual(stmt["Effect"], "Deny")
+        self.assertEqual(stmt["Action"], "s3:PutObject")
+        self.assertEqual(stmt["Condition"], {"Null": {"s3:if-none-match": "true"}})
+        text = json.dumps(stmt["Resource"])
+        self.assertIn("/central/*", text)
+        self.assertIn("/households/*", text)
+        # the VM's IAM policy (bootstrap.sh) is write-only on exactly those prefixes, so the two agree
+        boot = (ROOT / "bootstrap" / "bootstrap.sh").read_text()
+        self.assertIn('/central/*", "arn:aws:s3:::\($b)/households/*', boot)
+
     def test_only_lets_encrypt_may_issue_certificates_for_the_domain(self):
         (caa,) = [r for r in self.t.find_resources("AWS::Route53::RecordSet").values() if r["Properties"]["Type"] == "CAA"]
         self.assertEqual(caa["Properties"]["Name"], "treelinephone.com.")
