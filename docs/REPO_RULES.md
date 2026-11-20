@@ -36,7 +36,8 @@ The scanner is regex-based. It will miss things (it cannot know a stranger's nam
 - **Settings, Branches**: protect `main`: require a pull request and the `repo rules` check to pass, and no force pushes.
 - **Settings, Actions, General**: "Require approval for all outside collaborators" before a fork's workflow runs; default workflow permissions **read-only**; do not allow Actions to create or approve pull requests.
 - **Never** add a self-hosted runner to a public repo, and never use `pull_request_target` in a workflow.
-- **Secrets** (Settings, Secrets and variables): `REPO_RULES_EXTRA` only, for now. Deploys do not use GitHub-stored cloud credentials.
+- **Secrets** (Settings, Secrets and variables): `REPO_RULES_EXTRA` (repository secret) and `RELEASE_SIGNING_KEY` (a secret of the protected **`release` environment** only, never a repository secret). Deploys do not use GitHub-stored cloud credentials: the VM pulls signed releases, so no AWS key is in GitHub.
+- **The `release` environment** (Settings, Environments): add a **required reviewer** (the owner), and **deployment tag rules** so only `v*` tags can use it; protect the `v*` tag pattern (Settings, Rules) so nobody else can create or move one. Whoever can run that job can sign a release that the VM, running as root, will install: treat it like the VM's root password.
 
 ## If something gets through
 

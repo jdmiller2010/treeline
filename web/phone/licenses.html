@@ -91,8 +91,33 @@
 <div class="tl-dl__row"><dt>License</dt><dd>Apache-2.0 or BSD-3-Clause</dd></div>
 </dl>
 <dl class="tl-dl">
-<div class="tl-dl__row"><dt>Component</dt><dd><a href="https://caddyserver.com/" rel="noopener">Caddy</a> (the <code>caddy:2</code> image, production only)</dd></div>
+<div class="tl-dl__row"><dt>Component</dt><dd><a href="https://caddyserver.com/" rel="noopener">Caddy</a> (Ubuntu package <code>caddy</code> 2.6.2 on the VM; the <code>caddy:2</code> image for local HTTPS)</dd></div>
 <div class="tl-dl__row"><dt>Used for</dt><dd>HTTPS and certificates</dd></div>
+<div class="tl-dl__row"><dt>License</dt><dd>Apache-2.0</dd></div>
+</dl>
+<dl class="tl-dl">
+<div class="tl-dl__row"><dt>Component</dt><dd><a href="https://github.com/boto/boto3" rel="noopener">boto3</a>, <a href="https://github.com/boto/botocore" rel="noopener">botocore</a>, <a href="https://github.com/boto/s3transfer" rel="noopener">s3transfer</a>, <a href="https://github.com/jmespath/jmespath.py" rel="noopener">jmespath</a>, <a href="https://github.com/dateutil/dateutil" rel="noopener">python-dateutil</a>, <a href="https://github.com/benjaminp/six" rel="noopener">six</a> and <a href="https://github.com/urllib3/urllib3" rel="noopener">urllib3</a> (pinned with hashes in <code>deploy/native/requirements-tools.lock</code>)</dd></div>
+<div class="tl-dl__row"><dt>Used for</dt><dd>The VM&#x27;s root-run tools: reading secrets from SSM, uploading backups to S3</dd></div>
+<div class="tl-dl__row"><dt>License</dt><dd>Apache-2.0 (boto3, botocore, s3transfer, python-dateutil), MIT (jmespath, urllib3), MIT (six)</dd></div>
+</dl>
+<dl class="tl-dl">
+<div class="tl-dl__row"><dt>Component</dt><dd><a href="https://github.com/FiloSottile/age" rel="noopener">age</a> (Ubuntu package <code>age</code>)</dd></div>
+<div class="tl-dl__row"><dt>Used for</dt><dd>Encrypts backups before they leave the VM</dd></div>
+<div class="tl-dl__row"><dt>License</dt><dd>BSD-3-Clause</dd></div>
+</dl>
+<dl class="tl-dl">
+<div class="tl-dl__row"><dt>Component</dt><dd><a href="https://www.openssh.com/" rel="noopener">OpenSSH</a> <code>ssh-keygen</code> (Ubuntu package <code>openssh-client</code>)</dd></div>
+<div class="tl-dl__row"><dt>Used for</dt><dd>Signs releases (<code>-Y sign</code>) and verifies them on the VM (<code>-Y verify</code>)</dd></div>
+<div class="tl-dl__row"><dt>License</dt><dd>BSD-style (OpenSSH)</dd></div>
+</dl>
+<dl class="tl-dl">
+<div class="tl-dl__row"><dt>Component</dt><dd><a href="https://github.com/fail2ban/fail2ban" rel="noopener">fail2ban</a> (Ubuntu package <code>fail2ban</code>)</dd></div>
+<div class="tl-dl__row"><dt>Used for</dt><dd>Bans addresses that guess SIP accounts</dd></div>
+<div class="tl-dl__row"><dt>License</dt><dd>GPL-2.0-or-later</dd></div>
+</dl>
+<dl class="tl-dl">
+<div class="tl-dl__row"><dt>Component</dt><dd><a href="https://github.com/aws/aws-cdk" rel="noopener">AWS CDK</a> (<code>aws-cdk</code> CLI and <code>aws-cdk-lib</code>, pinned in <code>infra/</code>)</dd></div>
+<div class="tl-dl__row"><dt>Used for</dt><dd>Describes the AWS infrastructure as code; run from the owner&#x27;s computer only, never on the VM and never at runtime</dd></div>
 <div class="tl-dl__row"><dt>License</dt><dd>Apache-2.0</dd></div>
 </dl>
 <dl class="tl-dl">

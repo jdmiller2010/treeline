@@ -27,7 +27,12 @@ This file is the source for the **Open-source licenses** page in the parent app 
 | [pywebpush](https://github.com/web-push-libs/pywebpush) 2.5.0 and [py-vapid](https://github.com/web-push-libs/vapid) 1.9.6 | Notifications on parents' phones and the key generator | MPL-2.0 (used unmodified, as installed from PyPI) |
 | [http-ece](https://github.com/web-push-libs/encrypted-content-encoding) 1.2.1 | Encrypts those notifications | MIT |
 | [cryptography](https://github.com/pyca/cryptography) | Used by the above | Apache-2.0 or BSD-3-Clause |
-| [Caddy](https://caddyserver.com/) (the `caddy:2` image, production only) | HTTPS and certificates | Apache-2.0 |
+| [Caddy](https://caddyserver.com/) (Ubuntu package `caddy` 2.6.2 on the VM; the `caddy:2` image for local HTTPS) | HTTPS and certificates | Apache-2.0 |
+| [boto3](https://github.com/boto/boto3), [botocore](https://github.com/boto/botocore), [s3transfer](https://github.com/boto/s3transfer), [jmespath](https://github.com/jmespath/jmespath.py), [python-dateutil](https://github.com/dateutil/dateutil), [six](https://github.com/benjaminp/six) and [urllib3](https://github.com/urllib3/urllib3) (pinned with hashes in `deploy/native/requirements-tools.lock`) | The VM's root-run tools: reading secrets from SSM, uploading backups to S3 | Apache-2.0 (boto3, botocore, s3transfer, python-dateutil), MIT (jmespath, urllib3), MIT (six) |
+| [age](https://github.com/FiloSottile/age) (Ubuntu package `age`) | Encrypts backups before they leave the VM | BSD-3-Clause |
+| [OpenSSH](https://www.openssh.com/) `ssh-keygen` (Ubuntu package `openssh-client`) | Signs releases (`-Y sign`) and verifies them on the VM (`-Y verify`) | BSD-style (OpenSSH) |
+| [fail2ban](https://github.com/fail2ban/fail2ban) (Ubuntu package `fail2ban`) | Bans addresses that guess SIP accounts | GPL-2.0-or-later |
+| [AWS CDK](https://github.com/aws/aws-cdk) (`aws-cdk` CLI and `aws-cdk-lib`, pinned in `infra/`) | Describes the AWS infrastructure as code; run from the owner's computer only, never on the VM and never at runtime | Apache-2.0 |
 | [websocket-client](https://github.com/websocket-client/websocket-client) | Control app connection to Asterisk events | Apache-2.0 |
 | [eSpeak NG](https://github.com/espeak-ng/espeak-ng) (Ubuntu package `espeak-ng`) | Builds the placeholder operator voice at image build time; not shipped in the running app | GPL-3.0-or-later |
 | [SoX](https://sox.sourceforge.net/) (Ubuntu package `sox`) | Converts the operator messages to 8 kHz WAV at image build time | GPL-2.0-or-later |

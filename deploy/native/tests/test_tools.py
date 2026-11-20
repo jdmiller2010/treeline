@@ -1,0 +1,301 @@
+"""Unit tests for the root-run tools: secrets, certificate sync, configuration rendering, releases. No root, no Docker."""
+
+import hashlib
+import io
+import json
+import os
+import pathlib
+import shutil
+import subprocess
+import tarfile
+import tempfile
+import unittest
+
+import helpers
+
+fetch = helpers.load("treeline-fetch-secrets")
+certsync = helpers.load("treeline-certsync")
+config = helpers.load("treeline-config")
+import treeline_common as common  # noqa: E402
+import treeline_release as rel  # noqa: E402
+
+
+class FakeSsm:
+    def __init__(self, params):
+        self.params = params
+        self.asked = []
+
+    def get_parameters(self, Names, WithDecryption):
+        self.asked.append((tuple(Names), WithDecryption))
+        return {"Parameters": [{"Name": n, "Value": self.params[n]} for n in Names if n in self.params],
+                "InvalidParameters": [n for n in Names if n not in self.params]}
+
+
+GOOD = {"/treeline/smtp_user": "u", "/treeline/smtp_password": 'p"w\\d', "/treeline/vapid_public": "pub", "/treeline/vapid_private": "priv"}
+
+
+class Secrets(unittest.TestCase):
+    def setUp(self):
+        self.d = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.d, True)
+        (self.d / "ari-password").write_text("a" * 40 + "\n")
+
+    def test_every_parameter_becomes_an_environment_line_and_the_ari_password_is_added(self):
+        text = fetch.build(FakeSsm(GOOD), etc=str(self.d))
+        lines = dict(l.split("=", 1) for l in text.splitlines())
+        self.assertEqual(set(lines), {"TREELINE_SMTP_USER", "TREELINE_SMTP_PASS", "TREELINE_VAPID_PUBLIC", "TREELINE_VAPID_PRIVATE", "ARI_PASS"})
+        self.assertEqual(lines["TREELINE_SMTP_PASS"], '"p\\"w\\\\d"')          # quotes and backslashes are escaped for systemd
+        self.assertEqual(lines["ARI_PASS"], '"' + "a" * 40 + '"')
+
+    def test_decryption_is_requested_and_only_our_prefix_is_read(self):
+        ssm = FakeSsm(GOOD)
+        fetch.build(ssm, etc=str(self.d))
+        names, decrypt = ssm.asked[0]
+        self.assertTrue(decrypt)
+        self.assertTrue(all(n.startswith("/treeline/") for n in names))
+
+    def test_a_missing_parameter_is_a_hard_failure_that_names_it(self):
+        partial = {k: v for k, v in GOOD.items() if k != "/treeline/vapid_private"}
+        with self.assertRaises(SystemExit) as caught:
+            fetch.build(FakeSsm(partial), etc=str(self.d))
+        self.assertIn("vapid_private", str(caught.exception))
+
+    def test_a_value_with_a_line_break_is_refused(self):
+        with self.assertRaises(SystemExit):
+            fetch.build(FakeSsm(dict(GOOD, **{"/treeline/smtp_user": "a\nTREELINE_ENV=development"})), etc=str(self.d))
+
+    def test_the_file_is_private_from_its_first_byte_and_replaced_atomically(self):
+        out = self.d / "run" / "env"
+        common.atomic_write(str(out), "A=1\n", mode=0o600)
+        self.assertEqual(oct(out.stat().st_mode & 0o777), "0o600")
+        self.assertFalse(common.atomic_write(str(out), "A=1\n", mode=0o600))
+        self.assertTrue(common.atomic_write(str(out), "A=2\n", mode=0o600))
+        self.assertEqual([p.name for p in out.parent.iterdir()], ["env"])
+
+
+def make_cert(directory, host):
+    key, crt = pathlib.Path(directory) / f"{host}.key", pathlib.Path(directory) / f"{host}.crt"
+    subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", key, "-out", crt, "-days", "2", "-subj", f"/CN={host}"],
+                   check=True, capture_output=True)
+    return key, crt
+
+
+class CertSync(unittest.TestCase):
+    def setUp(self):
+        self.d = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.d, True)
+        self.storage, self.keys = self.d / "caddy", self.d / "keys"
+
+    def put(self, issuer, host="app.example.invalid"):
+        folder = self.storage / "certificates" / issuer / host
+        folder.mkdir(parents=True)
+        key, crt = make_cert(folder, host)
+        return crt
+
+    def test_the_one_matching_pair_is_copied_with_a_private_key(self):
+        self.put("acme-v02.api.letsencrypt.org-directory")
+        self.assertTrue(certsync.sync(str(self.storage), "app.example.invalid", str(self.keys), owner="nonexistent-user"))
+        self.assertEqual(oct((self.keys / "treeline.key").stat().st_mode & 0o777), "0o600")
+        self.assertFalse(certsync.sync(str(self.storage), "app.example.invalid", str(self.keys), owner="nonexistent-user"), "second run must report no change")
+
+    def test_none_or_two_issuers_is_refused(self):
+        with self.assertRaises(SystemExit) as none:
+            certsync.find_pair(str(self.storage), "app.example.invalid")
+        self.assertIn("not obtained", str(none.exception))
+        self.put("issuer-one")
+        self.put("issuer-two")
+        with self.assertRaises(SystemExit) as two:
+            certsync.find_pair(str(self.storage), "app.example.invalid")
+        self.assertIn("more than one", str(two.exception))
+
+    def test_a_host_name_cannot_walk_out_of_the_storage_directory(self):
+        for bad in ("../etc", "a/b.example.com", "*.example.com", ""):
+            with self.assertRaises(ValueError):
+                certsync.find_pair(str(self.storage), bad)
+
+
+class Config(unittest.TestCase):
+    def setUp(self):
+        self.d = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.d, True)
+        (self.d / "ari-password").write_text("Abc123" * 6 + "\n")
+        self.write_host()
+
+    def write_host(self, **over):
+        host = {"TREELINE_DOMAIN": "app.example.invalid", "TREELINE_MAIL_DOMAIN": "example.invalid", "TREELINE_AWS_REGION": "us-west-2",
+                "TREELINE_PRIVATE_IP": "172.26.3.4", "TREELINE_PUBLIC_IP": "203.0.113.9", "TREELINE_LOCAL_NET": "172.26.0.0/20"}
+        host.update(over)
+        (self.d / "host.env").write_text("".join(f"{k}={v}\n" for k, v in host.items()))
+
+    def test_behind_a_nat_every_option_is_written_and_the_ice_section_maps_private_to_public(self):
+        s = config.settings(str(self.d))
+        nat = config.nat_values(s)
+        self.assertIn("external_media_address=203.0.113.9", nat["NAT_OPTIONS"])
+        self.assertIn("external_signaling_address=203.0.113.9", nat["NAT_OPTIONS"])
+        self.assertIn("local_net=172.26.0.0/20", nat["NAT_OPTIONS"])
+        self.assertEqual(nat["ICE_HOST_CANDIDATES"], "172.26.3.4 => 203.0.113.9")
+        files = config.asterisk_files(str(helpers.ROOT), s)
+        self.assertIn("[ice_host_candidates]\n172.26.3.4 => 203.0.113.9", files["rtp.conf"])
+        self.assertEqual(files["pjsip.conf"].count("external_media_address=203.0.113.9"), 2)     # tls and ws transports
+        self.assertIn("password=" + "Abc123" * 6, files["ari.conf"])
+
+    def test_without_a_nat_nothing_is_said_about_addresses(self):
+        self.write_host(TREELINE_PUBLIC_IP="172.26.3.4")
+        files = config.asterisk_files(str(helpers.ROOT), config.settings(str(self.d)))
+        self.assertNotIn("external_media_address", files["pjsip.conf"])
+        self.assertNotIn("=>", files["rtp.conf"].split("[ice_host_candidates]")[1])
+
+    def test_no_placeholder_is_left_in_anything_rendered_and_nothing_environment_specific_is_in_the_repo_templates(self):
+        s = config.settings(str(self.d))
+        rendered = list(config.asterisk_files(str(helpers.ROOT), s).values()) + [config.caddyfile(str(helpers.ROOT), s), config.app_env(str(helpers.ROOT), s)]
+        for text in rendered:
+            self.assertNotRegex(text, r"@[A-Z][A-Z_]*@")
+        for path in (helpers.ROOT / "deploy" / "native" / "templates").rglob("*"):
+            if path.is_file():
+                text = path.read_text().replace("127.0.0.1", "").replace("0.0.0.0", "")          # loopback and "all interfaces" are not environment-specific
+                self.assertNotRegex(text, r"\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b", f"{path} holds an address")
+
+    def test_the_caddyfile_pins_one_issuer_and_one_storage_root_and_proxies_only_ws(self):
+        text = config.caddyfile(str(helpers.ROOT), config.settings(str(self.d)))
+        self.assertIn("storage file_system /var/lib/treeline/caddy", text)
+        self.assertIn("dir https://acme-v02.api.letsencrypt.org/directory", text)
+        self.assertEqual(text.count("reverse_proxy @asterisk_ws 127.0.0.1:8088"), 1)
+        self.assertEqual(text.count("reverse_proxy"), 2)           # /ws to Asterisk, everything else to the app: nothing else is proxied
+        self.assertIn("@asterisk_ws path /ws", text)
+        self.assertNotIn("/ari", text)
+        self.assertIn("redir https://app.example.invalid{uri} 308", text)
+        self.assertIn("example.invalid {", text.replace("app.example.invalid {", ""))          # the bare domain redirects too
+        self.assertIn("max-age=31536000", text)
+        self.assertNotIn("preload", text)
+
+    def test_a_hostile_value_in_host_env_is_refused_not_rendered(self):
+        for over in ({"TREELINE_DOMAIN": "x.example.com {\n respond 200\n}"}, {"TREELINE_PUBLIC_IP": "203.0.113.9; evil"},
+                     {"TREELINE_ACME_DIR": "https://ca.example.invalid/dir }"}, {"TREELINE_VAPID_CONTACT": "a b@c"}):
+            self.write_host(**over)
+            with self.assertRaises((ValueError, KeyError)):
+                config.settings(str(self.d))
+
+    def test_the_app_environment_is_production_with_secure_urls_and_no_secret(self):
+        env = config.app_env(str(helpers.ROOT), config.settings(str(self.d)))
+        self.assertIn("TREELINE_ENV=production", env)
+        self.assertIn("TREELINE_PUBLIC_WS_URL=wss://app.example.invalid/ws", env)
+        self.assertIn("TREELINE_TRUST_PROXY=1", env)
+        self.assertNotIn("TREELINE_DEV_CODES", env)
+        self.assertNotIn("Abc123", env)
+
+    def test_an_unknown_placeholder_is_an_error(self):
+        with self.assertRaises(KeyError):
+            common.render("@NOPE@", {})
+
+
+class Releases(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.d = pathlib.Path(tempfile.mkdtemp())
+        cls.key, cls.signers = helpers.keygen(cls.d)
+        cls.tar = helpers.build("v0.0.1", cls.d / "out", cls.key)
+        cls.sig = pathlib.Path(str(cls.tar) + ".sig")
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.d, ignore_errors=True)
+
+    def test_a_good_signature_verifies(self):
+        rel.verify(str(self.tar), str(self.sig), str(self.signers))
+
+    def test_one_flipped_byte_is_refused(self):
+        bad = self.d / "bad.tar.gz"
+        data = bytearray(self.tar.read_bytes())
+        data[len(data) // 2] ^= 1
+        bad.write_bytes(bytes(data))
+        shutil.copy(self.sig, str(bad) + ".sig")
+        with self.assertRaises(rel.ReleaseError) as caught:
+            rel.verify(str(bad), str(bad) + ".sig", str(self.signers))
+        self.assertIn("FAILED", str(caught.exception))
+
+    def test_a_signature_by_another_key_is_refused(self):
+        other, _ = helpers.keygen(self.d, "other")
+        subprocess.run(["ssh-keygen", "-Y", "sign", "-q", "-f", str(other), "-n", "treeline-release", str(self.d / "x")], input=b"", capture_output=True)
+        copy = self.d / "copy.tar.gz"
+        shutil.copy(self.tar, copy)
+        subprocess.run(["ssh-keygen", "-Y", "sign", "-q", "-f", str(other), "-n", "treeline-release", str(copy)], check=True)
+        with self.assertRaises(rel.ReleaseError):
+            rel.verify(str(copy), str(copy) + ".sig", str(self.signers))
+
+    def test_a_signature_for_another_purpose_is_refused(self):
+        copy = self.d / "ns.tar.gz"
+        shutil.copy(self.tar, copy)
+        subprocess.run(["ssh-keygen", "-Y", "sign", "-q", "-f", str(self.key), "-n", "file", str(copy)], check=True)    # a different namespace
+        with self.assertRaises(rel.ReleaseError):
+            rel.verify(str(copy), str(copy) + ".sig", str(self.signers))
+
+    def test_no_signature_or_no_trusted_key_is_refused(self):
+        with self.assertRaises(rel.ReleaseError):
+            rel.verify(str(self.tar), str(self.d / "nope.sig"), str(self.signers))
+        empty = self.d / "empty"
+        empty.write_text("# no key yet\n")
+        with self.assertRaises(rel.ReleaseError):
+            rel.verify(str(self.tar), str(self.sig), str(empty))
+        with self.assertRaises(rel.ReleaseError):
+            rel.verify(str(self.tar), str(self.sig), str(self.d / "missing"))
+
+    def test_extract_refuses_paths_that_leave_the_directory_and_links_that_point_out(self):
+        for name, kind in (("../escape", "file"), ("/abs/path", "file"), ("link", "symlink-out")):
+            path = self.d / f"evil-{kind}-{abs(hash(name))}.tar.gz"
+            with tarfile.open(path, "w:gz") as tf:
+                info = tarfile.TarInfo(name)
+                if kind == "symlink-out":
+                    info.type, info.linkname = tarfile.SYMTYPE, "/etc/passwd"
+                    tf.addfile(info)
+                else:
+                    data = b"x"
+                    info.size = len(data)
+                    tf.addfile(info, io.BytesIO(data))
+            dest = self.d / f"dest-{abs(hash(name))}"
+            with self.assertRaises(rel.ReleaseError):
+                rel.extract(str(path), str(dest))
+            self.assertFalse(dest.exists(), "a failed unpack must leave nothing behind")
+            self.assertFalse((self.d / "escape").exists())
+
+    def test_the_release_holds_code_and_templates_and_nothing_that_must_not_be_public(self):
+        with tarfile.open(self.tar) as tf:
+            names = tf.getnames()
+            info = json.load(tf.extractfile("./release.json"))
+        for must in ("./controller/treeline/api.py", "./controller/requirements-prod.lock", "./web/site/index.html", "./web/ui/css", "./asterisk/config/extensions.conf",
+                     "./deploy/native/install.sh", "./deploy/native/bin/treeline-deploy", "./deploy/native/templates/Caddyfile.tmpl"):
+            self.assertIn(must, names)
+        for bad in ("tests", ".git", ".local", "cdk.out"):
+            self.assertFalse([n for n in names if f"/{bad}/" in n or n.endswith("/" + bad)], bad)
+        for ending in (".db", ".agekey", ".pem", ".key", "/.env"):
+            self.assertFalse([n for n in names if n.endswith(ending)], ending)
+        self.assertEqual(info["version"], "v0.0.1")
+        self.assertEqual(info["schema"], {"central": 1, "household": 1})
+        self.assertFalse([n for n in names if n.startswith("./deploy/native/ci") or n.startswith("./deploy/native/tests")])
+
+    def test_the_build_is_reproducible(self):
+        again = helpers.build("v0.0.1", self.d / "out2", self.key)
+        self.assertEqual(hashlib.sha256(self.tar.read_bytes()).hexdigest(), hashlib.sha256(again.read_bytes()).hexdigest())
+
+    def test_a_dirty_tree_is_refused_without_the_flag_and_a_bad_version_is_refused(self):
+        done = subprocess.run([str(helpers.ROOT / "scripts" / "build_release.sh"), "1.0", "--allow-dirty", "--out", str(self.d / "x")], capture_output=True, text=True)
+        self.assertNotEqual(done.returncode, 0)
+
+    def test_read_info_rejects_a_release_without_a_version_or_schema(self):
+        for bad in ({}, {"version": "v1.0.0"}, {"version": "latest", "schema": {"central": 1, "household": 1}}):
+            folder = self.d / f"info-{abs(hash(json.dumps(bad)))}"
+            folder.mkdir()
+            (folder / "release.json").write_text(json.dumps(bad))
+            with self.assertRaises(rel.ReleaseError):
+                rel.read_info(str(folder))
+
+    def test_switch_replaces_the_link_atomically(self):
+        a, b, link = self.d / "ra", self.d / "rb", self.d / "current"
+        a.mkdir(), b.mkdir()
+        rel.switch(str(link), str(a))
+        rel.switch(str(link), str(b))
+        self.assertEqual(os.path.realpath(link), str(b))
+        self.assertFalse((self.d / "current.new").exists())
+
+
+if __name__ == "__main__":
+    unittest.main()
