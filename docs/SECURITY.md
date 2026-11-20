@@ -30,6 +30,31 @@ Everything not yet fixed, from every review. Move a row to its review's "Remedia
 | R6-2 | Root-run tools followed symlinks in the app user's state folder | Low | 2026-11-20 | **Fixed**, see Review 6 |
 | R3-x | See Review 3 above for R3-1 to R3-10 | | | see the review |
 | R2-7 | "Delete all my data" removes the live file at once, but backups of it (central, and the household's own) live up to 7 days; the VM cannot delete them | Informational | 2026-11-19 | Accepted, documented ([DATA_LAYER.md](DATA_LAYER.md), `infra/README.md`) and warned about in the app when retention is shortened |
+| R8-1 | Ubuntu 24.04's `asterisk` package (1:20.6.0, universe) has 76 advisories listed with no fixed package (73 "medium", 3 "low" by Ubuntu's priority). Not sorted into those that apply to 20.6.0 and those that are only unreviewed in Ubuntu's tracker | Unknown until sorted (Ubuntu: medium) | 2026-11-20 | Open. New ones are announced by the daily check ([SUPPLY_CHAIN.md](SUPPLY_CHAIN.md), "Asterisk and Caddy come from Ubuntu") |
+| R8-2 | The development containers and the `controller unit tests` CI job install `controller/requirements.txt` unpinned, so tests can run on newer versions than the hash-pinned lock production installs | Informational | 2026-11-20 | Open |
+| R8-3 | `main` has no branch protection, and Dependabot alerts and security updates are off (GitHub settings, not repo files) | Low | 2026-11-20 | Open: the owner's checklist in [SUPPLY_CHAIN.md](SUPPLY_CHAIN.md) |
+
+## Review 8: 2026-11-20, dependency audit and the supply-chain tooling (by the tooling's author, not independent)
+
+**Scope.** Every third-party component the repo pins or installs, on branch `supply-chain-watch` (pull request 1): the four hash-pinned Python locks, `infra/package-lock.json`, the two vendored browser libraries, the actions in `.github/workflows/`, and the Ubuntu packages a fresh VM installs from `deploy/native/install.sh`. Not in scope: our own code (CodeQL was added and ran, but its results were not read), container base images, and the packages on a real VM (there is none).
+
+**Method.** `scripts/sbom.py` built the list and `scripts/vuln_check.py` asked OSV.dev about each exact version, in the `supply chain` workflow on a GitHub runner (this was the first run against the real OSV; the scripts' own tests use a stand-in). 319 component versions were asked about. A match in OSV for an Ubuntu package means Ubuntu's tracker lists the CVE against that package with no fixed version; it does not mean the CVE was confirmed to affect the version installed.
+
+**Result.**
+
+| Ref | Finding | Severity | Status |
+|---|---|---|---|
+| R8-1 | `asterisk` 1:20.6.0 from Ubuntu universe: 76 advisories with no fixed package (ids from CVE-2020 to CVE-2026). Many describe versions older than 20.6 and are there because Ubuntu has not reviewed them; which of the rest apply was not determined | Unknown until sorted | Open |
+| R8-2 | Tests in CI and in the development containers install unpinned `controller/requirements.txt`, not the lock | Informational | Open |
+| R8-3 | No branch protection on `main`; Dependabot alerts and security updates off | Low | Open (owner's settings) |
+
+Also listed, not findings: 258 further advisories with no fixed package across 41 other Ubuntu source packages (`postgresql-16` 52, `python3.12` 38, `unbound` 28, `krb5` 19, `openssl` 13, `glibc` 13 and smaller ones). They are in the report of every run; `unattended-upgrades` installs fixes when Ubuntu publishes them. None was examined individually.
+
+**Checked and clean.** No advisory in OSV for any of the 47 pinned Python packages, the CDK command line, JsSIP 3.11.1, qrcode-generator 1.4.4, or the actions pinned with a full version. `caddy` (Ubuntu): none.
+
+**Remediation taken.** None of the three findings is fixed. What was added (pull request 1): the bill of materials and the daily check with an issue as the alert; Dependabot for actions and `infra/` npm with a 7-day cooldown; a weekly rebuild of the Python locks with the same cooldown; CodeQL; and the actions in `repo-rules.yml` and `vm-imitation.yml` pinned to commits. Tests: `scripts/test_supply_chain.py` (38). See [SUPPLY_CHAIN.md](SUPPLY_CHAIN.md).
+
+**Not done / limits.** Not independent. The daily job, the dependency-graph submission, the lock refresh and the Dependabot auto-merge have not run (they need `main` or a schedule). OSV is only as complete as its sources. The Ubuntu package list is a fresh install today, not a real VM.
 
 ## Review 7: 2026-11-20, `/code-review` findings that touch security or availability (fixes by the author, not independent)
 

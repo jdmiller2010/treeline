@@ -275,19 +275,24 @@ class Checking(unittest.TestCase):
     def test_findings_are_sorted_into_act_listed_and_withdrawn_ones_dropped(self):
         r = self.run_check()
         self.assertEqual([(f["id"], f["status"]) for f in r["findings"]],
-                         [("MAL-2026-1", "act"), ("GHSA-aaaa-bbbb-cccc", "act"), ("UBUNTU-CVE-2026-9", "act"), ("UBUNTU-CVE-2026-10", "listed")])
+                         [("MAL-2026-1", "act"), ("GHSA-aaaa-bbbb-cccc", "act"), ("UBUNTU-CVE-2026-9", "watch"), ("UBUNTU-CVE-2026-10", "listed")])
         flask = next(f for f in r["findings"] if f["package"] == "flask")
         self.assertEqual((flask["severity"], flask["fixed"], flask["aliases"]), ("high", ["3.1.4"], ["CVE-2026-0001"]))
         self.assertTrue(r["findings"][0]["malware"])
         self.assertEqual(next(f for f in r["findings"] if f["package"] == "asterisk")["severity"], "medium")
-        self.assertEqual(len(r["act"]), 3)
+        self.assertEqual((len(r["act"]), len(r["watch"])), (2, 1))
 
     def test_two_binaries_of_one_source_package_are_one_finding(self):
         self.assertEqual(sum(1 for f in self.run_check()["findings"] if f["id"] == "UBUNTU-CVE-2026-9"), 1)
 
-    def test_an_unwatched_ubuntu_package_never_fails_the_run(self):
-        r = self.run_check(watch=())
-        self.assertEqual({f["package"] for f in r["act"]}, {"flask", "jssip"})
+    def test_ubuntu_packages_never_fail_the_run_watched_or_not(self):
+        # Watched ones are announced through the issue (TheIssue below); neither kind is in "act", which is the exit status.
+        self.assertEqual({f["package"] for f in self.run_check(watch=())["act"]}, {"flask", "jssip"})
+        self.assertEqual({f["package"] for f in self.run_check(watch=("asterisk", "sox"))["act"]}, {"flask", "jssip"})
+        self.assertEqual({f["package"] for f in self.run_check(watch=("asterisk", "sox"))["watch"]}, {"asterisk", "sox"})
+        only_os = {"components": [c for c in SBOM["components"] if c["name"].startswith("asterisk")]}
+        r = vuln_check.check(only_os, {}, ("asterisk",), FakeOsv(HITS, RECORDS))
+        self.assertEqual((r["act"], len(r["watch"])), ([], 1))
 
     def test_an_ignore_matches_by_alias_and_is_reported_and_unused_ones_are_named(self):
         ign = {"CVE-2026-0001": (datetime.date(2026, 12, 1), "not reachable: we never call that"), "GHSA-NOPE": (datetime.date(2026, 12, 1), "old")}
@@ -301,7 +306,8 @@ class Checking(unittest.TestCase):
 
     def test_the_report_says_what_was_found_and_what_was_not_checked(self):
         text = vuln_check.report(self.run_check(), TODAY)
-        self.assertIn("**3 findings to act on.**", text)
+        self.assertIn("**2 findings to act on.**", text)
+        self.assertIn("Watched Ubuntu packages", text)
         self.assertIn("**MALWARE**", text)
         self.assertIn("with a pipe".replace("with", "\\| with"), text)        # a `|` in a summary must not break the table
         self.assertIn("3.1.4", text)
@@ -356,6 +362,7 @@ class TheIssue(unittest.TestCase):
         gh = FakeGitHub([issue(5, "old\n<!-- treeline-vuln-ids: GHSA-aaaa-bbbb-cccc,MAL-2026-1 -->")])
         self.assertEqual(vuln_check.sync_issue("o/r", self.result, "REPORT", gh), "updated #5, new: UBUNTU-CVE-2026-9")
         self.assertEqual([c[0][:3] for c in gh.calls[1:]], [["-X", "PATCH", "repos/o/r/issues/5"], ["-X", "POST", "repos/o/r/issues/5/comments"]])
+        self.assertIn("(asterisk watched)", gh.calls[-1][1]["body"])
         gh = FakeGitHub([issue(5, "<!-- treeline-vuln-ids: GHSA-aaaa-bbbb-cccc,MAL-2026-1,UBUNTU-CVE-2026-9 -->")])
         self.assertEqual(vuln_check.sync_issue("o/r", self.result, "REPORT", gh), "updated #5, nothing new")
         self.assertEqual(len(gh.calls), 2)
@@ -373,6 +380,13 @@ class TheIssue(unittest.TestCase):
         gh = FakeGitHub([issue(3, "x", login="stranger", kind="User"), issue(4, "x", login="github-actions[bot]", kind="User"),
                          issue(6, "x", pull_request={})])
         self.assertEqual(vuln_check.sync_issue("o/r", self.result, "REPORT", gh), "opened #12")
+
+    def test_a_watched_ubuntu_finding_alone_opens_the_issue_but_is_not_a_failure(self):
+        only_os = {"components": [c for c in SBOM["components"] if c["name"].startswith("asterisk")]}
+        r = vuln_check.check(only_os, {}, ("asterisk",), FakeOsv(HITS, RECORDS))
+        gh = FakeGitHub([])
+        self.assertEqual(vuln_check.sync_issue("o/r", r, "REPORT", gh), "opened #12")
+        self.assertEqual(r["act"], [])
 
     def test_a_very_long_report_is_cut_to_fit_an_issue(self):
         gh = FakeGitHub([])

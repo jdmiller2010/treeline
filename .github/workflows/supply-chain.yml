@@ -4,8 +4,10 @@
 #
 #   pull request   `scan`: read-only. Fails if a Python, npm, vendored or Actions dependency has a finding.
 #                  Ubuntu packages are listed in the report but never fail a pull request.
-#   daily / main   `watch`: the same, plus findings in the internet-facing Ubuntu daemons (OS_WATCH) count, and one
-#                  GitHub issue is opened, updated or closed to match. The issue and the failed run are the alert.
+#   daily / main   `watch`: the same, and one GitHub issue is opened, updated or closed to match. It fails for the
+#                  same findings as a pull request. Advisories for the internet-facing Ubuntu daemons (OS_WATCH) are
+#                  kept in that issue too, and every NEW one gets a comment there; they do not fail the run, because
+#                  Ubuntu has no fixed package to move to. The issue, its comments and a failed run are the alerts.
 #                  `graph`: tells GitHub's dependency graph the exact versions in our hash-pinned locks and the
 #                  vendored browser libraries, which GitHub cannot read itself, so Dependabot alerts cover them.
 #
@@ -30,7 +32,7 @@ permissions:
   contents: read
 
 env:
-  OS_WATCH: asterisk,caddy     # Ubuntu source packages whose advisories count (they face the internet)
+  OS_WATCH: asterisk,caddy     # Ubuntu source packages whose new advisories are announced (they face the internet)
 
 jobs:
   scan:

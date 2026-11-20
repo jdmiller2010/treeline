@@ -10,12 +10,16 @@ Exit status: 0 nothing to act on; 1 something to act on; 2 the check itself coul
 we could not read, an ignore entry that is malformed or past its date). 2 is deliberately not 0: a scan that did not
 run must never look like a clean one.
 
-What counts as "to act on":
-  - any finding in a Python, npm, vendored or GitHub Actions component, unless listed in the ignore file;
-  - a finding in an Ubuntu package only if its source package is named by --os-watch. A fresh install already has
-    Ubuntu's newest build, so an Ubuntu finding means "no fixed package exists yet": for most of the 300-odd packages
-    that is noise nobody can act on, for the daemons facing the internet it is exactly what the owner must hear about.
-    Everything else from Ubuntu is listed in the report and does not fail the run.
+Three kinds of finding:
+  act     a Python, npm, vendored or GitHub Actions component (unless in the ignore file). Fails the run: there is
+          almost always a fixed version to move to.
+  watch   an Ubuntu package whose source package is named by --os-watch (the daemons that face the internet). A fresh
+          install already has Ubuntu's newest build, so an Ubuntu finding means "Ubuntu has no fixed package", and
+          Ubuntu lists every CVE ever filed against a package it has not reviewed (76 for its Asterisk on the first
+          real run, many of them about versions older than the one it ships). Failing every day on that list would
+          teach the owner to ignore the check, so it does not fail the run: the list sits in the issue, and each NEW
+          advisory is announced there with a comment. A new advisory is the thing to hear about.
+  listed  every other Ubuntu package: in the report, nothing more. unattended-upgrades installs fixes when they exist.
 
 The ignore file (.vuln-ignore, one per line):   <ID>  until=YYYY-MM-DD  why it does not apply to Treeline
 An ID matches the advisory or any of its aliases. `until` is required and at most 90 days ahead, so an accepted risk
@@ -194,7 +198,8 @@ def parse_ignores(text, today):
 # ---------------------------------------------------------------- the check
 def check(sbom, ignores=None, os_watch=(), fetch=None):
     """Returns a dict: findings (each: id, aliases, summary, severity, fixed, component..., status), skipped, counts.
-    status is 'act' (fails the run), 'ignored' (in .vuln-ignore) or 'listed' (an Ubuntu package nobody is watching)."""
+    status is 'act' (fails the run), 'watch' (a watched Ubuntu package: announced, not failed), 'ignored' (in
+    .vuln-ignore) or 'listed' (any other Ubuntu package)."""
     ignores = ignores or {}
     os_watch = {w.strip().lower() for w in os_watch if w.strip()}
     asked, skipped = queries_for(sbom)
@@ -215,12 +220,12 @@ def check(sbom, ignores=None, os_watch=(), fetch=None):
             if ignored:
                 status = "ignored"
                 used_ignores.add(ignored.upper())
-            elif eco == "Ubuntu" and query["package"]["name"].lower() not in os_watch:
-                status = "listed"
+            elif eco == "Ubuntu":
+                status = "watch" if query["package"]["name"].lower() in os_watch else "listed"
             else:
                 status = "act"
             findings.append({
-                "id": vid, "aliases": names[1:], "summary": (adv.get("summary") or (adv.get("details") or "").strip().split("\n")[0])[:300],
+                "id": vid, "aliases": names[1:], "summary": (adv.get("summary") or (adv.get("details") or "").strip().split("\n")[0])[:200],
                 "severity": severity_of(adv), "fixed": fixed_versions(adv, query["package"]["name"]),
                 "malware": vid.upper().startswith("MAL-"),
                 "ecosystem": eco, "package": query["package"]["name"], "version": query["version"],
@@ -237,12 +242,13 @@ def check(sbom, ignores=None, os_watch=(), fetch=None):
             continue
         seen.add(key)
         unique.append(f)
-    order = {"act": 0, "ignored": 1, "listed": 2}
+    order = {"act": 0, "watch": 1, "ignored": 2, "listed": 3}
     unique.sort(key=lambda f: (order[f["status"]], not f["malware"], not f["production"], f["ecosystem"], f["package"], f["id"]))
     return {
         "findings": unique, "skipped": skipped, "asked": len(asked),
         "unused_ignores": sorted(set(ignores) - used_ignores),
         "act": [f for f in unique if f["status"] == "act"],
+        "watch": [f for f in unique if f["status"] == "watch"],
     }
 
 
@@ -252,7 +258,7 @@ def md(text):
 
 
 def report(result, today):
-    act = result["act"]
+    act, watch = result["act"], result["watch"]
     ignored = [f for f in result["findings"] if f["status"] == "ignored"]
     listed = [f for f in result["findings"] if f["status"] == "listed"]
     lines = ["# Treeline vulnerability report, %s" % today, ""]
@@ -276,6 +282,12 @@ def report(result, today):
     if act:
         lines += ["## To act on", ""] + rows(act) + [""]
         lines += ["What to do: `docs/SUPPLY_CHAIN.md`, \"When the report finds something\".", ""]
+    if watch:
+        lines += ["## Watched Ubuntu packages: advisories with no fixed package from Ubuntu (%d)" % len(watch), "",
+                  "These do not fail the check; each new one is announced with a comment on the issue. Ubuntu lists every CVE filed "
+                  "against a package until someone there reviews it, so some of these are about versions older than the one installed. "
+                  "What to do about the list as a whole: `docs/SUPPLY_CHAIN.md`, \"Asterisk and Caddy come from Ubuntu\".", "",
+                  "<details><summary>%d advisories</summary>" % len(watch), ""] + rows(watch) + ["", "</details>", ""]
     if ignored:
         lines += ["## Accepted for now (.vuln-ignore)", "", "| Advisory | Component | Until | Reason |", "|---|---|---|---|"]
         lines += ["| %s | %s %s | %s | %s |" % (md(f["id"]), md(f["package"]), md(f["version"]), f["ignore_until"], md(f["ignore_reason"])) for f in ignored]
@@ -283,7 +295,7 @@ def report(result, today):
     if listed:
         lines += ["## Ubuntu packages with advisories that have no fixed package yet (listed, not counted)", "",
                   "These are in the packages a fresh VM installs. Ubuntu has published no fix, so there is nothing to update to; "
-                  "`unattended-upgrades` on the VM installs the fix when there is one. Packages named in `--os-watch` are counted above instead.", "",
+                  "`unattended-upgrades` on the VM installs the fix when there is one.", "",
                   "<details><summary>%d advisories</summary>" % len(listed), ""] + rows(listed) + ["", "</details>", ""]
     if result["unused_ignores"]:
         lines += ["## Ignore entries that no longer match anything", "",
@@ -307,8 +319,9 @@ def gh_api(args, body=None):
 
 
 def sync_issue(repo, result, text, api=None):
-    """One open issue (opened by the Actions bot, with ISSUE_TITLE) says what needs attention. New findings open it or
-    add a comment (both notify the owner); a clean result closes it. Returns what was done, for the log."""
+    """One open issue (opened by the Actions bot, with ISSUE_TITLE) says what needs attention: the findings to act on
+    and the watched Ubuntu ones. New findings open it or add a comment (both notify the owner); when there is nothing
+    of either kind it is closed. Returns what was done, for the log."""
     api = api or gh_api
     if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo or ""):
         raise CheckError("--sync-issue needs GITHUB_REPOSITORY (owner/name)")
@@ -325,13 +338,14 @@ def sync_issue(repo, result, text, api=None):
         if len(batch) < 100:
             break
         page += 1
-    ids = sorted({f["id"] for f in result["act"]})
+    by_id = {f["id"]: f for f in result["watch"] + result["act"]}
+    ids = sorted(by_id)
     body = (text[:BODY_LIMIT] + ("\n\n(cut short: the full report is attached to the workflow run)" if len(text) > BODY_LIMIT else "")
             + "\n\n" + ISSUE_MARK % ",".join(ids))
     if not ids:
         if mine is None:
             return "clean, no issue open"
-        api(["-X", "POST", "repos/%s/issues/%d/comments" % (repo, mine["number"])], {"body": "The latest check found nothing left to act on. Closing."})
+        api(["-X", "POST", "repos/%s/issues/%d/comments" % (repo, mine["number"])], {"body": "The latest check found nothing left to act on or watch. Closing."})
         api(["-X", "PATCH", "repos/%s/issues/%d" % (repo, mine["number"])], {"state": "closed", "body": body})
         return "clean, closed #%d" % mine["number"]
     if mine is None:
@@ -343,7 +357,9 @@ def sync_issue(repo, result, text, api=None):
     api(["-X", "PATCH", "repos/%s/issues/%d" % (repo, mine["number"])], {"body": body})
     if new:
         api(["-X", "POST", "repos/%s/issues/%d/comments" % (repo, mine["number"])],
-            {"body": "New since the last check: " + ", ".join("[%s](https://osv.dev/vulnerability/%s)" % (i, i) for i in new) + ". The report above is updated."})
+            {"body": "New since the last check: " + ", ".join(
+                "[%s](https://osv.dev/vulnerability/%s) (%s %s)" % (i, i, by_id[i]["package"], "to act on" if by_id[i]["status"] == "act" else "watched")
+                for i in new) + ". The report above is updated."})
         return "updated #%d, new: %s" % (mine["number"], ", ".join(new))
     return "updated #%d, nothing new" % mine["number"]
 
