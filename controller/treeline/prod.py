@@ -9,6 +9,7 @@ rather than serving with a dev setting on.
 
 import os
 import sys
+import urllib.parse
 
 DEFAULT_ARI_PASSWORDS = {"", "treeline-dev", "change-me"}
 
@@ -63,7 +64,7 @@ def problems(env=None):
         out.append("TREELINE_TRUST_PROXY must be 1 (the app runs behind Caddy; without it every client has Caddy's address)")
     if env.get("TREELINE_SMTP_TLS", "1") != "1":
         out.append("TREELINE_SMTP_TLS must not be turned off")
-    if env.get("ARI_URL", "http://127.0.0.1:8088/ari").split("://", 1)[-1].split("/")[0].split(":")[0] not in ("127.0.0.1", "localhost", "[::1]"):
+    if urllib.parse.urlsplit(env.get("ARI_URL", "http://127.0.0.1:8088/ari")).hostname not in ("127.0.0.1", "localhost", "::1"):
         out.append("ARI_URL must point at this machine (ARI is never reached over the network)")
     return out
 

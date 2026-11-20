@@ -47,7 +47,8 @@ copy_tracked() {   # copy_tracked SRC_DIR DEST_DIR [exclude-regex]
 }
 copy_tracked controller/treeline "$R/controller/treeline"
 for f in run_controller.py backup.py make_vapid.py requirements.txt requirements-prod.lock; do
-  [ -f "controller/$f" ] && cp -p "controller/$f" "$R/controller/$f"
+  # tracked files only, like everything else (an untracked local copy must never be signed and shipped)
+  if [ -n "$("${LS[@]}" -- "controller/$f")" ]; then cp -p "controller/$f" "$R/controller/$f"; fi
 done
 copy_tracked web "$R/web/site" '^tests/'
 copy_tracked design/ui "$R/web/ui"

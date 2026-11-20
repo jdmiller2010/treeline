@@ -430,6 +430,68 @@ class DeployAgentLogic(unittest.TestCase):
             deploy.restore_data_from_pre_migrate({"treeline.db": 2, "households/7.db": 2}, {"treeline.db": 1, "households/7.db": 1}, owner=None)
         self.assertEqual(sqlite3.connect(d / "treeline.db").execute("SELECT x FROM t").fetchone()[0], "migrated-again")
 
+    def test_a_file_made_by_the_failed_release_is_set_aside_not_a_reason_to_abandon_the_rollback(self):
+        """Code review #2: a family created during the health wait has a household file at the NEW version and no pre-migration
+        copy. It must not make the whole rollback fail and leave every family without service."""
+        before = {"treeline.db": 1, "households/1.db": 1}
+        after = {"treeline.db": 2, "households/1.db": 2, "households/42.db": 2}
+        expected = {"treeline.db": 1, "households/1.db": 1, "households/42.db": 1}
+        moved, created = deploy.plan_rollback(before, after, expected)
+        self.assertEqual(moved, {"treeline.db": 2, "households/1.db": 2})
+        self.assertEqual(created, {"households/42.db": 2})
+        d = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, d, True)
+        real = deploy.common.STATE
+        deploy.common.STATE = str(d)
+        self.addCleanup(setattr, deploy.common, "STATE", real)
+        (d / "data" / "households").mkdir(parents=True)
+        for suffix in ("", "-wal"):
+            (d / "data" / "households" / f"42.db{suffix}").write_text("x")
+        deploy.quarantine(created)
+        self.assertFalse((d / "data" / "households" / "42.db").exists())
+        kept = list((d / "data" / "quarantine").rglob("42.db*"))
+        self.assertEqual(len(kept), 2, "set aside with its WAL, not deleted")
+
+    def test_state_keeps_the_failed_list_and_a_success_clears_it(self):
+        d = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, d, True)
+        p = {"state": str(d)}
+        deploy.record(p, current="v1.0.0", previous=None)
+        deploy.mark_failed(p, "v1.1.0")
+        deploy.record(p, current="v1.0.0", previous=None)          # a later record keeps the list
+        self.assertEqual(deploy.read_state(p)["failed"], ["v1.1.0"])
+        deploy.clear_failed(p, "v1.1.0")
+        self.assertEqual(deploy.read_state(p)["failed"], [])
+
+    def test_a_manual_rollback_that_fails_goes_back_and_never_leaves_the_services_stopped(self):
+        """Code review #3: an error after the services were stopped used to escape as a traceback."""
+        d = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, d, True)
+        (d / "releases" / "v1.0.0").mkdir(parents=True)
+        (d / "releases" / "v1.1.0").mkdir(parents=True)
+        p = {"state": str(d / "state"), "releases": str(d / "releases"), "current": str(d / "current")}
+        os.symlink(d / "releases" / "v1.1.0", d / "current")
+        deploy.record(p, current="v1.1.0", previous="v1.0.0")
+        calls = []
+        def fake_run(cmd, **kw):
+            calls.append(cmd)
+            return subprocess.CompletedProcess(cmd, 1 if "treeline-config" in cmd[0] else 0, "", "boom: a template")
+        from unittest import mock
+        with mock.patch.object(deploy, "data_versions", lambda: {"treeline.db": 1}), \
+                mock.patch.object(deploy, "schema_of", lambda _d: {"central": 1, "household": 1}), \
+                mock.patch.object(deploy, "wait_for_quiet", lambda *a, **k: None), \
+                mock.patch.object(deploy.common, "host_settings", lambda *a: {}), \
+                mock.patch.object(deploy, "snapshot_config", lambda dest: None), \
+                mock.patch.object(deploy, "restore_config", lambda src: calls.append(["restore_config"])), \
+                mock.patch.object(deploy, "build_sounds", lambda rd: None), \
+                mock.patch.object(deploy, "health", lambda v, seconds=0: v == "v1.1.0"), \
+                mock.patch.object(deploy.subprocess, "run", fake_run):
+            rc = deploy.manual_rollback(p)
+        self.assertEqual(rc, 1, "it reports the failure ...")
+        self.assertEqual(os.path.realpath(d / "current"), str(d / "releases" / "v1.1.0"), "... and is back on what was running")
+        self.assertIn(["restore_config"], calls)
+        self.assertTrue(any(c[:2] == ["systemctl", "restart"] and "treeline-api" in c for c in calls), "the services were started again")
+
     def test_expected_versions_come_from_the_old_releases_own_schema(self):
         self.assertEqual(deploy.expected_versions(["treeline.db", "households/3.db"], {"central": 4, "household": 2}),
                          {"treeline.db": 4, "households/3.db": 2})

@@ -224,7 +224,7 @@ async function changeNumber(ctx) {
 async function addGrownUp(ctx) {
   const r = await formDialog({
     title: "Add a grown-up", intro: "They sign in with this email address.", submit: "Add",
-    body: html`${textField({ id: "gu-email", name: "email", label: "Email", type: "email", placeholder: "name@example.com" })}
+    body: html`${textField({ id: "gu-email", name: "email", label: "Email", type: "email", placeholder: "name@example.com", hint: "The address they sign in to Google with. Treeline uses Google to sign in." })}
       ${textField({ id: "gu-name", name: "name", label: "Name (optional)" })}
       ${radioGroup({ name: "role", legend: "Role", value: "parent", options: [["parent", "Parent", "Can change everything, approve strings and add phones."], ["sitter", "Sitter", "Can see today's calls, pause the line, turn quiet hours on or off, and disconnect or ring a phone."]] })}`,
     onSubmit: (f) => post("/api/grown-ups", { email: f.querySelector("[name=email]").value, name: f.querySelector("[name=name]").value,

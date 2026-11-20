@@ -222,6 +222,36 @@ def health(version, seconds=HEALTH_SECONDS):
     return False
 
 
+SOUNDS_DIR = "/usr/share/asterisk/sounds/en/treeline"
+SOUND_NAME = re.compile(r"^[a-z0-9_]+\.wav$")
+
+
+def build_sounds(release_dir):
+    """The operator messages come from the release (asterisk/sounds): build them with the release's own script, as the
+    unprivileged `treeline` user into a temporary folder, then copy only plain .wav files with plain names into Asterisk's
+    folder. A deploy that adds or changes a message must not play a missing or stale file."""
+    import tempfile
+    script, src = os.path.join(release_dir, "asterisk", "make_sounds.sh"), os.path.join(release_dir, "asterisk", "sounds")
+    if not os.path.isfile(script):
+        return
+    work = tempfile.mkdtemp(prefix="treeline-sounds-")
+    try:
+        shutil.chown(work, "treeline", "treeline")
+        out = os.path.join(work, "out")
+        done = subprocess.run(["runuser", "-u", "treeline", "--", "env", f"SOUNDS_SRC={src}", f"SOUNDS_OUT={out}", f"TMPDIR={work}",
+                               "sh", script], capture_output=True, text=True, cwd=work)
+        if done.returncode != 0:
+            raise Failed("building the operator messages failed: " + done.stderr.strip()[-300:])
+        os.makedirs(SOUNDS_DIR, exist_ok=True)
+        for name in sorted(os.listdir(out)):
+            path = os.path.join(out, name)
+            if SOUND_NAME.match(name) and os.path.isfile(path) and not os.path.islink(path):
+                shutil.copyfile(path, os.path.join(SOUNDS_DIR, name))
+                os.chmod(os.path.join(SOUNDS_DIR, name), 0o644)
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
 def systemctl(*args):
     subprocess.run(["systemctl", *args], check=True)
 
@@ -287,6 +317,27 @@ def restore_data_from_pre_migrate(moved, expected, owner="treeline"):
                 pw = pwd.getpwnam(owner)
                 os.fchown(out.fileno(), pw.pw_uid, pw.pw_gid)
     return [p for p, _ in plan]
+
+
+def plan_rollback(before, after, expected):
+    """Split the files whose version the old code would refuse into: `moved` (they existed before the switch, so the data layer
+    took a pre-migration copy) and `created` (made by the failed release, so there is no copy)."""
+    wrong = {f: v for f, v in after.items() if v != expected[f]}
+    return ({f: v for f, v in wrong.items() if f in before}, {f: v for f, v in wrong.items() if f not in before})
+
+
+def quarantine_dir():
+    return os.path.join(common.data_dir(), "quarantine", dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ"))
+
+
+def quarantine(files):
+    dest = quarantine_dir()
+    for rel_path in files:
+        target = os.path.join(common.data_dir(), rel_path)
+        os.makedirs(os.path.join(dest, os.path.dirname(rel_path)), mode=0o700, exist_ok=True)
+        for suffix in ("", "-wal", "-shm"):
+            if os.path.lexists(target + suffix):
+                os.rename(target + suffix, os.path.join(dest, rel_path + suffix))
 
 
 def schema_of(release_dir):
@@ -399,12 +450,14 @@ def deploy(dest, p, host_env, prev_version, patience=0, window=True, allow_older
         if done.returncode != 0:
             raise Failed("treeline-config failed: " + done.stderr.strip()[-300:])
         changed = set(done.stdout.replace("changed:", "").replace(",", " ").split()) - {"nothing", "app"}
+        build_sounds(dest)
         rel.switch(p["current"], dest)
         subprocess.run(["systemctl", "daemon-reload"], check=True)
         restart([u for u in ("asterisk", "caddy") if u in changed])
         restart(SERVICES)
         if health(new):
             record(p, current=new, previous=prev_version, schema_before=before, schema_new=info["schema"])
+            clear_failed(p, new)
             prune(p, keep={new, prev_version})
             log(f"{new} is healthy")
             return 0
@@ -424,11 +477,17 @@ def roll_back(p, prev_dir, prev_version, snap, before, changed, failed_dir=None)
         after = data_versions()
         old_schema = schema_of(prev_dir)
         expected = expected_versions(after, old_schema)
-        moved = {f: v for f, v in after.items() if v != expected[f]}
+        moved, created = plan_rollback(before, after, expected)
+        if created:
+            # Made while the failed release ran (a family created during the health wait), at a version the old code refuses,
+            # and with no pre-migration copy. Set aside, not lost, so everyone else gets the old release back.
+            log(f"files created by the failed release at a newer version: {sorted(created)}; moving them to {quarantine_dir()}")
+            quarantine(created)
         if moved:
             log(f"the failed release migrated {sorted(moved)}; restoring the copies taken just before")
             restore_data_from_pre_migrate(moved, expected)
         restore_config(snap)
+        build_sounds(prev_dir)
         rel.switch(p["current"], prev_dir)
         subprocess.run(["systemctl", "daemon-reload"], check=True)
         restart([u for u in ("asterisk", "caddy") if u in changed])
@@ -436,7 +495,8 @@ def roll_back(p, prev_dir, prev_version, snap, before, changed, failed_dir=None)
         if health(prev_version):
             log(f"ROLLED BACK to {prev_version}, which is healthy")
             if failed_dir:
-                shutil.rmtree(failed_dir, ignore_errors=True)       # so the same version can be deployed again once fixed
+                mark_failed(p, os.path.basename(failed_dir))
+                shutil.rmtree(failed_dir, ignore_errors=True)       # so a fixed build of it can be deployed with --version
             return 1
         log(f"ROLLBACK FAILED: {prev_version} is not healthy either")
         return 5
@@ -446,8 +506,24 @@ def roll_back(p, prev_dir, prev_version, snap, before, changed, failed_dir=None)
 
 
 def record(p, **state):
-    state["at"] = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
-    common.atomic_write(os.path.join(p["state"], "state.json"), json.dumps(state, indent=2), 0o600)
+    """Update state.json (the keys given replace the old ones; the rest, such as the list of failed releases, is kept)."""
+    merged = read_state(p)
+    merged.update(state)
+    merged["at"] = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
+    os.makedirs(p["state"], mode=0o700, exist_ok=True)
+    common.atomic_write(os.path.join(p["state"], "state.json"), json.dumps(merged, indent=2), 0o600)
+
+
+def mark_failed(p, version):
+    """A release that did not become healthy is not tried again by the timer (it would fail, and cause an outage, every
+    15 minutes of the window). Only an explicit --version retries it."""
+    failed = sorted(set(read_state(p).get("failed", [])) | {version}, key=vkey)
+    record(p, failed=failed)
+
+
+def clear_failed(p, version):
+    failed = [v for v in read_state(p).get("failed", []) if v != version]
+    record(p, failed=failed)
 
 
 def read_state(p):
@@ -479,22 +555,47 @@ def manual_rollback(p):
     wait_for_quiet(common.host_settings(), window=False)
     prev_dir = os.path.join(p["releases"], prev)
     snap = os.path.join(p["state"], "config-before")
+    cur_dir = os.path.join(p["releases"], cur)
+    cfg = os.path.join(os.path.dirname(os.path.realpath(__file__)), "treeline-config")
+    os.makedirs(p["state"], mode=0o700, exist_ok=True)
+    snapshot_config(snap)
     log(f"rolling back {cur} -> {prev}")
     for s in SERVICES:
         subprocess.run(["systemctl", "stop", s], check=False)
-    rel.switch(p["current"], prev_dir)
-    subprocess.run([os.path.join(os.path.dirname(os.path.realpath(__file__)), "treeline-config"), "apply", "--release", prev_dir, "--restart"], check=True)
-    restart(SERVICES)
-    if not health(prev):
-        log("the previous release is not healthy either")
-        return 5
+    try:
+        rel.switch(p["current"], prev_dir)
+        done = subprocess.run([cfg, "apply", "--release", prev_dir, "--restart"], capture_output=True, text=True)
+        if done.returncode != 0:
+            raise Failed("treeline-config failed for the previous release: " + done.stderr.strip()[-300:])
+        build_sounds(prev_dir)
+        restart(SERVICES)
+        if not health(prev):
+            raise Failed(f"{prev} did not become healthy")
+    except Exception as err:        # noqa: BLE001 -- never leave the services stopped: go back to what was running
+        log(f"ROLLBACK FAILED: {err}; going back to {cur}")
+        try:
+            restore_config(snap)
+            rel.switch(p["current"], cur_dir)
+            subprocess.run(["systemctl", "daemon-reload"], check=False)
+            subprocess.run(["systemctl", "restart", "asterisk", "caddy"], check=False)
+            subprocess.run(["systemctl", "restart", *SERVICES], check=False)
+            build_sounds(cur_dir)
+        except Exception as again:  # noqa: BLE001
+            log(f"could not go back to {cur} either: {again}")
+            return 5
+        return 5 if not health(cur) else 1
     record(p, current=prev, previous=cur, schema_before=now, schema_new=schema_of(prev_dir))
     return 0
 
 
 # ------------------------------------------------------------------ commands
 def adopt(src):
+    """Stage the release install.sh was run from, ONLY on a machine with no release yet. Afterwards releases change only through
+    the agent (verified, health-checked, with rollback); re-running an old install.sh must never switch production back."""
     p = paths()
+    if current_version(p):
+        print(f"a release is already installed ({current_version(p)}); install.sh does not change it (use treeline-deploy)")
+        return 0
     info = rel.read_info(src)
     dest = os.path.join(p["releases"], info["version"])
     if os.path.exists(dest):
@@ -551,6 +652,10 @@ def run(argv):
                 version = opts["--version"] or latest_version(host_env)
                 if auto and cur and vkey(version) <= vkey(cur):
                     log(f"{cur} is the latest; nothing to do")
+                    return 0
+                if auto and version in read_state(p).get("failed", []):
+                    log(f"{version} failed its health check before and was rolled back; not trying it again on the timer "
+                        f"(publish a newer release, or run: treeline-deploy --version {version})")
                     return 0
                 if auto:
                     wait_for_quiet(host_env, window=True)        # do not even download outside the window

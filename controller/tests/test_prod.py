@@ -59,6 +59,12 @@ class ProductionGuard(unittest.TestCase):
                      {"TREELINE_GOOGLE_TOKEN_URL": "https://evil.example.invalid/token"}, {"TREELINE_GOOGLE_AUTH_URL": "https://evil.example.invalid/auth"}):
             self.assertTrue(prod.problems(good_env(**over)), over)
 
+    def test_ari_on_this_machine_is_accepted_however_it_is_written_and_anything_else_is_not(self):
+        for url in ("http://127.0.0.1:8088/ari", "http://localhost:8088/ari", "http://[::1]:8088/ari"):
+            self.assertEqual(prod.problems(good_env(ARI_URL=url)), [], url)
+        for url in ("http://203.0.113.5:8088/ari", "http://127.0.0.1.evil.example.invalid/ari", "http://[2001:db8::1]:8088/ari"):
+            self.assertTrue(prod.problems(good_env(ARI_URL=url)), url)
+
     def test_enforce_exits_with_a_message_naming_every_problem(self):
         with self.assertRaises(SystemExit) as caught, mock.patch("sys.stderr") as err:
             prod.enforce(good_env(TREELINE_DEV_CODES="1", ARI_PASS="treeline-dev"))

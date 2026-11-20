@@ -662,6 +662,39 @@ class F_Deploy(VmTestCase):
         self.assertEqual(vm("treeline-deploy 2>&1; echo RC=$?").stdout.rpartition("RC=")[2].strip(), "0")
         self.assertEqual(self.current(), "v0.0.9")
 
+    def test_14a_a_release_that_failed_is_not_tried_again_by_the_timer(self):
+        """Code review #1: without this, a bad release was redeployed (an outage) every 15 minutes of the window."""
+        self.variant("v0.1.0", "auto-bad", patches=MIGRATE + UNHEALTHY, schema=SCHEMA2, serve=True)
+        rc, out = vm("treeline-deploy 2>&1; echo RC=$?").stdout.rpartition("RC=")[::2]
+        self.assertEqual(int(out), 1, rc)
+        self.assertIn("ROLLED BACK", rc)
+        self.assertIn("v0.1.0", json.loads(vm("cat /var/lib/treeline/deploy/state.json").stdout)["failed"])
+        started = self.started()
+        rc, out = vm("treeline-deploy 2>&1; echo RC=$?").stdout.rpartition("RC=")[::2]
+        self.assertEqual(int(out), 0, rc)
+        self.assertIn("not trying it again", rc)
+        self.assertEqual(self.current(), "v0.0.9")
+        self.assertEqual(self.started(), started, "nothing was restarted")
+        self.wait_healthy()
+
+    def test_14b_a_deploy_builds_the_releases_operator_messages(self):
+        """Code review #6: a release that adds a message must not play a missing file."""
+        self.variant("v0.1.1", "sounds", patches=MIGRATE + [("asterisk/sounds/messages.txt", "cannot_complete|",
+                     "ci_probe|This is a test message for the deploy job.\ncannot_complete|")], schema=SCHEMA2)
+        self.assertFalse(vm("test -e /usr/share/asterisk/sounds/en/treeline/ci_probe.wav", check=False).returncode == 0)
+        rc, out = self.deploy("sounds")
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(vm("stat -c %U:%a /usr/share/asterisk/sounds/en/treeline/ci_probe.wav").stdout.strip(), "root:644")
+        self.assertGreater(int(vm("stat -c %s /usr/share/asterisk/sounds/en/treeline/ci_probe.wav").stdout), 1000)
+
+    def test_14c_install_sh_from_an_older_release_is_refused_and_changes_nothing(self):
+        """Code review #4: re-running the first release's install.sh must never switch production back to it."""
+        before = (self.current(), self.started(), vm("sha256sum /usr/local/lib/treeline/treeline-deploy").stdout)
+        r = vm("cd /root/rel && ./deploy/native/install.sh --ci --domain app.treeline.test --state-dir /srv/state 2>&1; echo RC=$?", check=False)
+        self.assertNotIn("RC=0", r.stdout[-10:], r.stdout[-500:])
+        self.assertIn("older than the one running", r.stdout)
+        self.assertEqual((self.current(), self.started(), vm("sha256sum /usr/local/lib/treeline/treeline-deploy").stdout), before)
+
     def test_14_only_three_releases_are_kept_and_the_timer_is_installed(self):
         self.assertLessEqual(len(self.releases()), 4)           # the last three, plus nothing left over
         self.assertNotIn("v0.0.1", self.releases())

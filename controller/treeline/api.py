@@ -416,8 +416,8 @@ def back_to_app(result, clear_cookie=False):
 @app.post("/api/auth/beta")
 def auth_beta():
     """The closed beta's access code, needed once to create a treehouse. Wrong, expired and unset all read the same."""
+    # Per address only. A limit shared by everyone would let one stranger lock every invited family out for an hour.
     rate_limit(f"beta-ip:{client_ip()}", 10, 3600)
-    rate_limit("beta-all", 60, 3600)
     if google.check_code(body().get("code")) != "ok":
         raise ApiError("That code didn't work. Check it and try again, or ask whoever gave it to you.", 400, "bad_beta_code")
     return jsonify(gate=google.put("gate", google.GATE_TTL, {}))
@@ -1504,7 +1504,10 @@ def grown_up_add():
     audit("grown_up_added", email, None, role)
     mail.send(email, f"You've been added to {g.th['name']} on Treeline",
               f"{g.gu['name'] or g.email} added you as a {role} for {g.th['name']}.\n\n"
-              "Open Treeline and sign in with this email address to see it.")
+              + ("Open Treeline and choose Continue with Google, using this email address. It has to be a Google account "
+                 "(a Gmail address, or another address you have made a Google account with). If it isn't one, ask "
+                 f"{g.gu['name'] or 'them'} to add an address that is."
+                 if prod.is_production() else "Open Treeline and sign in with this email address to see it."))
     return jsonify(ok=True), 201
 
 

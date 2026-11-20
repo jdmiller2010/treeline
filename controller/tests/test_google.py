@@ -89,17 +89,17 @@ class BetaCode(Base):
         self.assertEqual(len(set(outcomes)), 1, outcomes)
         self.assertEqual(outcomes[0][0], 400)
 
-    def test_guessing_is_limited_per_address_and_overall(self):
+    def test_guessing_is_limited_per_address_and_one_stranger_cannot_lock_everyone_out(self):
         for _ in range(10):
             self.c.post("/api/auth/beta", json={"code": "AAAA-AAAA"})
         self.assertEqual(self.c.post("/api/auth/beta", json={"code": CODE}).status_code, 429, "even the right code waits once the address is over its limit")
+        # many junk tries from many addresses: an invited family at another address still gets in (no shared limit)
         api._hits.clear()
-        for i in range(60):
-            api._hits[f"x"] = []
+        for i in range(200):
             with mock.patch.object(api, "client_ip", lambda i=i: f"198.51.100.{i % 250}"):
                 self.c.post("/api/auth/beta", json={"code": "AAAA-AAAA"})
         with mock.patch.object(api, "client_ip", lambda: "203.0.113.200"):
-            self.assertEqual(self.c.post("/api/auth/beta", json={"code": CODE}).status_code, 429)
+            self.assertEqual(self.c.post("/api/auth/beta", json={"code": CODE}).status_code, 200)
 
     def test_a_generated_code_is_eight_characters_from_the_unambiguous_alphabet_and_checks_out(self):
         for _ in range(50):
@@ -107,6 +107,20 @@ class BetaCode(Base):
             self.assertRegex(c, r"^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{4}-[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{4}$")
             with mock.patch.dict(os.environ, {"TREELINE_BETA_CODE_HASH": google.hash_code(c)}):
                 self.assertEqual(google.check_code(c), "ok")
+
+
+class GrownUpInvite(Base):
+    def test_in_production_the_invite_says_to_use_google_with_that_address(self):
+        from tests import test_api
+        sent = []
+        p = test_api.Person()                       # signed in the development way, then the server behaves as production
+        p.post("/api/treehouse", {"name": "Invite house 2", "timezone": "America/Los_Angeles", "ack_911": True, "consent": True, "your_name": "Pat"})
+        with mock.patch.object(api.mail, "send", lambda to, subj, body: sent.append(body) or True), \
+                mock.patch.object(prod, "is_production", lambda env=None: True):
+            r = p.post("/api/grown-ups", {"email": f"sitter-invite{time.time_ns()}@example.com", "role": "sitter"})
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertIn("Continue with Google", sent[-1])
+        self.assertIn("has to be a Google account", sent[-1])
 
 
 class Flow(Base):

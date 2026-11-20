@@ -30,6 +30,21 @@ Everything not yet fixed, from every review. Move a row to its review's "Remedia
 | R3-x | See Review 3 above for R3-1 to R3-10 | | | see the review |
 | R2-7 | "Delete all my data" removes the live file at once, but backups of it (central, and the household's own) live up to 7 days; the VM cannot delete them | Informational | 2026-11-19 | Accepted, documented ([DATA_LAYER.md](DATA_LAYER.md), `infra/README.md`) and warned about in the app when retention is shortened |
 
+## Review 7: 2026-11-20, `/code-review` findings that touch security or availability (fixes by the author, not independent)
+
+**Scope.** Nine findings from `/code-review` on `main` after Review 6, each checked against the code before fixing; all nine held up. The ones with a security or availability side are recorded here; all have tests.
+
+| Ref | Finding | Status |
+|---|---|---|
+| R7-1 | The deploy timer re-deployed a release that had failed its health check every 15 minutes of the window (an outage each time) | **Fixed**: failed versions are recorded in the deploy state and skipped by the timer; only `--version` retries one. Test: `vm_test.F_Deploy.test_14a`, `test_tools` |
+| R7-2 | A rollback failed, leaving every family without service, if a household file was created by the failed release (no pre-migration copy) | **Fixed**: such files are set aside in `data/quarantine/` and the rollback continues. Test: `test_tools.DeployAgentLogic` |
+| R7-3 | A failed manual rollback crashed with the services stopped | **Fixed**: it goes back to the running release and restarts the services. Test: `test_tools.DeployAgentLogic` |
+| R7-4 | Re-running an old release's `install.sh` could switch production back to it (and put back older root tools) | **Fixed**: `install.sh` refuses a release older than the running one, and `adopt` only acts on a machine with no release. Test: `vm_test.F_Deploy.test_14c` |
+| R7-5 | One client could lock every new family out of the beta code for an hour (a shared limit of 60 per hour) | **Fixed**: per-address limit only. Test: `test_google.BetaCode` |
+| R7-6 | `build_release.sh` could sign an untracked local copy of five controller files | **Fixed**: those files go through `git ls-files` like the rest. No automated test (it needs a dirty tree) |
+
+Also fixed, not security: deploys now rebuild the operator messages (`test_14b`); the invite email and form say the address must be a Google account; `ARI_URL=http://[::1]...` is accepted as loopback (`test_prod`).
+
 ## Review 6: 2026-11-20, `/security-review` of everything since Review 1 (19 commits: the AWS deployment, Google sign-in, backups, infra)
 
 **Scope.** `origin/main..main`: the production guard, SMTP, access log, Google sign-in and the beta code, the native install, the root-run tools and the deploy agent, backups and restore, the release workflow, `bootstrap.sh`, the CDK app, `deploy.sh`, and `signin.js`. Test-only files were out of scope.
@@ -72,7 +87,7 @@ Not changed: the plan's packages 1, 7, 8 and 9 (first-deploy risk reducers, SES 
 | R4-1 | The ID token's `iss`, `aud`, `exp`, `nonce` and `email_verified` are checked; a wrong audience, expired token, other issuer, unverified email, missing or bad email, or another sign-in's nonce creates no session. The signature is not checked, because the token comes straight from Google over TLS to the token endpoint in exchange for our client secret and PKCE verifier | Tested: `test_google.Flow.test_each_bad_token_is_refused_and_creates_no_session` |
 | R4-2 | State, nonce and verifier are single use and expire in ten minutes; a replayed or made-up state sends nothing to Google; Google's `error=` ends the attempt | Tested (`test_nothing_is_sent_to_the_token_endpoint...`, `test_google_saying_no...`) |
 | R4-3 | The session word returned in the redirect is single use, lasts one minute, and travels in the URL fragment (never a query, never a log line); the session token itself never appears in a URL | Tested (`test_a_new_person_with_the_code...`, `test_the_one_time_word_expires`) |
-| R4-4 | Wrong, expired and unset beta codes give the same answer; 10 tries per address and 60 overall per hour; a gate is used up by the first sign-in it lets in, including two started before either finished | Tested (`BetaCode`, `test_a_gate_is_used_up...`) |
+| R4-4 | Wrong, expired and unset beta codes give the same answer; 10 tries per address per hour (the overall limit of 60 was removed in Review 7: one stranger could lock every family out); a gate is used up by the first sign-in it lets in, including two started before either finished | Tested (`BetaCode`, `test_a_gate_is_used_up...`) |
 | R4-5 | Production has no emailed-code sign-in: `/api/auth/request` and `/verify` return 404 and `dev_code` cannot exist; the dev Google endpoints (`TREELINE_GOOGLE_AUTH_URL`, `TREELINE_GOOGLE_TOKEN_URL`) are refused by the production guard so sign-in cannot be pointed at another server | Tested (`test_prod`, `test_google`, and `vm_test.E_Production` through the real Caddy) |
 | R4-6 | The access code is generated by `bootstrap.sh`, shown once, and only its SHA-256 and the expiry are stored (SSM, then the app's environment); a new code replaces the old one at the next app restart | Tested against the fake `aws` (`test_bootstrap.sh`): never in the state or argv, hash matches |
 | R4-7 | The state, gate and one-time stores are in memory, so they assume one gunicorn worker (already true) and a restart makes a person try again | Accepted |

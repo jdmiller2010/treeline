@@ -67,6 +67,18 @@ fi
 [ -d /run/systemd/system ] || die "systemd is not running"
 [ -f "$REL/release.json" ] || die "run this from an unpacked release (no release.json beside deploy/)"
 [ -n "$MAIL_DOMAIN" ] || MAIL_DOMAIN="${DOMAIN#*.}"
+# Never from an older release than the one running: it would put back older tools, units and templates (the deploy agent among
+# them). New releases arrive through the agent; this script only sets a machine up or repairs it from the current release.
+if [ -f "$OPT/current/release.json" ] && [ -z "${TREELINE_ALLOW_OLDER_INSTALL:-}" ]; then
+  python3 -I - "$OPT/current/release.json" "$REL/release.json" <<'PY' || die "this release is older than the one running; run install.sh from the current release (/opt/treeline/current), or set TREELINE_ALLOW_OLDER_INSTALL=1 if you really mean it"
+import json, re, sys
+def key(v):
+    m = re.match(r"^v(\d+)\.(\d+)\.(\d+)(?:-(.+))?$", v)
+    return (int(m[1]), int(m[2]), int(m[3]), 1 if m[4] is None else 0, m[4] or "")
+running, mine = (json.load(open(f))["version"] for f in sys.argv[1:3])
+sys.exit(0 if key(mine) >= key(running) else 1)
+PY
+fi
 # The signing key: without one nothing could ever be deployed, so stop now rather than at the first deploy.
 grep -qE '^[^#].* (ssh-|sk-ssh-)' "$SIGNERS" 2>/dev/null || [ -s "$ETC/release_signers" ] || \
   die "no release signing key: $SIGNERS has none and $ETC/release_signers does not exist (see docs/DEPLOY_AWS.md, Release signing)"

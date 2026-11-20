@@ -186,7 +186,7 @@ owner's password manager, open, check. Local spool pruned at 7 days.
 - **Who may sign in (owner's decision, replacing the invite list):** a **beta access code** the owner hands
   out. A visitor enters it on a private page; once accepted, they may register with any Google account.
   `/treeline/allowed_emails` and its prompt in `bootstrap.sh` are replaced by a hashed code (and
-  `/treeline/google_client_secret` is added). **Decided and built:** one shared 8-character code; it expires (180 days by default, `TREELINE_BETA_DAYS`); no use counting; needed once, to create a treehouse; revoked by making a new one (`bootstrap.sh set beta_code`, then restart `treeline-api`); guessing limited to 10 tries per address and 60 overall per hour with identical answers for wrong, expired and unset; a grown-up a parent added signs in with Google alone; one treehouse per email. See SECURITY.md Review 4.
+  `/treeline/google_client_secret` is added). **Decided and built:** one shared 8-character code; it expires (180 days by default, `TREELINE_BETA_DAYS`); no use counting; needed once, to create a treehouse; revoked by making a new one (`bootstrap.sh set beta_code`, then restart `treeline-api`); guessing limited to 10 tries per address per hour with identical answers for wrong, expired and unset; a grown-up a parent added signs in with Google alone; one treehouse per email. See SECURITY.md Review 4.
 - Remove the emailed-code routes from production. **The test suites depend on dev codes**: keep that path
   only when `TREELINE_DEV_CODES=1` (private addresses only) and make production refuse to start with it set.
   Add a dev sign-in that the browser tests can use without Google.
