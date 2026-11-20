@@ -56,7 +56,7 @@ jobs:
       - name: Vulnerability check (Ubuntu packages are listed, not counted, on a pull request)
         run: |
           rc=0
-          python3 scripts/vuln_check.py sbom.cdx.json --report report.md > /dev/null || rc=$?
+          python3 scripts/vuln_check.py sbom.cdx.json --report report.md || rc=$?
           [ -f report.md ] && cat report.md >> "$GITHUB_STEP_SUMMARY"
           exit $rc
 
@@ -98,7 +98,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           rc=0
-          python3 scripts/vuln_check.py sbom.cdx.json --os-watch "$OS_WATCH" --report report.md --sync-issue > /dev/null || rc=$?
+          python3 scripts/vuln_check.py sbom.cdx.json --os-watch "$OS_WATCH" --report report.md --sync-issue || rc=$?
           [ -f report.md ] && cat report.md >> "$GITHUB_STEP_SUMMARY"
           exit $rc
 

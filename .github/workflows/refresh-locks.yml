@@ -75,7 +75,7 @@ jobs:
           python3 scripts/check_repo_rules.py
           python3 scripts/sbom.py -o sbom.cdx.json
           rc=0
-          python3 scripts/vuln_check.py sbom.cdx.json --report report.md > /dev/null || rc=$?
+          python3 scripts/vuln_check.py sbom.cdx.json --report report.md || rc=$?
           [ ! -f report.md ] || cat report.md >> "$GITHUB_STEP_SUMMARY"
           [ "$rc" -ne 1 ] || echo "::error::The refreshed locks have a finding (see the summary): not pushing them."
           [ "$rc" -ne 2 ] || echo "::error::The vulnerability check could not run, so the refreshed locks are not pushed unchecked."
