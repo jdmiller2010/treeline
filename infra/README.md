@@ -88,10 +88,11 @@ One-time setup on your computer (this is the only place `npm` is used, with a pi
 ```bash
 (cd infra && npm ci --ignore-scripts)
 python3 -m venv infra/.venv && infra/.venv/bin/pip install --require-hashes --no-deps -r infra/requirements.lock
+infra/deploy.sh bootstrap       # once per account: CDK's own setup (the CDKToolkit stack)
 infra/deploy.sh diff            # then:  infra/deploy.sh deploy
 ```
 
-`infra/deploy.sh` runs `bootstrap.sh check --quiet` first and **refuses to run `cdk deploy` unless it exits 0**, so a deploy cannot start with a secret missing, a policy that drifted, or no VM key issued. It reads your SSH address, the allowlist, the alert email (from SSM) and the hosted zone id (from Route 53) into **environment variables** for the CDK app: none is written to a file or to this repository, and `cdk.context.json` and `cdk.out/` are gitignored. It also prints the Lightsail bundle (RAM, price) from the real API and stops if the planned bundle (`nano_3_0`) no longer exists. The stacks use the CLI's own credentials (`CliCredentialsStackSynthesizer`), so `cdk bootstrap` is not needed (there are no assets); if CloudFormation asks for it, run it.
+`infra/deploy.sh` runs `bootstrap.sh check --quiet` first and **refuses to run `cdk deploy` unless it exits 0**, so a deploy cannot start with a secret missing, a policy that drifted, or no VM key issued. It reads your SSH address, the allowlist, the alert email (from SSM) and the hosted zone id (from Route 53) into **environment variables** for the CDK app: none is written to a file or to this repository, and `cdk.context.json` and `cdk.out/` are gitignored. It also prints the Lightsail bundle (RAM, price) from the real API and stops if the planned bundle (`nano_3_0`) no longer exists. The stacks deploy with the CLI's own credentials (`CliCredentialsStackSynthesizer`), but the CLI still uploads each template to CDK's bootstrap bucket, so **run `infra/deploy.sh bootstrap` once per account and region** before the first deploy (it creates the standard `CDKToolkit` stack). `deploy.sh` refuses with that instruction until it exists. (The first version of this page said bootstrap was not needed: the first real deploy showed otherwise.)
 
 `cdk synth` in CI has no AWS account and skips the check; the tests pass dummy settings.
 

@@ -113,6 +113,11 @@ def main():
         st["keys"][u] = [k for k in st["keys"].get(u, []) if k["id"] != kid]
         save(st)
 
+    elif (svc, cmd) == ("cloudformation", "describe-stacks"):
+        if os.environ.get("FAKE_CDK_TOOLKIT") != "1":
+            fail("ValidationError", "Stack with id CDKToolkit does not exist")
+        print("CREATE_COMPLETE")
+
     elif (svc, cmd) == ("route53", "list-hosted-zones-by-name"):
         print("/hostedzone/Z0123456789ABCDEFGHIJ\ttreelinephone.com.")
 
