@@ -109,7 +109,8 @@ class Rules(unittest.TestCase):
 
     def test_forbidden_files(self):
         for path in (".env", "deploy/.env", "x/server.pem", "data/treeline.db", "infra/.local/vm-credentials",
-                     "cdk.context.json", "id_ed25519", "backup.agekey"):
+                     "cdk.context.json", "id_ed25519", "backup.agekey", "data/households/4.db-wal", "x/1.db-journal",
+                     "central/20261119T030000Z.db.age", "pre-migrate/1-v1-20261119T000000-abc123.db", "backups/central/x.txt"):
             r = Repo()
             r.write(path, "x\n")
             code, out = r.scan()

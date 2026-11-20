@@ -19,6 +19,11 @@ dist/
 *.db
 *.db-wal
 *.db-shm
+*.db-journal
+*.age
+pre-migrate/
+backups/
+households/
 *.sqlite
 *.sqlite3
 id_rsa*
