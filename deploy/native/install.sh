@@ -17,6 +17,9 @@
 #   --state-dir DIR        with --ci: a directory to bind-mount as the state disk
 #   --aws-endpoint URL     with --ci: send SSM/S3 calls to a fake
 #   --acme-dir URL --acme-root FILE   with --ci: a local ACME CA instead of Let's Encrypt
+#   --release-repo OWNER/REPO   where the deploy agent looks for releases (GitHub Releases of that public repository)
+#   --release-base URL     with --ci: a local release server instead of GitHub
+#   --deploy-window HH-HH  the UTC hours in which the timer may deploy (default 09-12); empty = any time
 #   --no-start             set everything up but do not start the services
 set -euo pipefail
 
@@ -24,7 +27,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REL="$(cd "$HERE/../.." && pwd)"
 ETC=/etc/treeline; STATE=/var/lib/treeline; OPT=/opt/treeline; LIB=/usr/local/lib/treeline
 DOMAIN=""; MAIL_DOMAIN=""; STATE_DEVICE=""; PUBLIC_IP=""; SIGNERS="$HERE/release_signers"
-CI=0; STATE_DIR=""; AWS_ENDPOINT=""; ACME_DIR=""; ACME_ROOT=""; START=1
+CI=0; STATE_DIR=""; AWS_ENDPOINT=""; ACME_DIR=""; ACME_ROOT=""; START=1; RELEASE_REPO=""; RELEASE_BASE=""; WINDOW="09-12"
 
 say() { printf '==> %s\n' "$*"; }
 die() { printf 'install: %s\n' "$*" >&2; exit 1; }
@@ -41,6 +44,9 @@ while [ $# -gt 0 ]; do
     --aws-endpoint) AWS_ENDPOINT="${2:?}"; shift 2 ;;
     --acme-dir) ACME_DIR="${2:?}"; shift 2 ;;
     --acme-root) ACME_ROOT="${2:?}"; shift 2 ;;
+    --release-repo) RELEASE_REPO="${2:?}"; shift 2 ;;
+    --release-base) RELEASE_BASE="${2:?}"; shift 2 ;;
+    --deploy-window) WINDOW="$2"; shift 2 ;;
     --no-start) START=0; shift ;;
     -h|--help) sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) die "unknown option $1" ;;
@@ -50,7 +56,9 @@ done
 [ "$(id -u)" = 0 ] || die "run as root (sudo)"
 [ -n "$DOMAIN" ] || die "--domain is required"
 [[ "$DOMAIN" =~ ^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$ ]] || die "'$DOMAIN' is not a host name"
-if [ "$CI" = 0 ] && { [ -n "$STATE_DIR" ] || [ -n "$AWS_ENDPOINT" ] || [ -n "$ACME_DIR" ] || [ -n "$ACME_ROOT" ]; }; then
+[[ -z "$RELEASE_REPO" || "$RELEASE_REPO" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || die "--release-repo must look like OWNER/REPO"
+[[ "$WINDOW" =~ ^([0-9]{1,2}-[0-9]{1,2})?$ ]] || die "--deploy-window must look like 09-12 (UTC hours)"
+if [ "$CI" = 0 ] && { [ -n "$RELEASE_BASE" ] || [ -n "$STATE_DIR" ] || [ -n "$AWS_ENDPOINT" ] || [ -n "$ACME_DIR" ] || [ -n "$ACME_ROOT" ]; }; then
   die "--state-dir, --aws-endpoint, --acme-dir and --acme-root exist only for the CI job (--ci); a real machine must not use them"
 fi
 # shellcheck disable=SC1091
@@ -165,6 +173,9 @@ python3 -I -c 'import ipaddress,sys; ipaddress.IPv4Address(sys.argv[1])' "$PUBLI
   echo "TREELINE_PRIVATE_IP=$private_ip"
   echo "TREELINE_PUBLIC_IP=$PUBLIC_IP"
   echo "TREELINE_LOCAL_NET=$local_net"
+  [ -z "$RELEASE_REPO" ] || echo "TREELINE_RELEASE_REPO=$RELEASE_REPO"
+  [ -z "$RELEASE_BASE" ] || echo "TREELINE_RELEASE_BASE=$RELEASE_BASE"
+  echo "TREELINE_DEPLOY_WINDOW_UTC=$WINDOW"
   [ -z "$ACME_DIR" ] || echo "TREELINE_ACME_DIR=$ACME_DIR"
   [ -z "$ACME_ROOT" ] || echo "TREELINE_ACME_ROOT=$ACME_ROOT"
   [ "$CI" = 0 ] || echo "TREELINE_CI=1"
@@ -229,10 +240,10 @@ if [ ! -d "$OPT/releases/$(python3 -I -c 'import json,sys; print(json.load(open(
   "$LIB/treeline-deploy" adopt "$REL"
 fi
 "$LIB/treeline-config" apply --release "$OPT/current"
-systemctl enable asterisk caddy treeline-api treeline-controller treeline-certsync.timer >/dev/null 2>&1
+systemctl enable asterisk caddy treeline-api treeline-controller treeline-certsync.timer treeline-deploy.timer >/dev/null 2>&1
 if [ "$START" = 1 ]; then
   systemctl restart asterisk caddy
-  systemctl start treeline-certsync.timer
+  systemctl start treeline-certsync.timer treeline-deploy.timer
   if [ -f "$ETC/aws-credentials" ]; then
     systemctl restart treeline-api treeline-controller
     say "started. Check: curl -fsS https://$DOMAIN/api/health"

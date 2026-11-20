@@ -1,0 +1,13 @@
+[Unit]
+Description=Treeline deploy agent: fetch, verify, switch, health-check, roll back
+After=network-online.target treeline-api.service
+Wants=network-online.target
+RequiresMountsFor=/var/lib/treeline
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/treeline-deploy
+# 4 = "not now" (outside the window, or a call is in progress): not a failure.
+SuccessExitStatus=4
+TimeoutStartSec=30min
+Nice=10

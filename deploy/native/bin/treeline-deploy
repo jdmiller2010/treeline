@@ -1,25 +1,496 @@
 #!/opt/treeline/tools/bin/python -I
-"""Treeline deploy agent. The first install only stages the release it is run from; fetching, verifying, switching,
-health checks and rollback arrive with work package 2 (docs/DEPLOY_AWS.md).
+"""Treeline deploy agent. Runs as root, so it trusts nothing it has not verified. See docs/DEPLOY_AWS.md, work package 2.
 
-    treeline-deploy adopt DIR        first install: stage the unpacked release DIR (called by install.sh)
+    treeline-deploy                          what the timer runs: deploy a newer release if one exists, in the quiet window, when idle
+    treeline-deploy --version vX.Y.Z         fetch that release and deploy it now (still verified, still health-checked)
+    treeline-deploy --tarball F [--sig S]    deploy a release from local files (offline installs and the CI job; still verified)
+    treeline-deploy --rollback               go back to the previous release (refused if the data layout moved since)
+    treeline-deploy status
+    treeline-deploy adopt DIR                first install: stage the unpacked release DIR (called by install.sh)
+
+Order of events for a deploy: verify the signature -> unpack beside the current release -> check the release's own
+claims -> build its virtualenv from the hash-pinned lock -> dry-run its configuration -> (wait for a quiet moment) ->
+switch the symlink and restart -> wait for /api/health to report the new release -> otherwise roll back.
+Exit codes: 0 deployed / nothing to do, 1 failed and rolled back, 2 usage, 3 REFUSED (bad signature or release), 4 busy, 5 failed and could not roll back.
 """
 
+import datetime as dt
+import fcntl
+import json
 import os
+import re
 import shutil
+import subprocess
 import sys
+import time
+import urllib.error
+import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import treeline_common as common  # noqa: E402
 import treeline_release as rel  # noqa: E402
 
+HEALTH_URL = os.environ.get("TREELINE_HEALTH_URL", "http://127.0.0.1:8080/api/health")
+HEALTH_SECONDS = int(os.environ.get("TREELINE_HEALTH_SECONDS", "90"))
+KEEP_RELEASES = 3
+SERVICES = ("treeline-api", "treeline-controller")
+GITHUB_HOSTS = ("github.com", "api.github.com", "objects.githubusercontent.com", "release-assets.githubusercontent.com")
+MAX_DOWNLOAD = 400 * 1024 * 1024
 
+
+class Refused(Exception):
+    """A release that must not be deployed (exit 3)."""
+
+
+class Busy(Exception):
+    """A call is in progress, or it is not the quiet window (exit 4)."""
+
+
+class Failed(Exception):
+    pass
+
+
+def log(msg):
+    print(f"{dt.datetime.now(dt.timezone.utc):%FT%TZ} treeline-deploy: {msg}", flush=True)
+
+
+def paths():
+    return {"current": os.path.join(common.OPT, "current"), "releases": os.path.join(common.OPT, "releases"),
+            "state": os.path.join(common.STATE, "deploy"), "run": os.path.join(common.RUN, "deploy.lock")}
+
+
+# ------------------------------------------------------------------ versions
+def vkey(version):
+    m = re.match(r"^v(\d+)\.(\d+)\.(\d+)(?:-(.+))?$", version)
+    if not m:
+        raise ValueError(version)
+    return (int(m[1]), int(m[2]), int(m[3]), 1 if m[4] is None else 0, m[4] or "")
+
+
+def installed(p):
+    out = []
+    try:
+        for n in os.listdir(p["releases"]):
+            if rel.VERSION_RE.match(n):
+                out.append(n)
+    except FileNotFoundError:
+        pass
+    return sorted(out, key=vkey)
+
+
+def current_version(p):
+    target = rel.current(p["current"])
+    return os.path.basename(target) if target else None
+
+
+# ------------------------------------------------------------------ fetching
+def https_get(url, limit=MAX_DOWNLOAD, hosts=GITHUB_HOSTS, allow_http=False):
+    """Download with a size cap. Only https, only GitHub's hosts, unless the CI job's local base URL is in use."""
+    host = re.match(r"^(https?)://([^/:]+)", url)
+    if not host or (host[1] != "https" and not allow_http) or (not allow_http and host[2] not in hosts):
+        raise Refused(f"refusing to fetch {url!r}")
+    req = urllib.request.Request(url, headers={"User-Agent": "treeline-deploy", "Accept": "application/octet-stream, application/json"})
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        final = re.match(r"^(https?)://([^/:]+)", resp.geturl())
+        if not allow_http and (final[1] != "https" or final[2] not in hosts):
+            raise Refused(f"a redirect led away from GitHub: {resp.geturl()!r}")
+        data = resp.read(limit + 1)
+    if len(data) > limit:
+        raise Refused("the download is larger than allowed")
+    return data
+
+
+def source(host_env):
+    base = host_env.get("TREELINE_RELEASE_BASE")           # the CI job only (install.sh --ci); refused otherwise
+    if base:
+        if host_env.get("TREELINE_CI") != "1":
+            raise Refused("TREELINE_RELEASE_BASE is set but this is not a CI install")
+        return base.rstrip("/"), True
+    repo = host_env.get("TREELINE_RELEASE_REPO", "")
+    if not re.match(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$", repo):
+        raise Failed("TREELINE_RELEASE_REPO is not set in /etc/treeline/host.env (run install.sh with --release-repo OWNER/REPO)")
+    return f"https://github.com/{repo}/releases", False
+
+
+def latest_version(host_env):
+    base, local = source(host_env)
+    if local:
+        text = https_get(base + "/latest", hosts=(), allow_http=True).decode().strip()
+    else:
+        repo = host_env["TREELINE_RELEASE_REPO"]
+        text = json.loads(https_get(f"https://api.github.com/repos/{repo}/releases/latest"))["tag_name"]
+    if not rel.VERSION_RE.match(text) or "-" in text:
+        raise Failed(f"the latest release name {text!r} is not a version we deploy automatically")
+    return text
+
+
+def fetch_release(version, dest_dir, host_env):
+    if not rel.VERSION_RE.match(version):
+        raise Refused(f"{version!r} is not a version")
+    base, local = source(host_env)
+    files = {}
+    for suffix in ("", ".sig"):
+        name = f"treeline-{version}.tar.gz{suffix}"
+        url = f"{base}/{version}/{name}" if local else f"{base}/download/{version}/{name}"
+        path = os.path.join(dest_dir, name)
+        with open(path, "wb") as f:
+            f.write(https_get(url, hosts=GITHUB_HOSTS, allow_http=local))
+        files[suffix] = path
+    return files[""], files[".sig"]
+
+
+# ------------------------------------------------------------------ checks that need the machine
+def data_versions():
+    """{file: user_version} for the central database and every household, read as the `treeline` user (a root-owned
+    -shm or -wal file would break the app), by the same SQLite the app uses."""
+    code = ("import glob, json, os, sqlite3, sys\n"
+            "root = sys.argv[1]\n"
+            "out = {}\n"
+            "for p in [os.path.join(root, 'treeline.db')] + sorted(glob.glob(os.path.join(root, 'households', '*.db'))):\n"
+            "    if not os.path.exists(p): continue\n"
+            "    c = sqlite3.connect('file:' + p + '?mode=ro', uri=True, timeout=10)\n"
+            "    out[os.path.relpath(p, root)] = c.execute('PRAGMA user_version').fetchone()[0]\n"
+            "print(json.dumps(out))\n")
+    done = subprocess.run(["runuser", "-u", "treeline", "--", sys.executable, "-I", "-c", code, common.STATE], capture_output=True, text=True)
+    if done.returncode != 0:
+        raise Failed("could not read the data files' versions: " + done.stderr.strip()[-300:])
+    return json.loads(done.stdout)
+
+
+def calls_in_progress(ari_url="http://127.0.0.1:8088/ari", user="treeline", password=None, etc=None):
+    """Open ARI channels (a call in progress, or a handset ringing). Anything unexpected counts as busy, never as idle."""
+    if password is None:
+        with open(os.path.join(etc or common.ETC, "ari-password"), encoding="utf-8") as f:
+            password = f.read().strip()
+    mgr = urllib.request.HTTPPasswordMgrWithDefaultRealm()
+    mgr.add_password(None, ari_url, user, password)
+    opener = urllib.request.build_opener(urllib.request.HTTPBasicAuthHandler(mgr))
+    try:
+        with opener.open(ari_url + "/channels", timeout=5) as resp:
+            return len(json.loads(resp.read()))
+    except (urllib.error.URLError, OSError, ValueError):
+        return None                                             # unknown
+
+
+def in_window(spec, now=None):
+    """spec 'HH-HH' in UTC (may wrap midnight); empty means always."""
+    if not spec:
+        return True
+    start, end = (int(x) for x in spec.split("-"))
+    hour = (now or dt.datetime.now(dt.timezone.utc)).hour
+    return start <= hour < end if start < end else (hour >= start or hour < end)
+
+
+def wait_for_quiet(host_env, window=True, patience=0):
+    """Raise Busy unless it is the quiet window and no call is in progress (waiting up to `patience` seconds for the call)."""
+    if window and not in_window(host_env.get("TREELINE_DEPLOY_WINDOW_UTC", "")):
+        raise Busy("outside the deploy window (" + host_env.get("TREELINE_DEPLOY_WINDOW_UTC", "") + " UTC)")
+    end = time.time() + patience
+    while True:
+        n = calls_in_progress()
+        if n == 0:
+            return
+        if time.time() >= end:
+            raise Busy("a call is in progress" if n else "could not ask Asterisk whether a call is in progress")
+        time.sleep(5)
+
+
+def health(version, seconds=HEALTH_SECONDS):
+    """True once /api/health answers 200 AND reports `version` AND both services stay active for a few seconds."""
+    end = time.time() + seconds
+    last = ""
+    good_since = None
+    while time.time() < end:
+        try:
+            with urllib.request.urlopen(HEALTH_URL, timeout=5) as resp:
+                body = json.loads(resp.read())
+                ok = resp.status == 200 and body.get("ok") is True and body.get("release") == version
+                last = f"200 release={body.get('release')}"
+        except urllib.error.HTTPError as err:
+            ok, last = False, f"HTTP {err.code}"
+        except (urllib.error.URLError, OSError, ValueError) as err:
+            ok, last = False, str(err)
+        active = all(subprocess.run(["systemctl", "is-active", "--quiet", s]).returncode == 0 for s in SERVICES)
+        if ok and active:
+            good_since = good_since or time.time()
+            if time.time() - good_since >= 5:
+                return True
+        else:
+            good_since = None
+        time.sleep(2)
+    log(f"health check failed: {last}")
+    return False
+
+
+def systemctl(*args):
+    subprocess.run(["systemctl", *args], check=True)
+
+
+def restart(services):
+    if services:
+        systemctl("restart", *services)
+
+
+# ------------------------------------------------------------------ config snapshots (for rollback)
+CONFIG_FILES = ("/etc/caddy/Caddyfile", "/etc/treeline/app.env")
+
+
+def snapshot_config(dest):
+    shutil.rmtree(dest, ignore_errors=True)
+    os.makedirs(dest, mode=0o700)
+    for f in CONFIG_FILES:
+        if os.path.exists(f):
+            shutil.copy2(f, os.path.join(dest, os.path.basename(f)))
+    ast = os.path.join(dest, "asterisk")
+    os.makedirs(ast, mode=0o700)
+    for name in os.listdir("/etc/asterisk"):            # the files we render (plain files); not subdirectories such as keys/
+        path = os.path.join("/etc/asterisk", name)
+        if os.path.isfile(path) and not os.path.islink(path):
+            shutil.copy2(path, os.path.join(ast, name))
+
+
+def restore_config(src):
+    for f in CONFIG_FILES:
+        s = os.path.join(src, os.path.basename(f))
+        if os.path.exists(s):
+            shutil.copy2(s, f)
+    ast = os.path.join(src, "asterisk")
+    for name in os.listdir(ast):
+        shutil.copy2(os.path.join(ast, name), os.path.join("/etc/asterisk", name))
+
+
+# ------------------------------------------------------------------ data: refusing and undoing a rollback
+def restore_data_from_pre_migrate(moved, expected, owner="treeline"):
+    """The release that never became healthy migrated some files. The old code refuses a newer file (DATA_LAYER rule 3),
+    so put back the copies the data layer took just before migrating, which are at the version the old code expects.
+    Returns the files restored; raises Failed if any needed copy is missing (nothing is changed in that case)."""
+    plan = []
+    for rel_path, version in moved.items():
+        folder = os.path.join(common.STATE, os.path.dirname(rel_path), "pre-migrate")
+        stem = os.path.basename(rel_path)[:-3] if rel_path != "treeline.db" else "treeline"
+        pattern = re.compile(r"^" + re.escape(stem) + r"-v" + str(expected[rel_path]) + r"-(\d{8}T\d{6})-[0-9a-f]+\.db$")
+        found = sorted((n for n in (os.listdir(folder) if os.path.isdir(folder) else []) if pattern.match(n)))
+        if not found:
+            raise Failed(f"no pre-migration copy of {rel_path} at version {expected[rel_path]} in {folder}")
+        plan.append((rel_path, os.path.join(folder, found[-1])))
+    for rel_path, copy in plan:
+        target = os.path.join(common.STATE, rel_path)
+        for suffix in ("", "-wal", "-shm"):
+            if os.path.exists(target + suffix):
+                os.remove(target + suffix)
+        shutil.copy2(copy, target)
+        if owner:
+            shutil.chown(target, owner, owner)
+        os.chmod(target, 0o600)
+    return [p for p, _ in plan]
+
+
+def schema_of(release_dir):
+    return rel.read_info(release_dir)["schema"]
+
+
+def expected_versions(files, schema):
+    return {f: (schema["central"] if f == "treeline.db" else schema["household"]) for f in files}
+
+
+# ------------------------------------------------------------------ the deploy
+def stage(tarball, sig, version, p, host_env, signers=None):
+    """Verify, unpack, check and prepare a release. Nothing is switched. Returns its directory."""
+    try:
+        rel.verify(tarball, sig, signers or rel.signers_file())
+    except rel.ReleaseError as err:
+        raise Refused(str(err)) from err
+    log("signature verified")
+    os.makedirs(p["releases"], exist_ok=True)
+    tmp = os.path.join(p["releases"], f".staging-{os.getpid()}")
+    shutil.rmtree(tmp, ignore_errors=True)
+    try:
+        rel.extract(tarball, tmp)
+        info = rel.read_info(tmp)
+    except rel.ReleaseError as err:
+        shutil.rmtree(tmp, ignore_errors=True)
+        raise Refused(str(err)) from err
+    try:
+        if version and info["version"] != version:
+            # A genuine, signed, OLD release served under a new name (a replay) would pass the signature check.
+            raise Refused(f"the release says it is {info['version']}, not {version}")
+        dest = os.path.join(p["releases"], info["version"])
+        if os.path.exists(dest):
+            raise Refused(f"{info['version']} is already installed")
+        os.rename(tmp, dest)
+    except BaseException:
+        shutil.rmtree(tmp, ignore_errors=True)
+        raise
+    try:
+        rel.build_venv(dest)
+        rel.seal(dest)
+        preflight(dest)
+    except (rel.ReleaseError, Failed) as err:
+        shutil.rmtree(dest, ignore_errors=True)
+        raise Refused(f"{info['version']} failed its own checks: {err}") from err
+    return dest
+
+
+def preflight(release_dir):
+    """The new release's own claims, checked with its own code, before anything is touched."""
+    info = rel.read_info(release_dir)
+    py = os.path.join(release_dir, "venv", "bin", "python")
+    code = ("import json, sys\n"
+            "sys.path.insert(0, 'controller')\n"
+            "from treeline import db, households, rules, accesslog, prod, api, calls, jobs\n"
+            "print(json.dumps({'central': len(db.MIGRATIONS) + 1, 'household': len(households.HOUSEHOLD_MIGRATIONS) + 1}))\n")
+    done = subprocess.run(["runuser", "-u", "treeline", "--", py, "-I", "-c", code], capture_output=True, text=True, cwd=release_dir)
+    if done.returncode != 0:
+        raise Failed("the code does not import: " + done.stderr.strip()[-400:])
+    if json.loads(done.stdout) != info["schema"]:
+        raise Failed(f"release.json says schema {info['schema']} but the code says {json.loads(done.stdout)}")
+    # Dry-run the configuration with the release's templates: a template error must not reach /etc.
+    import importlib.machinery
+    import importlib.util
+    loader = importlib.machinery.SourceFileLoader("treeline_config", os.path.join(os.path.dirname(os.path.realpath(__file__)), "treeline-config"))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    cfg = importlib.util.module_from_spec(spec)
+    loader.exec_module(cfg)
+    s = cfg.settings()
+    cfg.asterisk_files(release_dir, s)
+    cfg.app_env(release_dir, s)
+    caddy = cfg.caddyfile(release_dir, s)
+    tmp = os.path.join(common.RUN, "Caddyfile.check")
+    common.atomic_write(tmp, caddy, 0o600)
+    try:
+        done = subprocess.run(["caddy", "validate", "--config", tmp, "--adapter", "caddyfile"], capture_output=True, text=True)
+        if done.returncode != 0:
+            raise Failed("the new Caddyfile is invalid: " + done.stderr.strip()[-300:])
+    finally:
+        os.remove(tmp)
+
+
+def deploy(dest, p, host_env, prev_version, patience=0, window=True, allow_older=False):
+    """Switch to the staged release at `dest`; roll back if it does not become healthy."""
+    info = rel.read_info(dest)
+    new = info["version"]
+    if prev_version and not allow_older and vkey(new) <= vkey(prev_version):
+        shutil.rmtree(dest, ignore_errors=True)
+        raise Refused(f"{new} is not newer than the running {prev_version}")
+    try:
+        wait_for_quiet(host_env, window=window, patience=patience)
+        before = data_versions()
+    except BaseException:
+        shutil.rmtree(dest, ignore_errors=True)      # nothing was switched: do not leave a staged release that blocks the retry
+        raise
+    prev_dir = os.path.join(p["releases"], prev_version) if prev_version else None
+    snap = os.path.join(p["state"], "config-before")
+    os.makedirs(p["state"], mode=0o700, exist_ok=True)
+    snapshot_config(snap)
+    log(f"switching {prev_version} -> {new}")
+    changed = {"asterisk", "caddy"}          # until we know better, assume the worst for a rollback's restarts
+    cfg = os.path.join(os.path.dirname(os.path.realpath(__file__)), "treeline-config")
+    try:
+        done = subprocess.run([cfg, "apply", "--release", dest], capture_output=True, text=True)
+        if done.returncode != 0:
+            raise Failed("treeline-config failed: " + done.stderr.strip()[-300:])
+        changed = set(done.stdout.replace("changed:", "").replace(",", " ").split()) - {"nothing", "app"}
+        rel.switch(p["current"], dest)
+        subprocess.run(["systemctl", "daemon-reload"], check=True)
+        restart([u for u in ("asterisk", "caddy") if u in changed])
+        restart(SERVICES)
+        if health(new):
+            record(p, current=new, previous=prev_version, schema_before=before, schema_new=info["schema"])
+            prune(p, keep={new, prev_version})
+            log(f"{new} is healthy")
+            return 0
+        raise Failed(f"{new} did not become healthy")
+    except Exception as err:        # noqa: BLE001 -- anything at all after the switch begins means we go back
+        log(f"FAILED: {err}")
+        return roll_back(p, prev_dir, prev_version, snap, before, changed, failed_dir=dest)
+
+
+def roll_back(p, prev_dir, prev_version, snap, before, changed, failed_dir=None):
+    if not prev_dir:
+        log("there is no previous release to go back to")
+        return 5
+    try:
+        for s in SERVICES:
+            subprocess.run(["systemctl", "stop", s], check=False)
+        after = data_versions()
+        old_schema = schema_of(prev_dir)
+        expected = expected_versions(after, old_schema)
+        moved = {f: v for f, v in after.items() if v != expected[f]}
+        if moved:
+            log(f"the failed release migrated {sorted(moved)}; restoring the copies taken just before")
+            restore_data_from_pre_migrate(moved, expected)
+        restore_config(snap)
+        rel.switch(p["current"], prev_dir)
+        subprocess.run(["systemctl", "daemon-reload"], check=True)
+        restart([u for u in ("asterisk", "caddy") if u in changed])
+        restart(SERVICES)
+        if health(prev_version):
+            log(f"ROLLED BACK to {prev_version}, which is healthy")
+            if failed_dir:
+                shutil.rmtree(failed_dir, ignore_errors=True)       # so the same version can be deployed again once fixed
+            return 1
+        log(f"ROLLBACK FAILED: {prev_version} is not healthy either")
+        return 5
+    except Exception as err:        # noqa: BLE001
+        log(f"ROLLBACK FAILED: {err}")
+        return 5
+
+
+def record(p, **state):
+    state["at"] = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
+    common.atomic_write(os.path.join(p["state"], "state.json"), json.dumps(state, indent=2), 0o600)
+
+
+def read_state(p):
+    try:
+        with open(os.path.join(p["state"], "state.json"), encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def prune(p, keep):
+    versions = installed(p)
+    for v in versions[:-KEEP_RELEASES]:
+        if v not in keep:
+            shutil.rmtree(os.path.join(p["releases"], v), ignore_errors=True)
+
+
+def manual_rollback(p):
+    state = read_state(p)
+    prev, cur = state.get("previous"), current_version(p)
+    if not prev or not os.path.isdir(os.path.join(p["releases"], prev)):
+        raise Refused("there is no previous release on this machine")
+    now = data_versions()
+    expected = expected_versions(now, schema_of(os.path.join(p["releases"], prev)))
+    moved = sorted(f for f, v in now.items() if v != expected[f])
+    if moved:
+        raise Refused(f"cannot roll back from {cur} to {prev}: {moved} are at a newer data version than {prev} understands, and "
+                      "families have written to them since. Restore from a backup and a pre-migration copy by hand (docs/DEPLOY_AWS.md, rollback).")
+    wait_for_quiet(common.host_settings(), window=False)
+    prev_dir = os.path.join(p["releases"], prev)
+    snap = os.path.join(p["state"], "config-before")
+    log(f"rolling back {cur} -> {prev}")
+    for s in SERVICES:
+        subprocess.run(["systemctl", "stop", s], check=False)
+    rel.switch(p["current"], prev_dir)
+    subprocess.run([os.path.join(os.path.dirname(os.path.realpath(__file__)), "treeline-config"), "apply", "--release", prev_dir, "--restart"], check=True)
+    restart(SERVICES)
+    if not health(prev):
+        log("the previous release is not healthy either")
+        return 5
+    record(p, current=prev, previous=cur, schema_before=now, schema_new=schema_of(prev_dir))
+    return 0
+
+
+# ------------------------------------------------------------------ commands
 def adopt(src):
+    p = paths()
     info = rel.read_info(src)
-    dest = os.path.join(common.OPT, "releases", info["version"])
+    dest = os.path.join(p["releases"], info["version"])
     if os.path.exists(dest):
         raise SystemExit(f"{dest} already exists")
-    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    os.makedirs(p["releases"], exist_ok=True)
     shutil.copytree(src, dest, symlinks=True)
     try:
         rel.build_venv(dest)
@@ -27,20 +498,75 @@ def adopt(src):
     except BaseException:
         shutil.rmtree(dest, ignore_errors=True)
         raise
-    rel.switch(os.path.join(common.OPT, "current"), dest)
+    rel.switch(p["current"], dest)
+    os.makedirs(p["state"], mode=0o700, exist_ok=True)
+    record(p, current=info["version"], previous=None)
     print(f"staged {info['version']}")
     return 0
 
 
-def main(argv):
+def run(argv):
     if len(argv) == 2 and argv[0] == "adopt":
         return adopt(os.path.realpath(argv[1]))
-    print(__doc__)
-    return 2
+    p = paths()
+    host_env = common.host_settings()
+    opts = {"--version": None, "--tarball": None, "--sig": None, "--rollback": False, "--force": False, "--wait": None}
+    it = iter(argv)
+    for a in it:
+        if a == "status":
+            print(json.dumps({"current": current_version(p), "installed": installed(p), "state": read_state(p)}, indent=2))
+            return 0
+        if a not in opts:
+            print(__doc__)
+            return 2
+        opts[a] = True if isinstance(opts[a], bool) else next(it, None)
+    os.makedirs(os.path.dirname(p["run"]), exist_ok=True)
+    lock = open(p["run"], "w")
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        log("another deploy is running")
+        return 4
+    try:
+        if opts["--rollback"]:
+            return manual_rollback(p)
+        auto = not (opts["--version"] or opts["--tarball"])
+        cur = current_version(p)
+        with_dir = os.path.join(p["releases"], ".download")
+        shutil.rmtree(with_dir, ignore_errors=True)
+        os.makedirs(with_dir, mode=0o700)
+        try:
+            if opts["--tarball"]:
+                tarball, sig, version = opts["--tarball"], opts["--sig"] or opts["--tarball"] + ".sig", opts["--version"]
+            else:
+                version = opts["--version"] or latest_version(host_env)
+                if auto and cur and vkey(version) <= vkey(cur):
+                    log(f"{cur} is the latest; nothing to do")
+                    return 0
+                if auto:
+                    wait_for_quiet(host_env, window=True)        # do not even download outside the window
+                tarball, sig = fetch_release(version, with_dir, host_env)
+            dest = stage(tarball, sig, version, p, host_env)
+            return deploy(dest, p, host_env, cur, patience=int(opts["--wait"] or 0), window=auto, allow_older=bool(opts["--force"]))
+        finally:
+            shutil.rmtree(with_dir, ignore_errors=True)
+    finally:
+        lock.close()
+
+
+def main(argv):
+    try:
+        return run(argv)
+    except Refused as err:
+        log(f"REFUSED: {err}")
+        return 3
+    except Busy as err:
+        log(f"not now: {err}")
+        return 4
+    except (Failed, rel.ReleaseError) as err:
+        log(f"FAILED: {err}")
+        return 1
 
 
 if __name__ == "__main__":
-    try:
-        sys.exit(main(sys.argv[1:]))
-    except rel.ReleaseError as err:
-        sys.exit(f"treeline-deploy: {err}")
+    sys.exit(main(sys.argv[1:]))
