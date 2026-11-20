@@ -1251,6 +1251,27 @@ class ParentCode(unittest.TestCase):
         basic = {"Authorization": "Basic " + base64.b64encode(f"{c['sip_user']}:{c['secret']}".encode()).decode()}
         self.assertEqual(self.leave(basic, PIN).status_code, 400)
 
+    def test_guesses_sent_in_parallel_cannot_beat_the_lock(self):
+        p = make_house()
+        _, basic = self.softphone(p)
+        tid = p.house["id"]
+        results, gate = [], threading.Barrier(20)
+
+        def guess(n):
+            gate.wait()
+            try:
+                api.check_parent_code(tid, f"{n:04d}")
+                results.append("ok")
+            except api.ApiError as e:
+                results.append(e.code)
+        threads = [threading.Thread(target=guess, args=(n,)) for n in range(1, 21)]      # none of these is the code
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        self.assertEqual(results.count("bad_pin"), api.PIN_TRIES - 1)                    # four real guesses, then it locks
+        self.assertEqual(results.count("pin_locked"), 20 - (api.PIN_TRIES - 1))
+
     def test_wrong_codes_lock_it_even_for_the_right_one_and_a_restart_does_not_forgive(self):
         p = make_house()
         _, basic = self.softphone(p)

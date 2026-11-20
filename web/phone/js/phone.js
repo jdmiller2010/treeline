@@ -299,7 +299,7 @@ async function refreshLine() {
 }
 
 function removed() {
-  if (S.pairing) return;
+  if (S.pairing || S.leaving) return;               // leaving on purpose: the server has dropped this handset, the page is about to go
   S.pairing = true;
   forgetPhone(); stopUa(); tones.stop();
   life.abort(); clearInterval(S.timers.refresh);
@@ -313,16 +313,18 @@ function removed() {
  *  signed in on this device lands in the dashboard, anyone else on the start screen. */
 async function leavePhoneMode(code) {
   if (!code) throw new Error("Type the parent code.");
+  S.leaving = true;                                  // until the server answers, a "removed" from the line or SIP must not start a pairing screen
   try { await api("POST", "/api/phone/leave", { code }, { basic: `${S.creds.sip_user}:${S.creds.secret}` }); }
-  catch (e) { if (e.code !== "removed") throw e; }       // already removed by a parent: it is a plain device now
+  catch (e) { if (e.code !== "removed") { S.leaving = false; throw e; } }       // already removed by a parent: it is a plain device now
   goodbye(loggedIn() ? "/parent/#/home" : "/phone/?left=1");
 }
 
 /** The parent code is forgotten: sign this device out. It stops being a phone (the server drops the handset; nothing is opened by this) and the
  *  browser forgets any parent session, so any dashboard page now asks for a login. */
 async function signOutDevice() {
+  S.leaving = true;
   try { await api("POST", "/api/phone/sign-out", {}, { basic: `${S.creds.sip_user}:${S.creds.secret}` }); }
-  catch (e) { if (e.code !== "removed") throw e; }
+  catch (e) { if (e.code !== "removed") { S.leaving = false; throw e; } }
   if (token.get()) { try { await api("POST", "/api/auth/signout", {}); } catch { /* signing out anyway */ } }
   token.clear();
   goodbye("/phone/?left=out");

@@ -912,24 +912,37 @@ PIN_LOCK_MINUTES = 15
 
 def check_parent_code(th_id, code):
     """Check a parent code for a treehouse. A wrong code counts; five in a row lock it for a while, whoever is trying
-    (the count is in the database, so a restart doesn't forgive it)."""
-    th = db.get_treehouse(conn(), th_id)
-    if not th or not th["parent_pin_hash"]:
-        raise ApiError("A parent needs to set a parent code in Settings first.", 409, "no_pin")
-    if th["pin_locked_until"] and th["pin_locked_until"] > db.iso():
-        left = max(1, int((dt.datetime.fromisoformat(th["pin_locked_until"]) - now()).total_seconds() // 60) + 1)
-        raise ApiError(f"Too many wrong codes. Try again in {left} minute{'s' if left != 1 else ''}.", 429, "pin_locked")
-    if db.check_pin(th["parent_pin_hash"], str(code or "")):
-        if th["pin_fails"] or th["pin_locked_until"]:
-            conn().execute("UPDATE treehouse SET pin_fails=0, pin_locked_until=NULL WHERE id=?", (th_id,))
-        return
-    fails = th["pin_fails"] + 1
-    if fails >= PIN_TRIES:
-        conn().execute("UPDATE treehouse SET pin_fails=0, pin_locked_until=? WHERE id=?",
-                       (db.iso(now() + dt.timedelta(minutes=PIN_LOCK_MINUTES)), th_id))
-        raise ApiError(f"Too many wrong codes. Try again in {PIN_LOCK_MINUTES} minutes.", 429, "pin_locked")
-    conn().execute("UPDATE treehouse SET pin_fails=? WHERE id=?", (fails, th_id))
-    raise ApiError("That isn't the parent code.", 403, "bad_pin")
+    (the count is in the database, so a restart doesn't forgive it). The read, the check and the count are one
+    transaction: parallel guesses take turns, so they cannot all see "no wrong tries yet" and each get a free guess."""
+    c = conn()
+    c.execute("BEGIN IMMEDIATE")
+    failure = None
+    try:
+        th = db.get_treehouse(c, th_id)
+        if not th or not th["parent_pin_hash"]:
+            failure = ApiError("A parent needs to set a parent code in Settings first.", 409, "no_pin")
+        elif th["pin_locked_until"] and th["pin_locked_until"] > db.iso():
+            left = max(1, int((dt.datetime.fromisoformat(th["pin_locked_until"]) - now()).total_seconds() // 60) + 1)
+            failure = ApiError(f"Too many wrong codes. Try again in {left} minute{'s' if left != 1 else ''}.", 429, "pin_locked")
+        elif db.check_pin(th["parent_pin_hash"], str(code or "")):
+            if th["pin_fails"] or th["pin_locked_until"]:
+                c.execute("UPDATE treehouse SET pin_fails=0, pin_locked_until=NULL WHERE id=?", (th_id,))
+        else:
+            fails = th["pin_fails"] + 1
+            if fails >= PIN_TRIES:
+                c.execute("UPDATE treehouse SET pin_fails=0, pin_locked_until=? WHERE id=?",
+                          (db.iso(now() + dt.timedelta(minutes=PIN_LOCK_MINUTES)), th_id))
+                failure = ApiError(f"Too many wrong codes. Try again in {PIN_LOCK_MINUTES} minutes.", 429, "pin_locked")
+            else:
+                c.execute("UPDATE treehouse SET pin_fails=? WHERE id=?", (fails, th_id))
+                failure = ApiError("That isn't the parent code.", 403, "bad_pin")
+        c.execute("COMMIT")
+    except BaseException:
+        if c.in_transaction:
+            c.execute("ROLLBACK")
+        raise
+    if failure:
+        raise failure
 
 
 @app.put("/api/treehouse/parent-code")

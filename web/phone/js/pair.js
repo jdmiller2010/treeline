@@ -21,10 +21,10 @@ function qrSvg(text) {
 /** Show the pairing screen. Resolves with the saved credentials once a parent approves. */
 export function pairScreen(root, notice) {
   return new Promise((resolve) => {
-    let stopped = false, timer = null;
+    let stopped = false, timer = null, noteTimer = null;
     // The notice ("you're signed out…") is a one-time message: it goes away by itself after a few minutes and is not drawn again.
     let note = notice;
-    if (note) setTimeout(() => { note = null; root.querySelector("[data-alert='notice']")?.remove(); }, 3 * 60 * 1000);
+    if (note) noteTimer = setTimeout(() => { note = null; root.querySelector("[data-alert='notice']")?.remove(); }, 3 * 60 * 1000);
     async function newCode() {
       if (showInstallPage()) { installPage(); return; }          // nothing to pair until they choose the browser
       let start;
@@ -37,7 +37,7 @@ export function pairScreen(root, notice) {
         try {
           const r = await get(`/api/pair/status?token=${encodeURIComponent(start.token)}`, { auth: "none" });
           if (r.status === "paired") {
-            stopped = true;
+            stopped = true; clearTimeout(noteTimer);
             const phone = { sip_user: r.sip_user, secret: r.secret, server: r.server, ws_url: r.ws_url, realm: r.realm };
             savePhone(phone);
             return resolve(phone);
