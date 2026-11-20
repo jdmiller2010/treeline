@@ -1,0 +1,124 @@
+# Every Monday: rebuild the hash-pinned Python locks (scripts/make_locks.sh) so the app, the VM's tools and the infra
+# code move to current releases without anyone remembering to. If anything changed it pushes the result to the branch
+# `deps/refresh-locks` and opens (or updates) one issue with a link that turns the branch into a pull request.
+#
+# Why a branch and an issue, not a pull request: docs/REPO_RULES.md keeps "Allow GitHub Actions to create and approve
+# pull requests" off, and a pull request opened with the Actions token would not start the other workflows anyway
+# (GitHub does not let that token trigger them), so its checks would never run. One click by the owner opens the pull
+# request as the owner, and then every check runs on it as on any other.
+#
+# The safeguards: anything uploaded to PyPI in the last 7 days is ignored (LOCK_COOLDOWN), so a bad release has a week
+# to be noticed and pulled; make_locks.sh runs pip inside a throwaway container and nothing it downloads is executed
+# here; the lock is hash-pinned as before; the result is checked against OSV before it is pushed; and nothing reaches
+# main, let alone the VM, without the pull request's checks and (for the VM) a signed release.
+#
+# Inputs pinned with `==` (aws-cdk-lib and constructs in infra/requirements.in) do not move here: change those by hand
+# together with the CDK command line (infra/package.json, which Dependabot updates).
+name: refresh locks
+
+on:
+  schedule:
+    - cron: "41 14 * * 1"      # Mondays, about 6:40 am Pacific
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: refresh-locks
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write          # to push the branch deps/refresh-locks (main is protected and is never pushed to)
+      issues: write            # the one issue that says the branch is ready
+    env:
+      BRANCH: deps/refresh-locks
+      TITLE: "Dependency refresh: updated lock files are ready to review"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # v7.0.1
+        with:
+          ref: main
+
+      - name: Rebuild every lock (nothing younger than 7 days)
+        env:
+          LOCK_COOLDOWN: P7D
+        run: scripts/make_locks.sh
+
+      - name: Put the new versions in the licenses page
+        run: |
+          python3 scripts/sbom.py --sync-notices
+          python3 scripts/build_licenses.py > /dev/null
+
+      - name: Did anything change?
+        id: diff
+        run: |
+          if git diff --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Every lock is already current." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            # only the files this job is meant to touch may have changed
+            unexpected="$(git diff --name-only | grep -v -E '^(controller/requirements-prod\.lock|deploy/native/requirements-tools\.lock|infra/requirements\.lock|infra/restore/requirements\.lock|THIRD_PARTY_NOTICES\.md|web/(parent|phone)/licenses\.html)$' || true)"
+            [ -z "$unexpected" ] || { echo "unexpected files changed: $unexpected"; exit 1; }
+            { echo '```diff'; git diff --unified=0 -- '*.lock' | grep -E '^[+-][A-Za-z0-9]' || true; echo '```'; } > changes.md
+            cat changes.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: The new locks must still pass our own checks
+        if: steps.diff.outputs.changed == 'true'
+        run: |
+          python3 -m unittest scripts/test_supply_chain.py
+          python3 scripts/check_repo_rules.py
+          python3 scripts/sbom.py -o sbom.cdx.json
+          rc=0
+          python3 scripts/vuln_check.py sbom.cdx.json --report report.md > /dev/null || rc=$?
+          [ ! -f report.md ] || cat report.md >> "$GITHUB_STEP_SUMMARY"
+          [ "$rc" -ne 1 ] || echo "::error::The refreshed locks have a finding (see the summary): not pushing them."
+          [ "$rc" -ne 2 ] || echo "::error::The vulnerability check could not run, so the refreshed locks are not pushed unchecked."
+          exit "$rc"
+
+      - name: Push the branch
+        if: steps.diff.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -q -B "$BRANCH"
+          git add -- '*.lock' THIRD_PARTY_NOTICES.md web/parent/licenses.html web/phone/licenses.html
+          git commit -q -m "Refresh the hash-pinned Python locks (scripts/make_locks.sh, 7-day cooldown)"
+          git push --force origin "$BRANCH"
+
+      - name: Open, update or close the issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CHANGED: ${{ steps.diff.outputs.changed }}
+        run: |
+          # Only an issue the Actions bot opened: anyone can open an issue with this title in a public repo.
+          number="$(gh api "repos/${GITHUB_REPOSITORY}/issues?state=open&per_page=100" --jq "[.[] | select(.pull_request == null and .user.login == \"github-actions[bot]\" and .user.type == \"Bot\" and .title == \"${TITLE}\")][0].number // empty")"
+          if [ "$CHANGED" != true ]; then
+            if [ -n "$number" ]; then
+              gh api -X POST "repos/${GITHUB_REPOSITORY}/issues/${number}/comments" -f body="Every lock is current again. Closing." --jq '.html_url'
+              gh api -X PATCH "repos/${GITHUB_REPOSITORY}/issues/${number}" -f state=closed --jq '.html_url'
+            fi
+            exit 0
+          fi
+          {
+            echo "The weekly refresh rebuilt the hash-pinned Python locks and something changed."
+            echo
+            echo "**[Open the pull request](https://github.com/${GITHUB_REPOSITORY}/compare/main...${BRANCH}?expand=1)** (one click; the checks then run on it like on any other). Merge it when they pass."
+            echo
+            echo "What moved (releases younger than 7 days were ignored; the result was checked against OSV.dev before it was pushed):"
+            echo
+            cat changes.md
+            echo
+            echo "The app lock reaches the VM only with the next signed release. See \`docs/SUPPLY_CHAIN.md\`."
+          } > body.md
+          if [ -z "$number" ]; then
+            gh api -X POST "repos/${GITHUB_REPOSITORY}/issues" -f title="$TITLE" -F body=@body.md --jq '.html_url'
+          else
+            gh api -X PATCH "repos/${GITHUB_REPOSITORY}/issues/${number}" -F body=@body.md --jq '.html_url'
+            gh api -X POST "repos/${GITHUB_REPOSITORY}/issues/${number}/comments" -f body="The branch was rebuilt with this week's versions and the description above is current. If its pull request is already open, close and reopen it so the checks run on the new commit (a push by this job does not start them)." --jq '.html_url'
+          fi

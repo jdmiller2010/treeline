@@ -10,13 +10,27 @@
 #   infra/restore/requirements.in        -> infra/restore/requirements.lock    (boto3, for restore.py on the owner's computer)
 #
 # The locks name the sha256 of each wheel for CPython 3.12 on x86_64 Linux (Lightsail's Linux plans are x86_64).
+#
+# LOCK_COOLDOWN=P7D (days only) makes pip ignore anything uploaded to PyPI in the last 7 days, so a release that turns
+# out to be broken or malicious has a week to be noticed and pulled before it can reach a lock. The weekly refresh job
+# (.github/workflows/refresh-locks.yml) sets it; by hand it is off unless you set it. An input pinned with `==` to a
+# version younger than the cooldown fails to resolve, on purpose.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+LOCK_COOLDOWN="${LOCK_COOLDOWN:-}"
+[ -z "$LOCK_COOLDOWN" ] || [[ "$LOCK_COOLDOWN" =~ ^P[0-9]{1,3}D$ ]] || { echo "LOCK_COOLDOWN must look like P7D" >&2; exit 2; }
 lock() {   # lock INPUT OUTPUT
-  docker run --rm -v "$ROOT:/r" python:3.12-slim sh -c '
+  docker run --rm -e LOCK_COOLDOWN="$LOCK_COOLDOWN" -v "$ROOT:/r" python:3.12-slim sh -c '
 set -e
 python -m venv /v >/dev/null
-/v/bin/pip install -q --disable-pip-version-check -r "/r/$1"
+cool=""
+if [ -n "$LOCK_COOLDOWN" ]; then
+  # --uploaded-prior-to came with pip 26.0; an image with an older pip gets a newer one first (pip is not in the lock).
+  /v/bin/pip install --help | grep -q -- --uploaded-prior-to || /v/bin/pip install -q --disable-pip-version-check "pip>=26.0"
+  /v/bin/pip install --help | grep -q -- --uploaded-prior-to || { echo "this pip has no --uploaded-prior-to" >&2; exit 1; }
+  cool="--uploaded-prior-to=$LOCK_COOLDOWN"
+fi
+/v/bin/pip install -q --disable-pip-version-check $cool -r "/r/$1"
 /v/bin/pip freeze --exclude pip --exclude setuptools > /tmp/freeze.txt
 mkdir /w && /v/bin/pip download -q --disable-pip-version-check --no-deps -r /tmp/freeze.txt -d /w
 {

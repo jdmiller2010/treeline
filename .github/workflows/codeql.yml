@@ -1,0 +1,49 @@
+# GitHub's CodeQL static analysis of our own code (Python, the browser JavaScript, and these workflow files): the
+# counterpart of the dependency checks in supply-chain.yml. Findings appear under Security, Code scanning, and on the
+# pull request that introduces them. See docs/SUPPLY_CHAIN.md.
+#
+# Follows docs/REPO_RULES.md: `pull_request` only, GitHub's own actions pinned to a commit, no secrets, and the token
+# can read the repo and write code-scanning results, nothing else. Nothing is built or run: Python and JavaScript are
+# analysed from source (build-mode none).
+name: codeql
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "37 12 * * 3"      # Wednesdays: new queries find old bugs
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [python, javascript-typescript, actions]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: github/codeql-action/init@1bd86f2fdb4b86187fa4059f16f31a3202acc9ea   # v4.39.4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+          # Vendored and generated files are not ours to fix here; the vendored libraries are watched by supply-chain.yml.
+          config: |
+            paths-ignore:
+              - web/phone/vendor
+              - design/system/components/bundle.js
+
+      - uses: github/codeql-action/analyze@1bd86f2fdb4b86187fa4059f16f31a3202acc9ea   # v4.39.4
+        with:
+          category: "/language:${{ matrix.language }}"

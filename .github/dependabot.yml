@@ -1,0 +1,42 @@
+# What Dependabot keeps current by itself (docs/SUPPLY_CHAIN.md has the whole picture).
+#
+#   github-actions   every `uses:` in .github/workflows, including the commit pins (it rewrites the hash and the
+#                    `# vX.Y.Z` comment together)
+#   npm, /infra      the AWS CDK command line (infra/package.json and its lock)
+#
+# Not here, on purpose:
+#   Python           our locks are hash-pinned files made by scripts/make_locks.sh, a format Dependabot cannot write.
+#                    .github/workflows/refresh-locks.yml rebuilds them every Monday instead.
+#   Docker           the base images are ubuntu:24.04 and python:3.12 because that is what the VM runs; moving them
+#                    is a decision, not an update. The Playwright image is tied to the pip pin beside it.
+#
+# `cooldown` makes Dependabot wait a week after a release before proposing it (a bad release is usually pulled within
+# days). Security updates ignore the cooldown and the schedule: those open at once.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:10"
+      timezone: America/Los_Angeles
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: "deps(actions)"
+
+  - package-ecosystem: npm
+    directory: /infra
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:10"
+      timezone: America/Los_Angeles
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: "deps(infra)"

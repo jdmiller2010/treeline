@@ -1,0 +1,133 @@
+# Watches everything Treeline depends on (docs/SUPPLY_CHAIN.md). Every day, on every pull request and on every push to
+# main it builds the bill of materials (scripts/sbom.py) and asks OSV.dev whether any exact version in it has a known
+# vulnerability or is known malware (scripts/vuln_check.py).
+#
+#   pull request   `scan`: read-only. Fails if a Python, npm, vendored or Actions dependency has a finding.
+#                  Ubuntu packages are listed in the report but never fail a pull request.
+#   daily / main   `watch`: the same, plus findings in the internet-facing Ubuntu daemons (OS_WATCH) count, and one
+#                  GitHub issue is opened, updated or closed to match. The issue and the failed run are the alert.
+#                  `graph`: tells GitHub's dependency graph the exact versions in our hash-pinned locks and the
+#                  vendored browser libraries, which GitHub cannot read itself, so Dependabot alerts cover them.
+#
+# It follows docs/REPO_RULES.md: `pull_request` (never `pull_request_target`); the pull-request job has a read-only
+# token and no secrets; only GitHub's own actions, pinned to a commit, and our own standard-library scripts; values
+# from GitHub go through env:, never into a command. The jobs that can write (an issue; the dependency graph) never
+# run for a pull request, so code from a pull request never holds a token that can write.
+#
+# GitHub stops scheduled workflows in a public repo after 60 days without a commit and emails the owner: re-enable it
+# on the Actions tab when that happens.
+name: supply chain
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "23 13 * * *"      # every day, about 5:20 am Pacific
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  OS_WATCH: asterisk,caddy     # Ubuntu source packages whose advisories count (they face the internet)
+
+jobs:
+  scan:
+    name: bill of materials and vulnerability check (pull request)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Tests for the scripts, and that the bill of materials is in step with the repo
+        run: python3 -m unittest -v scripts/test_supply_chain.py
+
+      - name: The Ubuntu packages a fresh VM installs
+        run: scripts/os_packages.sh > os-packages.tsv
+
+      - name: Bill of materials
+        run: |
+          python3 scripts/sbom.py --os-packages os-packages.tsv -o sbom.cdx.json
+
+      - name: Vulnerability check (Ubuntu packages are listed, not counted, on a pull request)
+        run: |
+          rc=0
+          python3 scripts/vuln_check.py sbom.cdx.json --report report.md > /dev/null || rc=$?
+          [ -f report.md ] && cat report.md >> "$GITHUB_STEP_SUMMARY"
+          exit $rc
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9   # v7.0.2
+        if: always()
+        with:
+          name: sbom
+          path: |
+            sbom.cdx.json
+            report.md
+            os-packages.tsv
+          retention-days: 30
+          if-no-files-found: warn
+
+  watch:
+    name: bill of materials and vulnerability check (daily and main)
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      issues: write            # the one issue that says what needs attention
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Tests for the scripts, and that the bill of materials is in step with the repo
+        run: python3 -m unittest scripts/test_supply_chain.py
+
+      - name: The Ubuntu packages a fresh VM installs
+        run: scripts/os_packages.sh > os-packages.tsv
+
+      - name: Bill of materials
+        run: python3 scripts/sbom.py --os-packages os-packages.tsv -o sbom.cdx.json
+
+      - name: Vulnerability check, and the issue kept in step with it
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rc=0
+          python3 scripts/vuln_check.py sbom.cdx.json --os-watch "$OS_WATCH" --report report.md --sync-issue > /dev/null || rc=$?
+          [ -f report.md ] && cat report.md >> "$GITHUB_STEP_SUMMARY"
+          exit $rc
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9   # v7.0.2
+        if: always()
+        with:
+          name: sbom
+          path: |
+            sbom.cdx.json
+            report.md
+            os-packages.tsv
+          retention-days: 90
+          if-no-files-found: warn
+
+  graph:
+    name: tell GitHub's dependency graph what the locks pin
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write          # what the dependency submission API asks for; this job changes no file
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Submit the pinned Python locks and the vendored libraries
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 scripts/sbom.py --github-snapshot -o snapshot.json
+          gh api -X POST "repos/${GITHUB_REPOSITORY}/dependency-graph/snapshots" --input snapshot.json --jq '.message // .result // "submitted"'

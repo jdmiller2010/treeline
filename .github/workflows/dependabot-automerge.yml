@@ -1,0 +1,52 @@
+# Turns on auto-merge for the small Dependabot pull requests, so routine updates land by themselves once every
+# required check has passed (docs/SUPPLY_CHAIN.md). It merges nothing itself: it only asks GitHub to merge when the
+# branch protection on main is satisfied. Without required checks on main GitHub refuses the request, on purpose.
+#
+# Auto-merged: patch and minor updates of GitHub Actions and of the CDK command line (infra/).
+# Left for the owner: major updates, and ANY update that touches the release path (the workflow that signs releases,
+# the script that builds them, the root-run tools): whoever changes those can get root on the VM, so a person looks.
+#
+# This job holds a token that can write, so it never checks out or runs anything from the pull request; it reads
+# Dependabot's own description of the update and the list of changed file names, and nothing else.
+name: dependabot auto-merge
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: read
+
+jobs:
+  automerge:
+    # Dependabot's own pull request, from this repo's own branch, in a run Dependabot started.
+    if: >-
+      github.event.pull_request.user.login == 'dependabot[bot]' &&
+      github.actor == 'dependabot[bot]' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write          # GitHub asks for both to turn auto-merge on
+      pull-requests: write
+    steps:
+      - id: meta
+        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98   # v3.1.0
+        with:
+          github-token: ${{ github.token }}
+
+      - name: Auto-merge patch and minor updates that stay off the release path
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          UPDATE_TYPE: ${{ steps.meta.outputs.update-type }}
+        run: |
+          case "$UPDATE_TYPE" in
+            version-update:semver-patch|version-update:semver-minor) ;;
+            *) echo "::notice::Not auto-merging: '$UPDATE_TYPE' needs a person."; exit 0 ;;
+          esac
+          files="$(gh pr diff "$PR_URL" --name-only)"
+          if printf '%s\n' "$files" | grep -q -E '^(\.github/workflows/release\.yml|scripts/build_release\.sh|deploy/native/)'; then
+            echo "::notice::Not auto-merging: this update touches the release path, which a person reviews."; exit 0
+          fi
+          gh pr merge --auto --squash "$PR_URL" || echo "::warning::Could not turn on auto-merge. Settings: allow auto-merge, and protect main with required checks (docs/SUPPLY_CHAIN.md)."
