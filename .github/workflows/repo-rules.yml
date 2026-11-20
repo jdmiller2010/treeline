@@ -42,5 +42,7 @@ jobs:
       - name: Tests for the scanner
         run: python3 -m unittest scripts/test_check_repo_rules.py
 
-      - name: Tests for the AWS bootstrap script (against a fake aws; no account involved)
-        run: bash infra/bootstrap/test_bootstrap.sh
+      - name: Tests for the AWS bootstrap and deploy scripts (against a fake aws; no account involved)
+        run: |
+          bash infra/bootstrap/test_bootstrap.sh
+          bash infra/bootstrap/test_deploy.sh

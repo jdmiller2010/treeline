@@ -1,0 +1,8 @@
+{
+  "app": ".venv/bin/python app.py",
+  "watch": { "exclude": ["node_modules", ".venv", "cdk.out"] },
+  "context": {
+    "@aws-cdk/core:checkSecretUsage": true,
+    "@aws-cdk/core:target-partitions": ["aws"]
+  }
+}

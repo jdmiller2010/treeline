@@ -9,7 +9,8 @@
 #   ./dev ui start|stop|status|reset|smoke|pwa   a local API on a throwaway database, the parent-app browser test, and the installable-app test
 #   ./dev native             tests for the VM's tools (deploy/native/tests): secrets, certificates, configuration, releases, the deploy agent's logic
 #   ./dev vm                 the VM-imitating job: install.sh and the deploy agent in a systemd container (about 10 minutes; needs privileged Docker)
-#   ./dev infra              the bootstrap.sh tests (against a fake aws), in a container that has jq
+#   ./dev infra              the bootstrap.sh and deploy.sh tests (against a fake aws), in a container that has jq
+#   ./dev cdk                the CDK app's template assertions and a real `cdk synth` (needs the one-time setup in infra/README.md)
 #   ./dev check              regenerate generated files, check syntax and the repo rules, fail if anything was stale
 #   ./dev rules [args]       scan the repo for secrets, addresses and other things that must not be public (docs/REPO_RULES.md)
 #   ./dev hooks              turn on the pre-commit hook that runs those rules on every commit
@@ -186,8 +187,9 @@ cmd_infra() {
 FROM ubuntu:24.04
 RUN apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq jq python3 openssl openssh-client >/dev/null && apt-get clean
 EOF2
-  docker run --rm -v "$ROOT":/r:ro treeline-shelltools bash /r/infra/bootstrap/test_bootstrap.sh
+  docker run --rm -v "$ROOT":/r:ro treeline-shelltools bash -c 'bash /r/infra/bootstrap/test_bootstrap.sh && bash /r/infra/bootstrap/test_deploy.sh'
 }
+cmd_cdk() { infra/.venv/bin/python -m unittest discover -s infra/tests -v; }
 cmd_vm() { python3 -m unittest -v deploy/native/ci/vm_test.py "$@"; }
 
 cmd_all() { cmd_check; cmd_unit; cmd_native; cmd_infra; cmd_vm; cmd_sip; cmd_web phone_ui.py; cmd_web phone_calls.py; cmd_ui smoke; cmd_ui pwa; }
@@ -195,7 +197,7 @@ cmd_all() { cmd_check; cmd_unit; cmd_native; cmd_infra; cmd_vm; cmd_sip; cmd_web
 case "${1:-help}" in
   up) shift; cmd_up "$@" ;; restart) cmd_restart ;; unit) shift; cmd_unit "$@" ;;
   sip) shift; cmd_sip "$@" ;; web) shift; cmd_web "$@" ;; ui) shift; cmd_ui "$@" ;;
-  native) shift; cmd_native "$@" ;; vm) shift; cmd_vm "$@" ;; infra) cmd_infra ;;
+  native) shift; cmd_native "$@" ;; cdk) cmd_cdk ;; vm) shift; cmd_vm "$@" ;; infra) cmd_infra ;;
   check) cmd_check ;; rules) shift; cmd_rules "$@" ;; hooks) cmd_hooks ;; clean) cmd_clean ;; all) cmd_all ;;
-  *) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//' ;;
+  *) sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//' ;;
 esac

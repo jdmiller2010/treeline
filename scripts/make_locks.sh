@@ -6,6 +6,8 @@
 #   controller/requirements.txt          -> controller/requirements-prod.lock   (the app: flask, gunicorn, pywebpush ...)
 #   deploy/native/requirements-tools.in  -> deploy/native/requirements-tools.lock (boto3, for the root-run tools)
 #
+#   infra/requirements.in                -> infra/requirements.lock            (the CDK app: aws-cdk-lib, constructs)
+#
 # The locks name the sha256 of each wheel for CPython 3.12 on x86_64 Linux (Lightsail's Linux plans are x86_64).
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -30,5 +32,9 @@ mkdir /w && /v/bin/pip download -q --disable-pip-version-check --no-deps -r /tmp
   done < /tmp/freeze.txt
 } > "/r/$2"' _ "$1" "$2"
 }
-lock controller/requirements.txt controller/requirements-prod.lock
-lock deploy/native/requirements-tools.in deploy/native/requirements-tools.lock
+# With no argument all three are rebuilt (and unpinned ">=" inputs may move to newer versions: review the diff).
+# `scripts/make_locks.sh infra` (or app, tools) rebuilds just one.
+want="${1:-all}"
+[ "$want" != all ] && [ "$want" != app ] || lock controller/requirements.txt controller/requirements-prod.lock
+[ "$want" != all ] && [ "$want" != tools ] || lock deploy/native/requirements-tools.in deploy/native/requirements-tools.lock
+[ "$want" != all ] && [ "$want" != infra ] || lock infra/requirements.in infra/requirements.lock

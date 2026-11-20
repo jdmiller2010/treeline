@@ -42,6 +42,24 @@ jobs:
       - run: sudo apt-get install -y -qq age
       - run: cd deploy/native/tests && python3 -W error::ResourceWarning -m unittest -v
 
+  cdk:
+    name: the CDK app (template assertions and a real cdk synth, no AWS account)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: The pinned CDK CLI (no install scripts) and the hash-pinned Python packages
+        run: |
+          (cd infra && npm ci --ignore-scripts --no-audit --no-fund)
+          python3 -m venv infra/.venv
+          infra/.venv/bin/pip install --require-hashes --no-deps -r infra/requirements.lock
+      - run: infra/.venv/bin/python -m unittest discover -s infra/tests -v
+
   vm:
     name: the VM imitation (systemd in Docker)
     runs-on: ubuntu-latest

@@ -34,3 +34,4 @@ cdk.out/
 cdk.context.json
 *.tfstate
 *.tfstate.backup
+infra/.venv/
