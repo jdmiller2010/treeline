@@ -2,7 +2,7 @@
 
 The record of every security review of Treeline: what was reviewed, when, what was found, and what was done about it. Newest review first. Keep this file current (see "How to record a review" below).
 
-Treeline's security model in one paragraph: a family signs in with an emailed code and holds a 30-day session (stored hashed on the server). Handsets authenticate to Asterisk with digest credentials generated from the database. Calls connect only over strings both families approved, and what each family sees of a call is filtered. No recording, no outside numbers, no 911. See [ARCHITECTURE.md](ARCHITECTURE.md) and [DEPLOY.md](DEPLOY.md).
+Treeline's security model in one paragraph: in production a grown-up signs in with Google (authorization code with PKCE, bound to the browser that started it; a new family also needs the closed beta's access code once) and holds a 30-day session (stored hashed on the server); the emailed code is the development sign-in only. Handsets authenticate to Asterisk with digest credentials generated from the database. Calls connect only over strings both families approved, and what each family sees of a call is filtered. No recording, no outside numbers, no 911. Production runs natively on one VM with signed releases, secrets from SSM in memory, and age-encrypted write-once backups. See [ARCHITECTURE.md](ARCHITECTURE.md) and [DEPLOY_AWS.md](DEPLOY_AWS.md).
 
 ## Open items
 

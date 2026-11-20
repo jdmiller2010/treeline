@@ -4,7 +4,7 @@ Treeline is a house-to-house phone network for neighborhood kids. Every househol
 
 This plan turns the decisions on the Treeline planning whiteboard into phases. Each phase ends with something that works end to end and can be tested.
 
-- **Where we are:** Phases 1, 2 and 3 are built and tested (see the README's status table). Phase 4's deployment files, backups, alerts and privacy are built but haven't run on a public server, and the pilot hasn't happened. Phase 5 has a server side and a guide but hasn't been tried on an adapter. Phase 6 has server-side pairing and a design, with no firmware or board.
+- **Where we are:** Phases 1, 2 and 3 are built and tested (see the README's status table). Phase 4's AWS deployment (native install, signed releases with rollback, encrypted backups, Google sign-in with a beta access code, the CDK app) is built and tested in a CI job that imitates the VM, but hasn't run on AWS, and the pilot hasn't happened. Phase 5 has a server side and a guide but hasn't been tried on an adapter. Phase 6 has server-side pairing and a design, with no firmware or board.
 - **Where the plan and the build differ:** the nav's second tab is "Strings" (the design system had "Friends"); the printed pairing code on the Treeline phone is 10+ digits, not 6 (a code that lives for years must not be guessable); tablets pair by a short-lived six-digit code or QR. Everything else follows the phases below.
 
 ---
@@ -118,9 +118,9 @@ This plan turns the decisions on the Treeline planning whiteboard into phases. E
 
 **Build**
 
-1. **Hosting:** the parent app and softphone on free static hosting (Firebase Hosting or GitHub Pages); Asterisk, the control app and the API on a small VM (Oracle Cloud Always Free, or about $5 a month on Lightsail, Hetzner or DigitalOcean).
-2. **Security:** TLS for SIP and HTTPS everywhere, SRTP for audio, a unique password for every handset, ARI never exposed to the internet, rate limits on sign-in and SIP.
-3. **Reliability:** nightly database backups, an uptime check, and an alert to parents when their handset goes offline. If the server is down, handsets fail with fast busy.
+1. **Hosting:** everything on one small AWS Lightsail VM, natively, with infrastructure as code (decided; see [DEPLOY_AWS.md](DEPLOY_AWS.md)). The parent app and softphone can still go on static hosting (`scripts/build_static.py`).
+2. **Security:** TLS for SIP and HTTPS everywhere, SRTP for audio, a unique password for every handset, ARI never exposed to the internet, rate limits on sign-in and SIP, sign-in with Google and a closed-beta access code.
+3. **Reliability:** hourly encrypted backups off the machine, a dead-man monitor, and an alert to parents when their handset goes offline. If the server is down, handsets fail with fast busy.
 4. **Push notifications** for the parent app.
 5. **Records:** call records kept 90 days by default, adjustable per treehouse; parent actions kept a year.
 6. **Privacy before inviting anyone:** parent consent at setup, a short plain-language privacy policy (what's stored, for how long, who sees it, nothing recorded), and real deletion. The US kids' privacy law (COPPA) may apply once families beyond friends join; get advice before then.

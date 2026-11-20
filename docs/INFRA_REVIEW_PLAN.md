@@ -7,6 +7,8 @@ commit set with its own test, and updates [SECURITY.md](SECURITY.md) when it is 
 
 ## Done (2026-11-20) and left for follow-up
 
+(Still current after the later security reviews 6 and 7, which changed `deploy/native/` and the app, not `infra/`'s CDK app.)
+
 **Implemented and tested offline:** packages 2, 3, 4, 5, 6 and 10 (F5, F6, F7, F8, F9, F13, F14, N1, N2, N3), in three commits on
 `deploy-aws/07-infra-hardening`. The feature-flag change was checked by synthesizing both stacks before and after: the resources are
 identical, so nothing is replaced. One flag is left unset on purpose (`core:defaultCrossStackReferences`: the stacks share no references).

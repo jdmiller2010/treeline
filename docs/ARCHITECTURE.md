@@ -1,6 +1,6 @@
 # Architecture
 
-How Treeline fits together. For the product decisions and phases see [PLAN.md](PLAN.md); for running it see the [README](../README.md) and [DEPLOY.md](DEPLOY.md). The diagrams are [Mermaid](https://mermaid.js.org/) and render on GitHub and in most Markdown viewers.
+How Treeline fits together. For the product decisions and phases see [PLAN.md](PLAN.md); for running it see the [README](../README.md) and [DEPLOY_AWS.md](DEPLOY_AWS.md) (production; [DEPLOY.md](DEPLOY.md) is the retired Docker plan). The diagrams are [Mermaid](https://mermaid.js.org/) and render on GitHub and in most Markdown viewers.
 
 ## The idea in one paragraph
 
@@ -316,7 +316,7 @@ flowchart LR
 
 | Area | Endpoints (all JSON, bearer token unless noted) |
 | --- | --- |
-| Sign-in | `POST /api/auth/request`, `/verify`, `/signout`; `GET /api/me` |
+| Sign-in | `GET /api/auth/config`; production: `POST /api/auth/beta`, `GET /api/auth/google/start`, `/google/callback`, `POST /api/auth/exchange`; development only: `POST /api/auth/request`, `/verify`; `POST /api/auth/signout`; `GET /api/me` |
 | Treehouse | `POST/PATCH/DELETE /api/treehouse`, `/number`, `/leave`; `GET /api/home` |
 | Strings | `GET /api/strings`; `POST /api/ladder-codes`, `/api/strings/redeem`, `/<id>/approve`, `/pause`, `/resume`, `/cut` |
 | Handsets | `GET/POST /api/handsets`, `PATCH/DELETE /<id>`, `/ring-test`, `/provision` |
@@ -326,32 +326,40 @@ flowchart LR
 | Handset auth | `GET /api/line` (HTTP Basic with the handset's SIP account) |
 | Ops | `GET /api/health` (503 if Asterisk is unreachable) |
 
-Sign-in is an emailed six-digit code. Parents can change everything for their own treehouse; sitters can pause the line, turn quiet hours on or off, disconnect or ring a phone, and see today's calls (no action log, no other changes). Every change a grown-up makes is written to the action log.
+Sign-in in production is Google (authorization code with PKCE, done on the server, `google.py`), bound by a short-lived cookie to the browser that started it. A new person needs the closed beta's access code once, to create a treehouse; a grown-up a parent added signs in with Google alone; one treehouse per email. The emailed six-digit code is the development and test-suite sign-in, and returns 404 in production. Parents can change everything for their own treehouse; sitters can pause the line, turn quiet hours on or off, disconnect or ring a phone, and see today's calls (no action log, no other changes). Every change a grown-up makes is written to the action log.
 
 ## 9. Deployment
 
+Production is one Lightsail VM, natively (no Docker): see [DEPLOY_AWS.md](DEPLOY_AWS.md). **Nothing here has run on AWS yet**; it runs in a CI job that imitates the VM.
+
 ```mermaid
 flowchart TB
-    subgraph vm["One VM (host networking)"]
+    subgraph vm["Lightsail VM (Ubuntu 24.04, systemd)"]
         direction TB
-        caddy["Caddy :80/:443"]
-        api["API 127.0.0.1:8080"]
-        asterisk["Asterisk<br/>:5061 SIP TLS, 10000-10100 RTP<br/>127.0.0.1:8088 web + ARI"]
+        caddy["Caddy :80 redirect, :443"]
+        api["API (gunicorn) 127.0.0.1:8080"]
+        asterisk["Asterisk<br/>10000-10100 RTP; 5061 SIP TLS (closed until an adapter)<br/>127.0.0.1:8088 web + ARI"]
         controller["Control app"]
-        backup["Backup service<br/>nightly, pruned"]
-        data[("data/<br/>treeline.db, generated/, backups/")]
+        timers["timers: deploy agent, backup,<br/>dead-man ping, certsync"]
+        disk[("attached encrypted disk<br/>/var/lib/treeline: data/, caddy/, spool/")]
     end
     net((Internet))
+    gh[("GitHub Releases<br/>SSH-signed tarballs")]
+    aws[("SSM (secrets), S3 (age-encrypted backups, write-once)")]
 
-    net -- "443" --> caddy
-    net -- "5061, RTP" --> asterisk
+    net -- "443, RTP" --> caddy
     caddy --> api
     caddy -- "/ws only" --> asterisk
-    api --- data
-    controller --- data
-    backup --- data
-    asterisk -- "certificate from Caddy" --- caddy
+    api --- disk
+    controller --- disk
+    timers -- "verify, switch, health-check, roll back" --> gh
+    timers -- "secrets at start; backups hourly" --> aws
+    asterisk -- "certificate copied from Caddy" --- caddy
 ```
+
+- **Releases** are reproducible tarballs signed with an SSH key in a protected GitHub environment. The deploy agent (root) verifies the signature against a key installed on the VM before unpacking anything, refuses replays and downgrades, checks the new code with the machine's real settings, switches in a quiet window when no call is in progress, and rolls back (restoring the data layer's pre-migration copies) if `/api/health` does not report the new release.
+- **Secrets** come from SSM into tmpfs at each start; the ARI password is generated on the VM. A deployed release is production whatever its settings say, and refuses to start with any development setting.
+- **Infrastructure** is a CDK app in `infra/`: a retained Foundation stack (backup bucket, mail identity, state disk, budget) and a replaceable Host stack (instance, static IP, firewall, DNS).
 
 Development uses the same services with `docker-compose.yml` and a default ARI password, UDP SIP and sign-in codes shown on the page (to private addresses only). Never expose that stack to the internet. Optionally the web pages can sit on a static host (`scripts/build_static.py`) while only the API and Asterisk stay on the server.
 
@@ -366,4 +374,4 @@ Development uses the same services with `docker-compose.yml` and a default ARI p
 
 ## Not built
 
-The pieces that need things this repository can't supply: a public server run and the pilot ([PILOT.md](PILOT.md)), a tried phone adapter ([ADAPTER.md](ADAPTER.md)), and the custom phone's firmware and board ([HARDWARE.md](HARDWARE.md)).
+The pieces that need things this repository can't supply: the first run on the real AWS account and the pilot ([PILOT.md](PILOT.md)), a tried phone adapter ([ADAPTER.md](ADAPTER.md)), and the custom phone's firmware and board ([HARDWARE.md](HARDWARE.md)).

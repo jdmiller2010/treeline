@@ -36,4 +36,4 @@ If the address changes (a new DHCP lease), update `.env` and `docker compose up 
 `TREELINE_TEST_BASE=https://localhost:8443 ./dev web phone_calls.py` runs the real browser calls through this proxy
 (over `https` and `wss`). Certificate errors are ignored there because the authority is Caddy's own.
 
-Never use this in production: `deploy/Caddyfile` gets a real certificate for a real domain.
+Never use this in production: production's Caddy configuration is generated on the VM from `deploy/native/templates/Caddyfile.tmpl` and gets a real certificate ([DEPLOY_AWS.md](DEPLOY_AWS.md)).

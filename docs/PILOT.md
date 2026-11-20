@@ -4,7 +4,7 @@ Phase 4 of [PLAN.md](PLAN.md) ends with a pilot: 2–3 friend families use Treel
 
 ## Before you start
 
-- [ ] Deployed per [DEPLOY.md](DEPLOY.md), `https://YOUR-DOMAIN/api/health` is green, and an uptime monitor is watching it.
+- [ ] Deployed per [DEPLOY_AWS.md](DEPLOY_AWS.md) (its owner checklist done), `https://app.treelinephone.com/api/health` is green, and the dead-man monitor is watching it.
 - [ ] A restore from a backup has been tried at least once.
 - [ ] The operator-voice messages are recorded (see `asterisk/sounds/README.md`), or you've decided to keep the placeholder voice for the pilot.
 - [ ] Each family has a dedicated tablet, plugged in, locked to the Treeline phone (Guided Access or screen pinning).

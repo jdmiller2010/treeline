@@ -25,10 +25,10 @@ phased plan, [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) shows how it fits toge
 
 | Phase | What | State |
 | --- | --- | --- |
-| 1 | **Platform core**: treehouses, numbers, strings, call rules, classic tones, call audit, API | Built and tested: 253 unit tests and 22 scripted SIP scenarios |
-| 2 | **Parent app**: setup, strings, calls, quiet hours, phone book, settings, privacy | Built and tested in a real browser (277 checks; 6 widths, both themes) |
+| 1 | **Platform core**: treehouses, numbers, strings, call rules, classic tones, call audit, API | Built and tested: 301 unit tests and 22 scripted SIP scenarios |
+| 2 | **Parent app**: setup, strings, calls, quiet hours, phone book, settings, privacy | Built and tested in a real browser (286 checks; 6 widths, both themes) |
 | 3 | **Rotary softphone** and several phones on one line | Built and tested with real browser softphones on real calls (35 checks, with audio; the softphone's screen 90) |
-| 4 | **Deploy and pilot** | Backups, health check, push alerts and privacy are built. **AWS deployment** ([docs/DEPLOY_AWS.md](docs/DEPLOY_AWS.md)): the native install, signed releases, the deploy agent with rollback, encrypted backups with a restore drill, and the CDK app are written and tested **only in a CI job that imitates the VM** (Ubuntu 24.04, systemd in Docker, fake SSM/S3, local ACME CA), plus offline CDK assertions. **Never run on AWS or a public server: NAT and call audio, Let's Encrypt, SES, Lightsail's firewall and disk, real IAM.** Google sign-in with a beta access code is built and tested with a fake Google, never against the real one; the pilot hasn't happened. The older Docker plan is in [docs/DEPLOY.md](docs/DEPLOY.md) (retired for production); [docs/PILOT.md](docs/PILOT.md) |
+| 4 | **Deploy and pilot** | Backups, health check, push alerts and privacy are built. **AWS deployment** ([docs/DEPLOY_AWS.md](docs/DEPLOY_AWS.md)): the native install, signed releases, the deploy agent with rollback, encrypted backups with a restore drill, and the CDK app are written and tested **only in a CI job that imitates the VM** (40 tests: Ubuntu 24.04, systemd in Docker, fake SSM/S3, local ACME CA), 58 tests of the VM's tools, and 25 offline CDK assertions. Seven security reviews are recorded in [docs/SECURITY.md](docs/SECURITY.md). **Never run on AWS or a public server: NAT and call audio, Let's Encrypt, SES, Lightsail's firewall and disk, real IAM.** Google sign-in with a beta access code is built and tested with a fake Google, never against the real one; the pilot hasn't happened. The older Docker plan is in [docs/DEPLOY.md](docs/DEPLOY.md) (retired for production); [docs/PILOT.md](docs/PILOT.md) |
 | 5 | **A real rotary phone** through an adapter | Server side tested; guide written. **Not tried on an adapter.** See [docs/ADAPTER.md](docs/ADAPTER.md) |
 | 6 | **Custom rotary phone** (ESP32-S3) | Server-side pairing built and tested. **No firmware or board.** See [docs/HARDWARE.md](docs/HARDWARE.md) |
 
@@ -132,7 +132,7 @@ docker compose logs -f controller  # watch calls being allowed or blocked
 
 ## Tests
 
-`./dev all` runs everything below in order; `./dev help` lists the individual commands (and takes a lock so two runs can't overlap).
+`./dev all` runs everything below in order (`./dev unit` for the unit tests); `./dev help` lists the individual commands (and takes a lock so two runs can't overlap).
 
 | What | Command | Proves |
 | --- | --- | --- |
@@ -140,7 +140,11 @@ docker compose logs -f controller  # watch calls being allowed or blocked
 | Scripted SIP phones | `docker compose run --rm testphones` | 22 scenarios: real SIP calls through Asterisk and the rules |
 | Softphones | `docker compose run --rm webtests` | Two and three real browser softphones on real WebRTC calls, with audio |
 | The softphone's screen | `docker compose run --rm webtests phone_ui.py` | Pairing and the dial |
-| The parent app | `python3 web/tests/smoke.py` | Needs Playwright and a running API (see the file's header); 277 checks across screens and widths |
+| The parent app | `./dev ui smoke` | A local API on a throwaway database and a real browser; 286 checks across screens and widths, including the Google sign-in screen |
+| The installable app | `./dev ui pwa` | The manifest, the service worker, the launcher and the install prompts |
+| The VM's tools | `./dev native` | 58 tests: secrets, certificates, configuration rendering, signed releases, the deploy agent's logic, backups and restore (backup tests need `age`) |
+| The production install | `./dev vm` | 40 tests: the real `install.sh` and deploy agent on Ubuntu 24.04 with systemd in Docker: routing, ports, TLS, secrets, signed releases, rollback, backups. About 10 minutes; needs privileged Docker |
+| AWS scripts and CDK | `./dev infra`, `./dev cdk` | `bootstrap.sh` and `deploy.sh` against a fake `aws`; the CDK templates' assertions and a real `cdk synth` (no AWS account) |
 
 A passing scripted run ends with `22/22 scenarios passed`. The scripted tests
 make a small world of treehouses numbered `01xx` (a range real families never
@@ -155,7 +159,7 @@ real families in it.
 
 **A softphone in a browser.** Open `http://localhost:8080/phone/` on the same machine
 (a browser only lets a page use the microphone on `localhost` or over HTTPS, so
-another device needs the deployed, HTTPS setup in [docs/DEPLOY.md](docs/DEPLOY.md)).
+another device on your network needs the local HTTPS setup in [docs/LOCAL_HTTPS.md](docs/LOCAL_HTTPS.md)).
 Or, from the parent app on that same device, press **Use this device as a phone** under Our treehouse: no code needed. Otherwise sign in to the parent app, then Our treehouse, Add a phone, Softphone (app), and type the
 six digits the phone shows. The phone page shows your treehouse's name and what the phone is doing, with a card file of your strings' numbers beside the phone; **How to dial** walks a kid through it in pictures. Make two treehouses, string them with a ladder code,
 and call one from the other. Each phone has a switch under Our treehouse (and on Home) to disconnect it for now: it stops ringing and can't call out, and your other phones carry on.
@@ -167,7 +171,7 @@ set to your PC's address, and transport UDP. Dial another treehouse's four digit
 
 ## Where the data lives
 
-One **central** SQLite database (`data/treeline.db`) holds what routing needs (treehouses, handsets, strings, sign-ins) and a short call ledger. Each treehouse also has **its own file** (`data/households/<id>.db`) with that family's call history, notes, audit log and consent, kept for the family's own retention (7 to 365 days). One family can be backed up, trimmed or deleted without touching another. Backups are one file each (`central/` and `households/<id>/`) and expire after 7 days. There is no upgrade path from the earlier single-file layout: `./dev clean` starts fresh. Rules, write order and the schema-migration process: [docs/DATA_LAYER.md](docs/DATA_LAYER.md).
+One **central** SQLite database (`data/treeline.db`) holds what routing needs (treehouses, handsets, strings, sign-ins) and a short call ledger. Each treehouse also has **its own file** (`data/households/<id>.db`) with that family's call history, notes, audit log and consent, kept for the family's own retention (7 to 365 days). One family can be backed up, trimmed or deleted without touching another. Backups are one file each (`central/` and `households/<id>/`) and expire after 7 days. In production the files live on the VM's attached, encrypted disk (`/var/lib/treeline/data/`), and every hour each one is encrypted with `age` to a key only the owner holds and uploaded to S3, write-once ([docs/DEPLOY_AWS.md](docs/DEPLOY_AWS.md)). There is no upgrade path from the earlier single-file layout: `./dev clean` starts fresh. Rules, write order and the schema-migration process: [docs/DATA_LAYER.md](docs/DATA_LAYER.md).
 
 ## Files
 
@@ -182,23 +186,30 @@ testphones/               scripted SIP phones and the 22 scenarios
 web/parent/               the parent app    web/phone/   the rotary softphone
 web/shared/               API client and UI builders    web/tests/   browser tests
 design/                   the design system (tokens, components, logo)
-deploy/                   production compose, Caddy, Asterisk overlay, backups, fail2ban
-docs/                     PLAN, DEPLOY, SECURITY, ADAPTER, HARDWARE, PILOT
-scripts/                  build_web_assets.py, build_licenses.py, build_static.py
+deploy/native/            production on the VM: install.sh, systemd units, config templates, the root-run tools
+                          (deploy agent, secrets, certificates, backups, dead-man ping), the CI job that imitates the VM
+deploy/                   also the retired Docker production files (kept until the first real deploy), fail2ban
+infra/                    AWS: bootstrap.sh (IAM, SSM), the CDK app (Foundation and Host stacks), deploy.sh, restore
+docs/                     PLAN, ARCHITECTURE, DATA_LAYER, DEPLOY_AWS, SECURITY, REPO_RULES, INFRA_REVIEW_PLAN,
+                          ADAPTER, HARDWARE, PILOT, LOCAL_HTTPS (DEPLOY is the retired Docker plan)
+scripts/                  build_release.sh (signed releases), make_locks.sh (hash-pinned dependencies), build_web_assets.py,
+                          build_licenses.py, build_static.py, check_repo_rules.py
+.github/workflows/        repo rules, the VM imitation and unit tests, the signed release build
 ```
 
 ## Before this leaves your house
 
 The files at the project root are for your own network only: sign-in codes
 appear on the page, passwords are defaults, and SIP isn't encrypted. For
-anything beyond that, use the production setup in [docs/DEPLOY.md](docs/DEPLOY.md):
-HTTPS everywhere, SIP over TLS with SRTP, a private ARI, unique passwords for
-every phone, and nightly backups.
+anything beyond that, use the production setup in [docs/DEPLOY_AWS.md](docs/DEPLOY_AWS.md):
+HTTPS everywhere, sign-in with Google and a beta access code, SIP over TLS with SRTP, a private ARI,
+unique passwords for every phone, and hourly encrypted backups. A deployed release refuses
+to start with any of the development settings above.
 
 ## Next steps
 
 Phases 1 to 3 are done. What's left needs things this repository can't supply:
-a public server and real families for the pilot ([docs/PILOT.md](docs/PILOT.md)),
+the first deploy to the real AWS account (the owner checklist in [docs/DEPLOY_AWS.md](docs/DEPLOY_AWS.md)), real families for the pilot ([docs/PILOT.md](docs/PILOT.md)),
 an adapter and a rotary phone to check [docs/ADAPTER.md](docs/ADAPTER.md)
 against, and the hardware for [docs/HARDWARE.md](docs/HARDWARE.md). Also still
 to do: record the operator messages (`asterisk/sounds/README.md`).

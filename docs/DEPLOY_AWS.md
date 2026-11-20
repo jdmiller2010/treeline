@@ -1,11 +1,11 @@
 # Deploying Treeline to AWS: the plan
 
-Status: **work packages 1 to 6 are built** (5, Google sign-in with the beta access code, with the owner's answers recorded below); 7 needs the real account. Everything runs only in the VM-imitating CI job (`./dev vm`), unit tests and
-offline CDK assertions. **Nothing has been run on AWS or on a public server**; the "Verification record" at the end says
+Status: **work packages 1 to 6 are built** (5, Google sign-in with the beta access code, with the owner's answers recorded below); 7 needs the real account. Everything runs only in the VM-imitating CI job (`./dev vm`, 40 tests), unit tests, the VM tools' tests (`./dev native`, 58) and
+offline CDK assertions (`./dev cdk`, 25). Later hardening from the security reviews (SECURITY.md Reviews 5 to 7) and the infra review ([INFRA_REVIEW_PLAN.md](INFRA_REVIEW_PLAN.md)) is folded in below. **Nothing has been run on AWS or on a public server**; the "Verification record" at the end says
 what was checked against the real components and what could not be, and the "Owner checklist" is what is left.
 This replaces the Docker-based production plan in [DEPLOY.md](DEPLOY.md) and
-`deploy/docker-compose.prod.yml`, which are retired when this is built (keep their still-valid parts:
-the softphone/tablet setup, the pilot checklist and the monitoring notes).
+`deploy/docker-compose.prod.yml`. Those Docker files stay in the repository, unused, until the first real deploy has worked
+(owner checklist step 8 deletes them); DEPLOY.md's softphone/tablet setup, pilot and monitoring notes still apply.
 
 What already exists and is relied on:
 
@@ -59,7 +59,7 @@ Asterisk; ARI stays on localhost.
 2. **Encrypted in transit on every hop that leaves the machine:** browser to Caddy (TLS), browser calls
    (DTLS-SRTP), adapters (SIP over TLS with SDES SRTP, no plaintext fallback), SES (STARTTLS **with
    certificate verification**, which fixes SECURITY.md R1-1), SSM and S3 (HTTPS; the bucket policy denies
-   non-TLS). Hops that stay on `127.0.0.1` (Caddy to gunicorn, Caddy to Asterisk's WebSocket, ARI) are
+   non-TLS and TLS older than 1.2). Hops that stay on `127.0.0.1` (Caddy to gunicorn, Caddy to Asterisk's WebSocket, ARI) are
    allowed to be plain, and are bound to loopback so nothing else can reach them.
 3. **Encrypted at rest:** the S3 bucket (default encryption) and the backups (`age`, client-side); the
    state disk (the Lightsail FAQ says attached disks and their snapshots are encrypted at rest by default with
@@ -67,8 +67,9 @@ Asterisk; ARI stays on localhost.
    and keep nothing sensitive on it, including logs, the swap file and `/tmp`: see work package 1). Record the
    result in SECURITY.md (R1-4 and R2-6) as documented-by-AWS, not observed.
 4. **No secret in git, argv, logs or the image.** Release tarballs contain no environment-specific values.
-   `TREELINE_ENV=production` makes the app refuse to start if any dev setting is present
-   (`TREELINE_DEV_CODES`, the default ARI login, a missing SSM value).
+   `TREELINE_ENV=production` makes the app refuse to start if any dev setting is present (`TREELINE_DEV_CODES`, the
+   default ARI login, a missing SSM value). Since Review 6, code that came from a release is production whatever
+   `TREELINE_ENV` says, and `treeline-config` refuses a development Asterisk setting.
 5. **Least privilege.** The VM key can read `/treeline/*` and write backups, nothing else. The deploy agent
    runs as root only for the switch and restart steps.
 6. **Release integrity.** The agent runs as root, so a tampered release is a root compromise. It must verify
@@ -155,6 +156,13 @@ says so**. A manual `treeline-deploy --rollback` is refused whenever any version
 previous release expects, because by then families have written data; the message points at the restore
 procedure. The data layer is not changed.
 
+**Added after review (SECURITY.md Review 7):** a release that failed its health check is recorded and **not retried by the
+timer** (only `treeline-deploy --version` retries it); household files created by a failed release (a family made during the
+health wait) are set aside in `data/quarantine/` instead of failing the rollback; a failed manual rollback goes back to the running
+release; every deploy rebuilds the release's operator messages (as the `treeline` user, then copied by name); `install.sh` refuses
+a release older than the running one, and only stages a release on an empty machine; the pre-flight imports the new code with the
+machine's real settings (Review 6).
+
 ### 3. A CI job that imitates the VM
 
 A workflow job that runs `install.sh` and the deploy agent inside an `ubuntu:24.04` container with systemd
@@ -167,6 +175,10 @@ certificate from a Caddy acting as a local ACME server, which checks the real ce
 `treeline-certsync` reads (but not Let's Encrypt's own issuer name). It cannot test NAT, Let's Encrypt, SES or real firewalls; it exists to catch install breakage
 before the VM does.
 
+It now has 40 tests, and `deploy/native/ci/mutation_check.py` breaks seven properties on purpose (signature check off, 8080 or ARI
+on every interface, content on port 80, ARI proxied, no rollback, production mode off) and requires the matching test to fail:
+all seven were caught.
+
 ### 4. Backups
 
 `treeline-backup` (hourly; today's `backup.py --daemon` runs nightly and is replaced by a timer): SQLite's online backup of the central file and each household file (the existing
@@ -174,6 +186,10 @@ before the VM does.
 `central/` and `households/<id>/` in S3, write only. A dead-man ping (for example a free healthchecks-style
 URL kept in SSM) on success. A **restore script and a drill**: pull, decrypt with the private key from the
 owner's password manager, open, check. Local spool pruned at 7 days.
+
+**Added after review:** the bucket denies a `PutObject` under `central/` or `households/` without `If-None-Match: *`, and the
+upload sends it, so a stolen VM key cannot overwrite a backup (Review 5). The upload's records (`uploaded.json`, `last-success`)
+live in root's own `/var/lib/treeline/backup/`, never in the spool the app user controls (Review 6).
 
 ### 5. Google sign-in
 
@@ -193,6 +209,12 @@ owner's password manager, open, check. Local spool pruned at 7 days.
 - A security entry in [SECURITY.md](SECURITY.md) and tests: wrong audience, expired, unverified email,
   replayed nonce or state, not on the list.
 
+**Added after review (SECURITY.md Review 6):** the round trip to Google is bound to the browser that started it by a random
+`__Host-` cookie (HttpOnly, Secure, SameSite=Lax, ten minutes) whose hash is kept with the state; the callback and the one-time
+word only work in that browser (login CSRF). Setup shows whose account the treehouse will belong to. The beta code is limited to
+10 tries per address per hour (a shared limit was removed: one stranger could lock everyone out, Review 7). Invites say the address
+must be a Google account.
+
 ### 6. Infrastructure with CDK
 
 `infra/` CDK app (Python): **Foundation** (retained: the backup bucket with TLS-only policy, default
@@ -202,6 +224,11 @@ the disk attachment). Import the existing hosted zone, do not create one.
 The instance's default firewall rules are replaced (requirement 7). (CloudFormation's `AWS::Lightsail::Instance` has no IPv4-only property, so the IPv6 firewall is kept closed by giving every rule IPv4 CIDRs only; `PutInstancePublicPorts` replaces the rules of both firewalls. **Unverified on AWS.**) The static IP and the A records are in **Host**, not Foundation: CloudFormation attaches a static IP from the IP's side (`AttachedTo`), so it cannot live in a stack that the instance's stack depends on. A replaced host gets a new address; DNS follows it. `infra/deploy.sh` runs `bootstrap.sh check --quiet` first. `cdk.context.json` and `cdk.out/` are gitignored
 (already). CDK's CLI is npm: add an exception to CLAUDE.md's "no `npm install`" rule **scoped to `infra/`**
 and pin the version. Keep the bucket name identical to the one in `bootstrap.sh`.
+
+**Added after the infra review:** the bucket also denies TLS older than 1.2; a CAA record lets only Let's Encrypt issue
+certificates for the domain; the A records use a 5-minute TTL; the CDK feature flags are set (`cdk flags --safe`, with identical
+synthesized resources). What is left for the first real deploy or later is in [INFRA_REVIEW_PLAN.md](INFRA_REVIEW_PLAN.md)
+(disk attachment, pre-flight for an existing SES identity, IMDSv2, SES bounce handling, deploy credentials).
 
 ### 7. First deploy and drills (needs the real account and the owner)
 
@@ -223,7 +250,7 @@ address is blocked. Record what was and was not done in README (Phase 4) and SEC
 Settled by the owner: the hostname (`app.treelinephone.com`), release signing (SSH signatures), the Google
 mechanism (authorization code with PKCE), and the closed-beta rule (an access code, then any Google account).
 Decided here, to review: the firewall allowlist is optional rather than dropped; no `ufw`; boto3 rather than the AWS CLI on the VM; swap and logs on the state disk
-or in memory. Still open: the access-code details (work package 5). Confirm the current Lightsail bundles and
+or in memory. The access-code details were settled by the owner (work package 5). Confirm the current Lightsail bundles and
 prices when creating the instance; they change. SES production access takes a request and can take days; start
 it early. Until it is granted, SES only sends to verified addresses.
 

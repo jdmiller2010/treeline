@@ -36,7 +36,7 @@ household) expires after 7 days, and the VM has no permission to delete backups 
 
 ## Where things live
 
-Paths: the central database stays at `TREELINE_DB` (`/data/treeline.db`). Household files are in
+Paths: the central database stays at `TREELINE_DB` (`/data/treeline.db` in development; `/var/lib/treeline/data/treeline.db` on the production VM, on the attached encrypted disk). Household files are in
 `households/<id>.db` next to it (`TREELINE_HOUSEHOLDS_DIR` overrides). The same key shape is used for
 local backups and S3: `central/<timestamp>.db` and `households/<id>/<timestamp>.db`
 (plus `.age` once encrypted, at deploy time).
