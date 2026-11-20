@@ -20,7 +20,8 @@ It is safe to rerun at any time: it only creates what is missing, and `check` ne
 | Where | What | Where the value comes from |
 | --- | --- | --- |
 | SSM `/treeline/google_client_id` (String) | Google OAuth client ID (public) | you type it |
-| SSM `/treeline/allowed_emails` (SecureString) | Google accounts that may sign in (the beta invite list) | you type it |
+| SSM `/treeline/google_client_secret` (SecureString) | the Google OAuth client secret; the app uses it to finish sign-in (authorization code + PKCE) | you type it |
+| SSM `/treeline/beta_code_hash` (SecureString), `/treeline/beta_code_expires` (String) | the closed beta's one shared access code, as a SHA-256, and the date it stops working (180 days by default; `TREELINE_BETA_DAYS` changes it). The code lets someone **create a treehouse, once**; grown-ups a parent added sign in with Google alone | generated; **the code is printed once** by `apply` the first time and by `set beta_code` |
 | SSM `/treeline/backup_age_recipient` (String) | the age **public** key backups are encrypted to | you run `age-keygen -o treeline-backup.agekey`, keep that file in your password manager, and paste only the `age1...` line |
 | SSM `/treeline/admin_cidr` (String) | the only address SSH is allowed from, as `203.0.113.9/32`; `0.0.0.0/0` and anything broader than a /16 are refused | you type it; change it with `set admin_cidr` and run `infra/deploy.sh` |
 | SSM `/treeline/alert_email` (SecureString) | where the AWS budget alert goes | you type it |
@@ -37,7 +38,7 @@ It is safe to rerun at any time: it only creates what is missing, and `check` ne
 
 The ARI password is not here: it is generated on the VM at install and never leaves it. The bucket, SES domain identity and DNS records are created later by the CDK stacks, so the policies refer to them by name before they exist; the CDK code must use the same bucket name.
 
-Values are typed at a prompt (or read from `TREELINE_PARAM_<NAME>`, for example `TREELINE_PARAM_ALLOWED_EMAILS`) and sent to AWS in a `0600` file on tmpfs that is deleted right after the call, so they never appear in `ps` output, shell history or on disk. A placeholder or malformed value (`<your id>`, an age *private* key as the recipient, a bad email) is refused.
+Values are typed at a prompt (or read from `TREELINE_PARAM_<NAME>`, for example `TREELINE_PARAM_GOOGLE_CLIENT_SECRET`) and sent to AWS in a `0600` file on tmpfs that is deleted right after the call, so they never appear in `ps` output, shell history or on disk. A placeholder or malformed value (`<your id>`, an age *private* key as the recipient, a bad email) is refused.
 
 ### Getting the key to the VM
 
@@ -52,7 +53,7 @@ This copies the key to `/etc/treeline/aws-credentials` (root only, mode 600) and
 ### Changing and rotating things
 
 ```bash
-infra/bootstrap/bootstrap.sh set allowed_emails     # new invite list (the VM picks it up on its next fetch or restart)
+infra/bootstrap/bootstrap.sh set beta_code          # a NEW access code (shown once); the old one stops working when treeline-api restarts
 infra/bootstrap/bootstrap.sh set google_client_id
 infra/bootstrap/bootstrap.sh set vapid              # NEW key pair: every parent must turn notifications on again
 infra/bootstrap/bootstrap.sh set smtp               # new mail credentials

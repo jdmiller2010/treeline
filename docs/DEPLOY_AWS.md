@@ -1,7 +1,6 @@
 # Deploying Treeline to AWS: the plan
 
-Status: **work packages 1 to 4 and 6 are built; 5 (Google sign-in) is not started** (waiting for the owner's answers to the open
-details below); 7 needs the real account. Everything runs only in the VM-imitating CI job (`./dev vm`), unit tests and
+Status: **work packages 1 to 6 are built** (5, Google sign-in with the beta access code, with the owner's answers recorded below); 7 needs the real account. Everything runs only in the VM-imitating CI job (`./dev vm`), unit tests and
 offline CDK assertions. **Nothing has been run on AWS or on a public server**; the "Verification record" at the end says
 what was checked against the real components and what could not be, and the "Owner checklist" is what is left.
 This replaces the Docker-based production plan in [DEPLOY.md](DEPLOY.md) and
@@ -187,9 +186,7 @@ owner's password manager, open, check. Local spool pruned at 7 days.
 - **Who may sign in (owner's decision, replacing the invite list):** a **beta access code** the owner hands
   out. A visitor enters it on a private page; once accepted, they may register with any Google account.
   `/treeline/allowed_emails` and its prompt in `bootstrap.sh` are replaced by a hashed code (and
-  `/treeline/google_client_secret` is added). Open details to settle with the owner before building: one shared
-  code or one per person, whether it expires or has a use limit, whether it is needed once or at every
-  first-time sign-in, how it is revoked, how guessing is limited, and what a grown-up added by a parent does.
+  `/treeline/google_client_secret` is added). **Decided and built:** one shared 8-character code; it expires (180 days by default, `TREELINE_BETA_DAYS`); no use counting; needed once, to create a treehouse; revoked by making a new one (`bootstrap.sh set beta_code`, then restart `treeline-api`); guessing limited to 10 tries per address and 60 overall per hour with identical answers for wrong, expired and unset; a grown-up a parent added signs in with Google alone; one treehouse per email. See SECURITY.md Review 4.
 - Remove the emailed-code routes from production. **The test suites depend on dev codes**: keep that path
   only when `TREELINE_DEV_CODES=1` (private addresses only) and make production refuse to start with it set.
   Add a dev sign-in that the browser tests can use without Google.
@@ -282,6 +279,6 @@ The first release is verified by hand, with a public key you already know, befor
 4. `AWS_PROFILE=... infra/bootstrap/bootstrap.sh apply` (first run against real IAM, SSM and the real CLI: read what it prints); then `infra/deploy.sh diff` and `infra/deploy.sh deploy` (first run against real CloudFormation and Lightsail; the bundle shown must still be what you want).
 5. Request SES production access (until granted, SES sends only to verified addresses); check DKIM shows verified.
 6. First install (above), then verify, writing down what you saw: the certificate was issued (`https://app.treelinephone.com`); `/api/health`; **a call between a phone on mobile data and a browser on another network with audio both ways** (this is the NAT check: `external_media_address`, `local_net`, `ice_host_candidates`, UDP 10000-10100); Asterisk memory during a call on the small bundle (`free -m`, swap use; resize if it swaps); the state disk really is a separate encrypted attached disk (`lsblk`, the Lightsail console) and nothing sensitive is on the system disk; a backup appears in S3 and the restore drill works; a deploy of a second release and a rollback; an alert email arrives; the dead-man alerts when you stop the timer; the Lightsail firewall shows only 22 (your address), 80, 443 and UDP 10000-10100 on IPv4 and nothing on IPv6; `ss -ltnu` on the VM shows nothing unexpected.
-7. Decide, with the work package 5 answers, how Google sign-in and the beta access code work; until it is built the production app has **no sign-in at all** (the emailed-code routes still exist and would send mail), so do not point real families at it.
+7. In Google Cloud Console make an OAuth client (type: web application) with the authorized redirect URI `https://app.treelinephone.com/api/auth/google/callback`; give its client ID and secret to `bootstrap.sh apply`, and note the beta access code it prints once. Then verify with a real account: a new person with the code, the same person signing in again, a grown-up a parent added signing in without the code, a stranger without the code turned away, and that the code stops working after `set beta_code` and a restart.
 8. Record the results in README (Phase 4) and docs/SECURITY.md; delete the retired Docker files (`deploy/docker-compose.prod.yml`, `deploy/Caddyfile`, `deploy/asterisk/`).
 9. Optional: `/treeline/beta_cidrs` (an allowlist for 443 and the call audio ports), `bootstrap.sh set beta_cidrs`, then `infra/deploy.sh deploy host`.

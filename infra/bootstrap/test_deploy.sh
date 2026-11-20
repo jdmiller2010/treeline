@@ -15,7 +15,7 @@ cat > "$T/cdk" <<'EOS'
 EOS
 chmod +x "$T/cdk"
 export PATH="$T/bin:$PATH" FAKE_AWS_STATE="$T/state.json" TREELINE_LOCAL_DIR="$T/local" TREELINE_TMPFS="$T/tmpfs" AWS_PAGER="" TREELINE_CDK="$T/cdk" FAKE_CDK_LOG="$T/cdk.log" TREELINE_YES=1
-export TREELINE_PARAM_GOOGLE_CLIENT_ID="123456789-abcdefg1234.apps.googleusercontent.com" TREELINE_PARAM_ALLOWED_EMAILS="parent.one@treeline.invalid"
+export TREELINE_PARAM_GOOGLE_CLIENT_ID="123456789-abcdefg1234.apps.googleusercontent.com" TREELINE_PARAM_GOOGLE_CLIENT_SECRET="GOC""SPX-fake-secret-for-tests-0123456789"
 export TREELINE_PARAM_BACKUP_AGE_RECIPIENT="age1$(printf 'q%.0s' $(seq 58))" TREELINE_PARAM_HEALTHCHECK_URL="https://ping.treeline.invalid/0123abcd"
 export TREELINE_PARAM_ADMIN_CIDR="203.0.113.9/32" TREELINE_PARAM_ALERT_EMAIL="owner@treeline.invalid"
 fails=0

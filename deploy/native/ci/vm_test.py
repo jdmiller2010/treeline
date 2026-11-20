@@ -30,7 +30,9 @@ VM, CLIENT, CA, AWS = "treeline-vmtest-vm", "treeline-vmtest-client", "treeline-
 DOMAIN = "app.treeline.test"
 SECRETS = {"/treeline/smtp_user": "AKI" + "AFAKESMTPUSER00000", "/treeline/smtp_password": "fakeSmtpPassword-ci-only-0123456789",
            "/treeline/vapid_public": "BFakeVapidPublicKeyForCiOnly0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrs",
-           "/treeline/vapid_private": "fakeVapidPrivateKeyForCiOnly0123456789abc"}
+           "/treeline/vapid_private": "fakeVapidPrivateKeyForCiOnly0123456789abc",
+           "/treeline/google_client_id": "123-ci.apps.googleusercontent.com", "/treeline/google_client_secret": "fake-google-secret-ci-only-0123456789",
+           "/treeline/beta_code_hash": "0" * 64, "/treeline/beta_code_expires": "2099-01-01"}
 
 
 def run(*args, check=True, timeout=900, input=None):
@@ -467,8 +469,17 @@ class E_Production(VmTestCase):
 
     def test_dev_sign_in_codes_never_come_back_in_production(self):
         self.wait_healthy()
-        out = self.https("/api/auth/request", "-X POST -H 'Content-Type: application/json' -d '{\"email\":\"someone@example.invalid\"}'").stdout
+        out = self.https("/api/auth/request", "-X POST -H 'Content-Type: application/json' -d '{\"email\":\"someone@example.invalid\"}' -w '\\n%{http_code}'").stdout
         self.assertNotIn("dev_code", out)
+        self.assertTrue(out.strip().endswith("404"), "the emailed-code sign-in must not exist in production: " + out)
+        self.assertEqual(self.https("/api/auth/verify", "-X POST -H 'Content-Type: application/json' -d '{}' -o /dev/null -w %{http_code}").stdout.strip(), "404")
+        cfg = json.loads(self.https("/api/auth/config").stdout)
+        self.assertEqual(cfg, {"google": True, "email_code": False, "dev": False})
+        start = self.https("/api/auth/google/start", "-o /dev/null -w '%{http_code} %{redirect_url}'").stdout
+        self.assertTrue(start.startswith("302 https://accounts.google.com/o/oauth2/v2/auth?"), start)
+        self.assertIn("code_challenge_method=S256", start)
+        wrong = self.https("/api/auth/beta", "-X POST -H 'Content-Type: application/json' -d '{\"code\":\"AAAA-AAAA\"}' -o /dev/null -w %{http_code}").stdout
+        self.assertEqual(wrong.strip(), "400")
 
 
 MIGRATE = [("controller/treeline/db.py", "MIGRATIONS = []", 'MIGRATIONS = [lambda conn: conn.execute("CREATE TABLE ci_probe(x)")]')]

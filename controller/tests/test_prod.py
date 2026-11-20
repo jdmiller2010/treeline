@@ -26,6 +26,8 @@ def good_env(**over):
         "TREELINE_TRUST_PROXY": "1", "TREELINE_SMTP_HOST": "smtp.example.invalid", "TREELINE_SMTP_USER": "u",
         "TREELINE_SMTP_PASS": "p", "TREELINE_MAIL_FROM": "Treeline <no-reply@example.invalid>",
         "TREELINE_VAPID_PUBLIC": "a", "TREELINE_VAPID_PRIVATE": "b", "TREELINE_VAPID_SUBJECT": "mailto:a@example.invalid",
+        "TREELINE_GOOGLE_CLIENT_ID": "id.apps.googleusercontent.com", "TREELINE_GOOGLE_CLIENT_SECRET": "s" * 24,
+        "TREELINE_BETA_CODE_HASH": "0" * 64, "TREELINE_BETA_CODE_EXPIRES": "2099-01-01",
     }
     env.update(over)
     return {k: v for k, v in env.items() if v is not None}
@@ -53,7 +55,8 @@ class ProductionGuard(unittest.TestCase):
         for over in ({"TREELINE_PUBLIC_WS_URL": "ws://app.example.invalid/ws"},
                      {"TREELINE_PUBLIC_ORIGIN": "http://app.example.invalid"},
                      {"TREELINE_TRUST_PROXY": None}, {"TREELINE_SMTP_TLS": "0"},
-                     {"ARI_URL": "http://203.0.113.5:8088/ari"}, {"TREELINE_OUTBOX": "/tmp/x"}):
+                     {"ARI_URL": "http://203.0.113.5:8088/ari"}, {"TREELINE_OUTBOX": "/tmp/x"},
+                     {"TREELINE_GOOGLE_TOKEN_URL": "https://evil.example.invalid/token"}, {"TREELINE_GOOGLE_AUTH_URL": "https://evil.example.invalid/auth"}):
             self.assertTrue(prod.problems(good_env(**over)), over)
 
     def test_enforce_exits_with_a_message_naming_every_problem(self):

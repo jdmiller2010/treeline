@@ -1,0 +1,260 @@
+"""Sign in with Google (authorization code + PKCE) and the closed-beta access code. Google itself is replaced by a function that
+returns an ID token we build: what is tested is everything WE do with what Google sends."""
+
+import base64
+import hashlib
+import json
+import os
+import time
+import unittest
+import urllib.parse
+from unittest import mock
+
+from tests import helpers  # noqa: F401
+from treeline import api, db, google, prod
+
+client = api.app.test_client()
+CLIENT_ID = "123-abc.apps.googleusercontent.com"
+CODE = "K7MQ-2XPR"
+
+
+_n = [0]
+
+
+def jwt(**over):
+    _n[0] += 1       # a new person each time: the test database is shared by the tests in this module
+    claims = {"iss": "https://accounts.google.com", "aud": CLIENT_ID, "exp": time.time() + 600, "email": f"newparent{_n[0]}@example.com",
+              "email_verified": True, "nonce": None}
+    claims.update(over)
+    body = base64.urlsafe_b64encode(json.dumps(claims).encode()).rstrip(b"=").decode()
+    return f"e30.{body}.sig"
+
+
+class Base(unittest.TestCase):
+    def setUp(self):
+        api._hits.clear()
+        google.reset()
+        patch = mock.patch.dict(os.environ, {
+            "TREELINE_GOOGLE_CLIENT_ID": CLIENT_ID, "TREELINE_GOOGLE_CLIENT_SECRET": "secret-for-tests-only-0123456789",
+            "TREELINE_BETA_CODE_HASH": google.hash_code(CODE), "TREELINE_BETA_CODE_EXPIRES": "2099-12-31"})
+        patch.start()
+        self.addCleanup(patch.stop)
+        self.sent = []          # what we POSTed to "Google"
+        self.reply = None       # what "Google" answers; a function of (fields) or a dict
+
+    def fake_google(self, **claim_overrides):
+        def post(url, fields, timeout=10):
+            self.sent.append((url, fields))
+            if callable(self.reply):
+                return self.reply(fields)
+            nonce = self.nonce
+            return {"id_token": jwt(nonce=nonce, **claim_overrides)}
+        return mock.patch.object(google, "post_form", post)
+
+    def begin(self, gate=None):
+        r = client.get("/api/auth/google/start" + (f"?gate={gate}" if gate else ""))
+        self.assertEqual(r.status_code, 302, r.data)
+        q = urllib.parse.parse_qs(urllib.parse.urlparse(r.headers["Location"]).query)
+        self.nonce, self.state, self.challenge = q["nonce"][0], q["state"][0], q["code_challenge"][0]
+        return r.headers["Location"], q
+
+    def callback(self, code="google-code", state=None, **extra):
+        r = client.get("/api/auth/google/callback?" + urllib.parse.urlencode({"code": code, "state": state or self.state, **extra}))
+        self.assertEqual(r.status_code, 302)
+        return r.headers["Location"].split("#/signin/")[1]
+
+    def gate(self):
+        return client.post("/api/auth/beta", json={"code": CODE}).get_json()["gate"]
+
+    def exchange(self, word):
+        return client.post("/api/auth/exchange", json={"code": word})
+
+
+class BetaCode(Base):
+    def test_the_right_code_in_any_case_and_with_or_without_the_dash_opens_the_gate(self):
+        for text in (CODE, CODE.lower(), CODE.replace("-", ""), f" {CODE} "):
+            api._hits.clear()
+            r = client.post("/api/auth/beta", json={"code": text})
+            self.assertEqual(r.status_code, 200, text)
+            self.assertTrue(r.get_json()["gate"])
+
+    def test_wrong_expired_and_unset_codes_read_exactly_the_same(self):
+        outcomes = []
+        for env, code in (({}, "AAAA-AAAA"), ({"TREELINE_BETA_CODE_EXPIRES": "2020-01-01"}, CODE), ({"TREELINE_BETA_CODE_HASH": ""}, CODE), ({}, "AB")):
+            api._hits.clear()
+            with mock.patch.dict(os.environ, env):
+                r = client.post("/api/auth/beta", json={"code": code})
+            outcomes.append((r.status_code, r.get_json()["error"], r.get_json()["code"]))
+        self.assertEqual(len(set(outcomes)), 1, outcomes)
+        self.assertEqual(outcomes[0][0], 400)
+
+    def test_guessing_is_limited_per_address_and_overall(self):
+        for _ in range(10):
+            client.post("/api/auth/beta", json={"code": "AAAA-AAAA"})
+        self.assertEqual(client.post("/api/auth/beta", json={"code": CODE}).status_code, 429, "even the right code waits once the address is over its limit")
+        api._hits.clear()
+        for i in range(60):
+            api._hits[f"x"] = []
+            with mock.patch.object(api, "client_ip", lambda i=i: f"198.51.100.{i % 250}"):
+                client.post("/api/auth/beta", json={"code": "AAAA-AAAA"})
+        with mock.patch.object(api, "client_ip", lambda: "203.0.113.200"):
+            self.assertEqual(client.post("/api/auth/beta", json={"code": CODE}).status_code, 429)
+
+    def test_a_generated_code_is_eight_characters_from_the_unambiguous_alphabet_and_checks_out(self):
+        for _ in range(50):
+            c = google.new_code()
+            self.assertRegex(c, r"^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{4}-[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{4}$")
+            with mock.patch.dict(os.environ, {"TREELINE_BETA_CODE_HASH": google.hash_code(c)}):
+                self.assertEqual(google.check_code(c), "ok")
+
+
+class Flow(Base):
+    def test_the_redirect_to_google_carries_pkce_state_nonce_and_only_the_scopes_we_need(self):
+        url, q = self.begin()
+        self.assertTrue(url.startswith("https://accounts.google.com/o/oauth2/v2/auth?"))
+        self.assertEqual(q["response_type"], ["code"])
+        self.assertEqual(q["scope"], ["openid email"])
+        self.assertEqual(q["code_challenge_method"], ["S256"])
+        self.assertEqual(q["client_id"], [CLIENT_ID])
+        self.assertTrue(q["redirect_uri"][0].endswith("/api/auth/google/callback"))
+        self.assertNotIn("client_secret", url)
+        self.assertGreaterEqual(len(self.state), 24)
+
+    def test_a_new_person_with_the_code_signs_in_once_and_can_make_a_treehouse(self):
+        gate = self.gate()
+        self.begin(gate)
+        with self.fake_google():
+            word = self.callback()
+        self.assertTrue(word.startswith("x."))
+        # the code and the verifier went to Google, and the verifier is the one behind the challenge
+        url, fields = self.sent[0]
+        self.assertEqual(url, "https://oauth2.googleapis.com/token")
+        self.assertEqual(fields["client_secret"], os.environ["TREELINE_GOOGLE_CLIENT_SECRET"])
+        digest = base64.urlsafe_b64encode(hashlib.sha256(fields["code_verifier"].encode()).digest()).rstrip(b"=").decode()
+        self.assertEqual(digest, self.challenge)
+        r = self.exchange(word[2:])
+        self.assertEqual(r.status_code, 200)
+        token = r.get_json()["token"]
+        me = client.get("/api/me", headers={"Authorization": f"Bearer {token}"}).get_json()
+        self.assertTrue(me["email"].startswith("newparent"))
+        self.assertIsNone(me["treehouse"])
+        made = client.post("/api/treehouse", headers={"Authorization": f"Bearer {token}"},
+                           json={"name": "Google house", "ack_911": True, "consent": True, "timezone": "America/Los_Angeles"})
+        self.assertEqual(made.status_code, 201)
+        self.assertEqual(self.exchange(word[2:]).status_code, 400, "the one-time word works once")
+
+    def test_a_new_person_without_the_code_gets_no_session(self):
+        self.begin()
+        with self.fake_google():
+            word = self.callback()
+        self.assertEqual(word, "e.need_code")
+        self.assertEqual(self.exchange("e.need_code").status_code, 400)
+
+    def test_a_grown_up_a_parent_added_signs_in_with_google_alone(self):
+        _n[0] += 1
+        c = db.local_conn()
+        tid = db.create_treehouse(c, "Added house", timezone="America/Los_Angeles")
+        c.execute("INSERT INTO grown_up(email,name,treehouse_id,role,created_at) VALUES(?,?,?,?,?)",
+                  (f"sitter{_n[0]}@example.com", "Sam", tid, "sitter", db.iso()))
+        self.begin()
+        with self.fake_google(email=f"Sitter{_n[0]}@Example.com"):
+            word = self.callback()
+        self.assertTrue(word.startswith("x."), word)
+        token = self.exchange(word[2:]).get_json()["token"]
+        me = client.get("/api/me", headers={"Authorization": f"Bearer {token}"}).get_json()
+        self.assertEqual(me["grown_up"]["role"], "sitter")
+
+    def test_a_gate_is_used_up_by_the_first_person_it_lets_in(self):
+        gate = self.gate()
+        self.begin(gate)
+        with self.fake_google():
+            self.assertTrue(self.callback().startswith("x."))
+        self.assertTrue(client.get(f"/api/auth/google/start?gate={gate}").headers["Location"].endswith("#/signin/e.need_code"),
+                        "a used gate is turned away at the start")
+        # two sign-ins started with the same gate before either finished: only the first gets in
+        gate = self.gate()
+        self.begin(gate)
+        first_state, first_nonce = self.state, self.nonce
+        self.begin(gate)
+        with self.fake_google():
+            self.assertTrue(self.callback().startswith("x."))
+            self.nonce, self.state = first_nonce, first_state
+            self.assertEqual(self.callback(), "e.need_code")
+
+    def test_a_made_up_gate_is_turned_away_before_google(self):
+        r = client.get("/api/auth/google/start?gate=not-a-gate")
+        self.assertTrue(r.headers["Location"].endswith("#/signin/e.need_code"))
+
+    def test_nothing_is_sent_to_the_token_endpoint_for_an_unknown_or_replayed_state(self):
+        with self.fake_google():
+            self.assertEqual(self.callback(state="made-up"), "e.expired")
+            self.begin(self.gate())
+            first = self.callback()
+            self.assertTrue(first.startswith("x."))
+            sent = len(self.sent)
+            self.assertEqual(self.callback(), "e.expired", "a state works once")
+            self.assertEqual(len(self.sent), sent)
+
+    def test_google_saying_no_ends_the_attempt(self):
+        self.begin(self.gate())
+        with self.fake_google():
+            word = self.callback(error="access_denied")
+        self.assertEqual(word, "e.denied")
+        self.assertEqual(self.sent, [])
+        self.assertFalse(google.alive("state", self.state), "the state is used up")
+
+    def test_each_bad_token_is_refused_and_creates_no_session(self):
+        cases = {
+            "the wrong audience": dict(aud="someone-elses-app.apps.googleusercontent.com"),
+            "an expired token": dict(exp=time.time() - 10),
+            "a token that does not say it is Google's": dict(iss="https://evil.example.invalid"),
+            "an unverified email": dict(email_verified=False),
+            "no email": dict(email=""),
+            "an email that is not an address": dict(email="not-an-email"),
+            "a nonce from another sign-in": dict(nonce="somebody-elses-nonce"),
+        }
+        for what, over in cases.items():
+            with self.subTest(what):
+                google.reset()
+                self.begin(self.gate())
+                nonce_given = over.get("nonce") or self.nonce
+                self.reply = lambda f, o=over, n=nonce_given: {"id_token": jwt(**{"nonce": n, **o})}
+                with mock.patch.object(google, "post_form", lambda url, fields, timeout=10: self.reply(fields)):
+                    word = self.callback()
+                self.assertTrue(word.startswith("e."), f"{what} was accepted: {word}")
+
+    def test_a_failed_exchange_and_a_reply_without_a_token_are_refused(self):
+        for reply in ({}, {"error": "invalid_grant"}, None):
+            google.reset()
+            self.begin(self.gate())
+            with mock.patch.object(google, "post_form", lambda url, fields, timeout=10, r=reply: r):
+                self.assertEqual(self.callback(), "e.exchange")
+        google.reset()
+        self.begin(self.gate())
+        def boom(url, fields, timeout=10):
+            raise google.GoogleError("exchange", "HTTP 400")
+        with mock.patch.object(google, "post_form", boom):
+            self.assertEqual(self.callback(), "e.exchange")
+
+    def test_the_emailed_code_routes_are_gone_in_production_and_still_work_for_the_test_suites(self):
+        with mock.patch.object(prod, "is_production", lambda env=None: True):
+            self.assertEqual(client.post("/api/auth/request", json={"email": "a@example.com"}).status_code, 404)
+            self.assertEqual(client.post("/api/auth/verify", json={"email": "a@example.com", "code": "123456"}).status_code, 404)
+            self.assertEqual(client.get("/api/auth/config").get_json(), {"google": True, "email_code": False, "dev": True})
+        r = client.post("/api/auth/request", json={"email": "devperson@example.com"})
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("dev_code", r.get_json())
+
+    def test_google_is_off_until_it_is_configured(self):
+        with mock.patch.dict(os.environ, {"TREELINE_GOOGLE_CLIENT_SECRET": ""}):
+            self.assertFalse(client.get("/api/auth/config").get_json()["google"])
+            self.assertEqual(client.get("/api/auth/google/start").status_code, 404)
+
+    def test_the_one_time_word_expires(self):
+        key = google.put("exchange", 60, {"email": "late@example.com"})
+        google._store[("exchange", key)] = (time.time() - 1, {"email": "late@example.com"})
+        self.assertEqual(self.exchange(key).status_code, 400)
+
+
+if __name__ == "__main__":
+    unittest.main()

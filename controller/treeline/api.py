@@ -23,7 +23,7 @@ from zoneinfo import ZoneInfo, available_timezones
 from flask import Flask, Response, g, jsonify, redirect, request, send_from_directory
 
 from . import ari as ari_mod
-from . import db, households, mail, pjsip, prod, rules
+from . import db, google, households, mail, pjsip, prod, rules
 
 prod.enforce()          # TREELINE_ENV=production: refuse to start with any development setting
 log = logging.getLogger("treeline")
@@ -371,8 +371,82 @@ def households_behind():
 
 # ================================================================ sign-in
 
+def emailed_codes_allowed():
+    """The emailed six-digit code is the development sign-in (and the test suites'). Production signs in with Google only."""
+    if prod.is_production():
+        raise ApiError("That page isn't here.", 404)
+
+
+@app.get("/api/auth/config")
+def auth_config():
+    return jsonify(google=google.configured(), email_code=not prod.is_production(), dev=DEV_CODES)
+
+
+def signin_origin():
+    return (public_origin() or request.host_url).rstrip("/")
+
+
+def back_to_app(result):
+    """Where the browser lands after Google: the parent app, with a one-time word in the fragment (never in a query)."""
+    return redirect(f"{signin_origin()}/parent/#/signin/{result}")
+
+
+@app.post("/api/auth/beta")
+def auth_beta():
+    """The closed beta's access code, needed once to create a treehouse. Wrong, expired and unset all read the same."""
+    rate_limit(f"beta-ip:{client_ip()}", 10, 3600)
+    rate_limit("beta-all", 60, 3600)
+    if google.check_code(body().get("code")) != "ok":
+        raise ApiError("That code didn't work. Check it and try again, or ask whoever gave it to you.", 400, "bad_beta_code")
+    return jsonify(gate=google.put("gate", google.GATE_TTL, {}))
+
+
+@app.get("/api/auth/google/start")
+def google_start():
+    if not google.configured():
+        raise ApiError("Sign in with Google isn't set up.", 404)
+    rate_limit(f"gstart-ip:{client_ip()}", 60, 3600)
+    gate = request.args.get("gate") or None
+    if gate and not google.alive("gate", gate):
+        return back_to_app("e.need_code")
+    return redirect(google.start(f"{signin_origin()}/api/auth/google/callback", gate))
+
+
+@app.get("/api/auth/google/callback")
+def google_callback():
+    rate_limit(f"gcb-ip:{client_ip()}", 60, 3600)
+    if request.args.get("error"):
+        google.take("state", request.args.get("state"))
+        return back_to_app("e.denied")
+    try:
+        email, gate = google.finish(request.args.get("code"), request.args.get("state"))
+    except google.GoogleError as err:
+        log.warning("google sign-in refused: %s", err)
+        return back_to_app("e." + err.reason)
+    known = conn().execute("SELECT 1 FROM grown_up g JOIN treehouse t ON t.id=g.treehouse_id "
+                           "WHERE g.email=? AND t.left_at IS NULL", (email,)).fetchone()
+    # A grown-up a parent added signs in with Google alone. Anyone else needs a beta code (a gate) to get as far as making a treehouse.
+    if not known and not (gate and google.take("gate", gate) is not None):
+        return back_to_app("e.need_code")
+    return back_to_app("x." + google.put("exchange", google.EXCHANGE_TTL, {"email": email}))
+
+
+@app.post("/api/auth/exchange")
+def auth_exchange():
+    """Turn the one-time word from the redirect into a session. It works once, for a minute."""
+    rate_limit(f"exch-ip:{client_ip()}", 30, 3600)
+    data = google.take("exchange", body().get("code"))
+    if not data:
+        raise ApiError("That sign-in link has expired. Please sign in again.", 400, "expired_code")
+    token = secrets.token_urlsafe(32)
+    conn().execute("INSERT INTO session(token_hash,email,expires_at) VALUES(?,?,?)",
+                   (db.hash_token(token), data["email"], db.iso(now() + dt.timedelta(days=SESSION_DAYS))))
+    return jsonify(token=token)
+
+
 @app.post("/api/auth/request")
 def auth_request():
+    emailed_codes_allowed()
     email = str(body().get("email", "")).strip().lower()
     if not EMAIL_RE.match(email) or len(email) > 200:
         raise ApiError("That doesn't look like an email address. Check it and try again.")
@@ -395,6 +469,7 @@ def auth_request():
 
 @app.post("/api/auth/verify")
 def auth_verify():
+    emailed_codes_allowed()
     data = body()
     email = str(data.get("email", "")).strip().lower()
     code = "".join(c for c in str(data.get("code", "")) if c.isdigit())

@@ -1,0 +1,183 @@
+"""Sign in with Google (authorization-code flow with PKCE, done on the server) and the closed-beta access code.
+
+The browser is sent to Google; Google sends it back with a one-time `code`; this server exchanges the code at Google's token
+endpoint over TLS, with the client secret and the PKCE verifier, and reads the ID token from that response. Because the token
+comes straight from Google over TLS to us, its signature is not checked (docs/DEPLOY_AWS.md work package 5); its claims are:
+iss, aud, exp, nonce and email_verified. State, nonce and the verifier live in memory for ten minutes and are single use
+(one gunicorn worker: the same assumption as the rate limits); a restart only means a person tries again.
+
+The beta access code is one shared code, 8 characters, that lets someone CREATE a treehouse. Only its hash and an expiry are
+configured (SSM, then the environment). Grown-ups a parent added sign in with Google alone.
+"""
+
+import base64
+import hashlib
+import json
+import os
+import re
+import secrets
+import threading
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+
+ISSUERS = ("https://accounts.google.com", "accounts.google.com")
+CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"        # the ladder alphabet: no 0/O/1/I/L
+STATE_TTL, GATE_TTL, EXCHANGE_TTL = 600, 900, 60
+_lock = threading.Lock()
+_store = {}
+
+
+class GoogleError(Exception):
+    """Sign-in with Google did not work; `reason` is a short word the web page turns into a message."""
+
+    def __init__(self, reason, detail=""):
+        super().__init__(f"{reason}: {detail}" if detail else reason)
+        self.reason = reason
+
+
+def auth_url():
+    return os.environ.get("TREELINE_GOOGLE_AUTH_URL", "https://accounts.google.com/o/oauth2/v2/auth")
+
+
+def token_url():
+    return os.environ.get("TREELINE_GOOGLE_TOKEN_URL", "https://oauth2.googleapis.com/token")
+
+
+def configured():
+    return bool(os.environ.get("TREELINE_GOOGLE_CLIENT_ID") and os.environ.get("TREELINE_GOOGLE_CLIENT_SECRET"))
+
+
+# ------------------------------------------------------------------ single-use, short-lived state
+def put(kind, ttl, data):
+    key = secrets.token_urlsafe(24)
+    with _lock:
+        _prune()
+        _store[(kind, key)] = (time.time() + ttl, data)
+    return key
+
+
+def take(kind, key):
+    """The data for `key`, once. None if unknown, used or expired."""
+    with _lock:
+        item = _store.pop((kind, str(key or "")), None)
+    return item[1] if item and item[0] > time.time() else None
+
+
+def alive(kind, key):
+    with _lock:
+        item = _store.get((kind, str(key or "")))
+    return bool(item and item[0] > time.time())
+
+
+def _prune():
+    now = time.time()
+    for k in [k for k, v in _store.items() if v[0] <= now]:
+        del _store[k]
+
+
+def reset():
+    with _lock:
+        _store.clear()
+
+
+# ------------------------------------------------------------------ the beta code
+def normalize_code(value):
+    return re.sub(r"[^A-Z0-9]", "", str(value or "").upper())
+
+
+def hash_code(value):
+    return hashlib.sha256(normalize_code(value).encode()).hexdigest()
+
+
+def new_code():
+    c = "".join(secrets.choice(CODE_ALPHABET) for _ in range(8))
+    return c[:4] + "-" + c[4:]
+
+
+def check_code(value, now=None):
+    """'ok', or a reason that is never shown to the person (wrong, expired and unset all read the same)."""
+    want, expires = os.environ.get("TREELINE_BETA_CODE_HASH", ""), os.environ.get("TREELINE_BETA_CODE_EXPIRES", "")
+    if not re.match(r"^[0-9a-f]{64}$", want) or not re.match(r"^\d{4}-\d{2}-\d{2}$", expires):
+        return "unset"
+    if len(normalize_code(value)) != 8:
+        return "bad"
+    ok = secrets.compare_digest(hash_code(value), want)
+    today = time.strftime("%Y-%m-%d", time.gmtime(now or time.time()))
+    if today > expires:
+        return "expired"
+    return "ok" if ok else "bad"
+
+
+# ------------------------------------------------------------------ the OAuth round trip
+def _b64url(raw):
+    return base64.urlsafe_b64encode(raw).rstrip(b"=").decode()
+
+
+def start(redirect_uri, gate=None):
+    """The URL to send the browser to. Remembers the PKCE verifier, the nonce and the gate for the callback."""
+    verifier = secrets.token_urlsafe(48)
+    nonce = secrets.token_urlsafe(24)
+    state = put("state", STATE_TTL, {"verifier": verifier, "nonce": nonce, "gate": gate, "redirect_uri": redirect_uri})
+    query = urllib.parse.urlencode({
+        "client_id": os.environ["TREELINE_GOOGLE_CLIENT_ID"], "redirect_uri": redirect_uri, "response_type": "code",
+        "scope": "openid email", "state": state, "nonce": nonce, "prompt": "select_account",
+        "code_challenge": _b64url(hashlib.sha256(verifier.encode()).digest()), "code_challenge_method": "S256"})
+    return f"{auth_url()}?{query}"
+
+
+def post_form(url, fields, timeout=10):
+    """POST form fields; returns the decoded JSON body. Overridable in tests."""
+    req = urllib.request.Request(url, data=urllib.parse.urlencode(fields).encode(),
+                                 headers={"Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return json.loads(resp.read())
+    except urllib.error.HTTPError as err:
+        raise GoogleError("exchange", f"HTTP {err.code}") from err
+    except (urllib.error.URLError, OSError, ValueError) as err:
+        raise GoogleError("exchange", str(err)) from err
+
+
+def claims_of(id_token):
+    try:
+        return json.loads(base64.urlsafe_b64decode(id_token.split(".")[1] + "=" * (-len(id_token.split(".")[1]) % 4)))
+    except (IndexError, ValueError, AttributeError) as err:
+        raise GoogleError("token", "not a JWT") from err
+
+
+def validate_claims(claims, nonce, client_id, now=None):
+    """Raises GoogleError unless the token is for us, from Google, current, for this sign-in, and has a verified email."""
+    if claims.get("iss") not in ISSUERS:
+        raise GoogleError("token", "wrong issuer")
+    aud = claims.get("aud")
+    if client_id not in (aud if isinstance(aud, list) else [aud]):
+        raise GoogleError("token", "wrong audience")
+    if not isinstance(claims.get("exp"), (int, float)) or claims["exp"] <= (now or time.time()):
+        raise GoogleError("token", "expired")
+    if not secrets.compare_digest(str(claims.get("nonce", "")), str(nonce)):
+        raise GoogleError("token", "wrong nonce")
+    if claims.get("email_verified") not in (True, "true"):
+        raise GoogleError("unverified", "email not verified")
+    email = str(claims.get("email", "")).strip().lower()
+    if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email) or len(email) > 200:
+        raise GoogleError("token", "no email")
+    return email
+
+
+def finish(code, state, now=None, post=None):
+    """Complete the sign-in. Returns (email, gate) or raises GoogleError. The state is used up even when this fails."""
+    saved = take("state", state)
+    if saved is None:
+        raise GoogleError("expired", "unknown or used state")
+    if not code:
+        raise GoogleError("denied", "no code")
+    reply = (post or post_form)(token_url(), {
+        "grant_type": "authorization_code", "code": code, "redirect_uri": saved["redirect_uri"],
+        "client_id": os.environ["TREELINE_GOOGLE_CLIENT_ID"], "client_secret": os.environ["TREELINE_GOOGLE_CLIENT_SECRET"],
+        "code_verifier": saved["verifier"]})
+    if not isinstance(reply, dict) or not reply.get("id_token"):
+        raise GoogleError("exchange", "no id_token")
+    email = validate_claims(claims_of(reply["id_token"]), saved["nonce"], os.environ["TREELINE_GOOGLE_CLIENT_ID"], now)
+    return email, saved["gate"]

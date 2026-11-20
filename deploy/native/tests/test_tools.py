@@ -32,7 +32,8 @@ class FakeSsm:
                 "InvalidParameters": [n for n in Names if n not in self.params]}
 
 
-GOOD = {"/treeline/smtp_user": "u", "/treeline/smtp_password": 'p"w\\d', "/treeline/vapid_public": "pub", "/treeline/vapid_private": "priv"}
+GOOD = {"/treeline/smtp_user": "u", "/treeline/smtp_password": 'p"w\\d', "/treeline/vapid_public": "pub", "/treeline/vapid_private": "priv",
+        "/treeline/google_client_id": "cid", "/treeline/google_client_secret": "csecret", "/treeline/beta_code_hash": "h", "/treeline/beta_code_expires": "2099-01-01"}
 
 
 class Secrets(unittest.TestCase):
@@ -44,7 +45,8 @@ class Secrets(unittest.TestCase):
     def test_every_parameter_becomes_an_environment_line_and_the_ari_password_is_added(self):
         text = fetch.build(FakeSsm(GOOD), etc=str(self.d))
         lines = dict(l.split("=", 1) for l in text.splitlines())
-        self.assertEqual(set(lines), {"TREELINE_SMTP_USER", "TREELINE_SMTP_PASS", "TREELINE_VAPID_PUBLIC", "TREELINE_VAPID_PRIVATE", "ARI_PASS"})
+        self.assertEqual(set(lines), {"TREELINE_SMTP_USER", "TREELINE_SMTP_PASS", "TREELINE_VAPID_PUBLIC", "TREELINE_VAPID_PRIVATE", "ARI_PASS",
+                                 "TREELINE_GOOGLE_CLIENT_ID", "TREELINE_GOOGLE_CLIENT_SECRET", "TREELINE_BETA_CODE_HASH", "TREELINE_BETA_CODE_EXPIRES"})
         self.assertEqual(lines["TREELINE_SMTP_PASS"], '"p\\"w\\\\d"')          # quotes and backslashes are escaped for systemd
         self.assertEqual(lines["ARI_PASS"], '"' + "a" * 40 + '"')
 

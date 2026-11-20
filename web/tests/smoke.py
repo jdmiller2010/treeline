@@ -123,6 +123,26 @@ def main():
             check(abs(logo["x"] - card["x"]) < 4, f"the Treeline logo and tagline stay left-aligned, level with the card's left edge, at {w}px ({logo['x']:.0f} vs {card['x']:.0f})")
         page.set_viewport_size({"width": 390, "height": 844}); page.wait_for_timeout(200)
         shoot(page, "signin-390")
+        # ---- sign in with Google (production's screen): the server's config is stubbed, because the real Google is not reachable here
+        gctx = browser.new_context(viewport={"width": 390, "height": 844})
+        gp = gctx.new_page()
+        watch(gp, "google")
+        gp.route("**/api/auth/config", lambda r: r.fulfill(json={"google": True, "email_code": False, "dev": False}))
+        gp.route("**/api/auth/beta", lambda r: r.fulfill(status=400, json={"error": "That code didn't work. Check it and try again, or ask whoever gave it to you.", "code": "bad_beta_code"}))
+        gp.goto(f"{BASE}/parent/")
+        gp.wait_for_selector("[data-google]")
+        check(gp.locator("#email").count() == 0 and gp.locator("#step-email").count() == 0, "with Google on and the emailed code off, there is no email form")
+        check(gp.locator("[data-google]").count() == 1 and gp.locator("button.tl-btn--primary").count() == 1, "one main button: Continue with Google")
+        check(not gp.locator("#step-beta").is_visible(), "the beta code form stays folded away until someone says they are new")
+        gp.click("#new-here summary")
+        gp.fill("#beta", "AAAA-AAAA"); gp.click("#step-beta button[type=submit]")
+        gp.wait_for_selector("#beta-error .tl-alert")
+        check("didn't work" in gp.inner_text("#beta-error"), "a wrong beta code says so and does not leave the page")
+        no_sideways_scroll(gp, "google sign-in 390")
+        gp.goto(f"{BASE}/parent/#/signin/e.need_code"); gp.reload(); gp.wait_for_selector("#google-box .tl-alert")
+        check("beta code" in gp.inner_text("#google-box"), "coming back from Google without being set up explains what to do")
+        shoot(gp, "signin-google-390")
+        gctx.close()
         # The green fill is a design token (--tl-canopy-fill). A stray character in treeline.css once made the
         # browser drop the whole block of --tl-* variables, and every green button, switch and checkbox became
         # transparent: an outline that only turned green while pressed.

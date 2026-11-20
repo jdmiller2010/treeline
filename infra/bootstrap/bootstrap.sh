@@ -5,7 +5,7 @@
 #
 #   infra/bootstrap/bootstrap.sh check            read-only; says what is missing; exit 1 if anything is
 #   infra/bootstrap/bootstrap.sh apply            creates what is missing (asks for values); safe to rerun
-#   infra/bootstrap/bootstrap.sh set NAME         replace one value: google_client_id, allowed_emails, admin_cidr, beta_cidrs, alert_email, healthcheck_url,
+#   infra/bootstrap/bootstrap.sh set NAME         replace one value: google_client_id, google_client_secret, beta_code (a NEW code, shown once), admin_cidr, beta_cidrs, alert_email, healthcheck_url,
 #                                                 backup_age_recipient, vapid (new key pair), smtp (new key)
 #   infra/bootstrap/bootstrap.sh rotate-vm-key    make a second key for the VM user (then install-vm-key, then finish-rotate)
 #   infra/bootstrap/bootstrap.sh finish-rotate    delete the VM user's older key(s)
@@ -79,7 +79,7 @@ put_param() {
 # name|type|what it is|how to get it
 PROMPTED=(
   "google_client_id|String|the Google OAuth client ID (public)|Google Cloud Console > APIs & Services > Credentials; looks like 123-abc.apps.googleusercontent.com"
-  "allowed_emails|SecureString|Google accounts allowed to sign in, comma-separated|the beta families' parents, e.g. parent1@example.com,parent2@example.com"
+  "google_client_secret|SecureString|the Google OAuth client SECRET (it stays in SSM; the app uses it to finish sign-in)|Google Cloud Console > APIs & Services > Credentials, the same OAuth client as the ID; the authorized redirect URI must be https://app.treelinephone.com/api/auth/google/callback"
   "backup_age_recipient|String|the age PUBLIC key that backups are encrypted to|run: age-keygen -o treeline-backup.agekey   then keep that FILE in your password manager and paste only the age1... line it prints"
   "admin_cidr|String|the address SSH may be reached from, as a CIDR (SSH is never open to the world)|your public IPv4 address with /32, e.g. 203.0.113.9/32 (search the web for 'what is my IP'); change it with: bootstrap.sh set admin_cidr"
   "alert_email|SecureString|where the AWS budget alert goes|your own email address"
@@ -97,15 +97,12 @@ valid() {   # valid NAME VALUE -> 0 if it looks right
     beta_cidrs) [[ "$v" == none ]] || { IFS=, read -ra nets <<<"$v"; [ "${#nets[@]}" -gt 0 ] || return 1; for e in "${nets[@]}"; do [[ "$e" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}/([0-9]|[12][0-9]|3[0-2])$ ]] || return 1; done; } ;;
     alert_email) [[ "$v" =~ ^[^@\ ,]+@[^@\ ,]+\.[^@\ ,]+$ ]] ;;
     healthcheck_url) [[ "$v" =~ ^https://[A-Za-z0-9._~:/?#@!$\&\(\)*+,\;=%-]+$ ]] && [[ "$v" != *[[:space:]]* ]] ;;
-    allowed_emails)
-      IFS=, read -ra list <<<"$v"
-      [ "${#list[@]}" -gt 0 ] || return 1
-      for e in "${list[@]}"; do [[ "$e" =~ ^[^@\ ,]+@[^@\ ,]+\.[^@\ ,]+$ ]] || return 1; done ;;
+    google_client_secret) [[ ${#v} -ge 20 && "$v" != *[[:space:]]* ]] ;;
     *) return 0 ;;
   esac
 }
 
-normalize() { case "$1" in allowed_emails) printf '%s' "$2" | tr -d ' ' | tr 'A-Z' 'a-z' ;; *) printf '%s' "$2" ;; esac; }
+normalize() { printf '%s' "$2"; }
 
 # ask NAME LABEL HINT: the value, from TREELINE_PARAM_<NAME> or a prompt on the terminal. Validated.
 ask() {
@@ -152,6 +149,44 @@ ensure_defaults() {
   elif [ "$MODE" = check ]; then bad "$PREFIX/beta_cidrs is missing (apply creates it as: none)"
   else put_param beta_cidrs String none false; ok "$PREFIX/beta_cidrs created (none: no allowlist)"
   fi
+}
+
+# ---------------------------------------------------------------- the closed-beta access code
+# One shared 8-character code lets someone create a treehouse (once). Only its SHA-256 and an expiry are stored; the code itself
+# is shown ONCE, here, and never again: if it is lost, make a new one (that also revokes the old one).
+BETA_DAYS="${TREELINE_BETA_DAYS:-180}"
+new_beta_code() {   # prints the code, then its hash, then the expiry date, one per line
+  python3 - "$BETA_DAYS" <<'PY'
+import hashlib, secrets, sys, datetime
+alphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
+raw = "".join(secrets.choice(alphabet) for _ in range(8))
+print(raw[:4] + "-" + raw[4:])
+print(hashlib.sha256(raw.encode()).hexdigest())
+print((datetime.date.today() + datetime.timedelta(days=int(sys.argv[1]))).isoformat())
+PY
+}
+issue_beta_code() {
+  local out code hash expires
+  out=$(new_beta_code) || die "could not generate a beta code"
+  code=$(sed -n 1p <<<"$out"); hash=$(sed -n 2p <<<"$out"); expires=$(sed -n 3p <<<"$out")
+  put_param beta_code_hash SecureString "$hash" true
+  put_param beta_code_expires String "$expires" true
+  ok "$PREFIX/beta_code_hash and beta_code_expires stored (valid $BETA_DAYS days, until $expires)"
+  printf '\n  The beta access code (shown once; write it down now): %s\n  The app reads it when it starts: restart treeline-api to make an old code stop working at once.\n\n' "$code" >/dev/tty 2>/dev/null || printf '\n  The beta access code (shown once): %s\n\n' "$code"
+}
+ensure_beta_code() {
+  local a b rc
+  a=$(param_type beta_code_hash) && a=ok || a=$?
+  b=$(param_type beta_code_expires) && b=ok || b=$?
+  [ "$a" = ok ] || [ "$a" = 3 ] || exit 1
+  [ "$b" = ok ] || [ "$b" = 3 ] || exit 1
+  if [ "$a" = ok ] && [ "$b" = ok ]; then
+    rc=$(probe aws ssm get-parameter --name "$PREFIX/beta_code_expires" --query Parameter.Value --output text) || exit 1
+    if [[ "$rc" < "$(date -u +%F)" ]]; then bad "the beta access code expired on $rc (run: $0 set beta_code)"; else ok "$PREFIX/beta_code_hash (expires $rc)"; fi
+    return
+  fi
+  if [ "$MODE" = check ]; then bad "$PREFIX/beta_code_hash / beta_code_expires missing"; return; fi
+  issue_beta_code
 }
 
 # ---------------------------------------------------------------- the backup bucket's name
@@ -325,6 +360,7 @@ run_all() {
   ensure_prompted
   ensure_vapid
   ensure_bucket_param
+  ensure_beta_code
   ensure_defaults
   ensure_smtp_user_and_params
   say; say "IAM user for the VM ($VM_USER): reads $PREFIX/*, writes backups only"
@@ -347,6 +383,8 @@ cmd_set() {
   case "$name" in
     vapid) warn "a new key pair means every parent must turn notifications on again"
            new_vapid; ok "new VAPID key pair stored" ;;
+    beta_code) warn "a new code replaces the old one: anyone with the old code can no longer create a treehouse"
+           issue_beta_code ;;
     smtp)  ensure_user "$SMTP_USER" "$(smtp_policy)"; issue_smtp ;;
     beta_cidrs) v="$(ask beta_cidrs "the allowlist for 443 and the call audio ports (comma-separated IPv4 CIDRs), or: none" "for example 198.51.100.0/24,203.0.113.0/24; none opens them to everyone")"
            put_param beta_cidrs String "$v" true; ok "$PREFIX/beta_cidrs updated (run infra/deploy.sh to apply it)" ;;

@@ -17,7 +17,7 @@ mkdir -p "$T/tmpfs"; chmod 700 "$T/tmpfs"
 export TREELINE_TMPFS="$T/tmpfs"
 export PATH="$T/bin:$PATH" FAKE_AWS_STATE="$T/state.json" TREELINE_LOCAL_DIR="$T/local" AWS_PAGER=""
 export TREELINE_PARAM_GOOGLE_CLIENT_ID="123456789-abcdefg1234.apps.googleusercontent.com"
-export TREELINE_PARAM_ALLOWED_EMAILS="Parent.One@treeline.invalid, parent.two@treeline.invalid"
+export TREELINE_PARAM_GOOGLE_CLIENT_SECRET="GOC""SPX-fake-secret-for-tests-0123456789"
 export TREELINE_PARAM_BACKUP_AGE_RECIPIENT="age1$(printf 'q%.0s' $(seq 58))"
 export TREELINE_PARAM_ADMIN_CIDR="203.0.113.9/32"
 export TREELINE_PARAM_ALERT_EMAIL="owner@treeline.invalid"
@@ -41,12 +41,12 @@ expect "request files were 0600" test "$(sort -u "$FAKE_AWS_STATE.argv.modes" | 
 expect "request files were on the tmpfs directory" test "$(awk '{print $2}' "$FAKE_AWS_STATE.argv.modes" | sort -u)" = "$TREELINE_TMPFS"
 expect "request files were deleted" test -z "$(find "$TREELINE_TMPFS" -mindepth 1 | head -1)"
 expect "stdin is refused by the fake as by the real CLI (regression: file:///dev/stdin)" bash -c "! echo '{}' | '$T/bin/aws' ssm put-parameter --cli-input-json file:///dev/stdin 2>/dev/null"
-expect "12 parameters exist" test "$(state '.params | length')" = 12
+expect "14 parameters exist" test "$(state '.params | length')" = 14
 expect "the SSH address and the alert email are stored (email as SecureString)" test "$(state '.params["/treeline/admin_cidr"].Type + .params["/treeline/alert_email"].Type')" = "StringSecureString"
 expect "the optional allowlist starts as none" test "$(state '.params["/treeline/beta_cidrs"].Value')" = none
 expect "the dead-man URL is a SecureString" test "$(state '.params["/treeline/healthcheck_url"].Type')" = SecureString
 expect "the bucket name is stored, with the account in it, as a plain String" test "$(state '.params["/treeline/backup_bucket"].Value + .params["/treeline/backup_bucket"].Type')" = "treeline-backups-123456789012-us-west-2String"
-expect "emails were cleaned up" test "$(state '.params["/treeline/allowed_emails"].Value')" = "parent.one@treeline.invalid,parent.two@treeline.invalid"
+expect "the Google client secret is a SecureString" test "$(state '.params["/treeline/google_client_secret"].Type')" = SecureString
 expect "secret types are SecureString" test "$(state '.params["/treeline/vapid_private"].Type + .params["/treeline/smtp_password"].Type + .params["/treeline/smtp_user"].Type')" = "SecureStringSecureStringSecureString"
 expect "both IAM users exist with a policy" test "$(state '[.users[] | select(.policy != null)] | length')" = 2
 expect "VM key file written, mode 600" test "$(stat -c %a "$T/local/vm-credentials")" = 600
@@ -115,6 +115,20 @@ expect "rotate writes the new key file" test -f "$T/local/vm-credentials"
 expect "finish-rotate keeps one key" test "$(state '.keys["treeline-vm"] | length')" = 1
 expect "the kept key is the newest" grep -q "$(state '.keys["treeline-vm"][0].id')" "$T/local/vm-credentials"
 
+# 8b. the beta code: only its hash and an expiry are stored; the code is shown once and is 8 characters; a new one replaces the old
+"$BOOT" apply >"$T/out" 2>&1 || true
+state_hash="$(state '.params["/treeline/beta_code_hash"].Value')"
+expect "the beta code hash is a SHA-256 SecureString" test "${#state_hash}-$(state '.params["/treeline/beta_code_hash"].Type')" = "64-SecureString"
+expect "the expiry is a date about 180 days away" python3 -c "import datetime,sys; d=(datetime.date.fromisoformat(sys.argv[1])-datetime.date.today()).days; sys.exit(0 if 178<=d<=181 else 1)" "$(state '.params["/treeline/beta_code_expires"].Value')"
+"$BOOT" set beta_code >"$T/out" 2>&1 </dev/null
+shown="$(grep -o '[A-Z2-9]\{4\}-[A-Z2-9]\{4\}' "$T/out" | head -1)"
+expect "a new code is shown once, as 4+4 characters" test -n "$shown"
+expect "the new hash is the hash of what was shown" test "$(state '.params["/treeline/beta_code_hash"].Value')" = "$(printf '%s' "${shown/-/}" | sha256sum | cut -d' ' -f1)"
+expect "the old hash is gone" test "$(state '.params["/treeline/beta_code_hash"].Value')" != "$state_hash"
+expect "the code itself is never stored or sent on a command line" bash -c "! grep -rqF '${shown/-/}' '$FAKE_AWS_STATE' '$FAKE_AWS_STATE.argv'"
+jq '.params["/treeline/beta_code_expires"].Value = "2020-01-01"' "$FAKE_AWS_STATE" > "$T/s" && mv "$T/s" "$FAKE_AWS_STATE"
+if "$BOOT" check >"$T/out" 2>&1; then fail "check must notice an expired beta code"; else expect "check notices an expired beta code" grep -q "expired" "$T/out"; fi
+
 # 9. the root user is refused, bad values are refused, a bare terminal-less run asks for env vars
 if FAKE_AWS_ARN="arn:aws:iam::123456789012:root" "$BOOT" check >"$T/out" 2>&1; then fail "root must be refused"; else expect "root user is refused" grep -q "root user" "$T/out"; fi
 rm -f "$FAKE_AWS_STATE" "$FAKE_AWS_STATE.argv"
@@ -126,7 +140,7 @@ for bad_cidr in 0.0.0.0/0 10.0.0.0/8 203.0.113.9 "not-a-cidr"; do
   if TREELINE_PARAM_ADMIN_CIDR="$bad_cidr" "$BOOT" apply >"$T/out" 2>&1; then fail "SSH address '$bad_cidr' must be refused"; else pass "SSH address '$bad_cidr' is refused"; fi
 done
 rm -f "$FAKE_AWS_STATE" "$FAKE_AWS_STATE.argv"
-if TREELINE_PARAM_ALLOWED_EMAILS="not-an-email" "$BOOT" apply >"$T/out" 2>&1; then fail "a bad email list must be refused"; else pass "a bad email list is refused"; fi
+if TREELINE_PARAM_GOOGLE_CLIENT_SECRET="short" "$BOOT" apply >"$T/out" 2>&1; then fail "a too-short Google secret must be refused"; else pass "a too-short Google secret is refused"; fi
 if TREELINE_PARAM_BACKUP_AGE_RECIPIENT="AGE-SECRET-KEY-1ABC" "$BOOT" apply >"$T/out" 2>&1; then fail "an age PRIVATE key must be refused"; else pass "an age private key is refused as the recipient"; fi
 
 # 10. install-vm-key refuses a hostile host name
