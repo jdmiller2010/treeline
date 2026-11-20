@@ -333,6 +333,19 @@ def calls_for(th, since=None, limit=300, before=None):
 
 # ================================================================ health
 
+def _release_version():
+    """The release this code was deployed as (release.json at the release's root); None in a development checkout.
+    The deploy agent compares it with the release it just switched to, so a health check cannot pass on old code."""
+    try:
+        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "release.json"), encoding="utf-8") as f:
+            return json.load(f).get("version")
+    except (OSError, ValueError):
+        return None
+
+
+RELEASE = _release_version()
+
+
 @app.get("/api/health")
 def health():
     """For an uptime monitor: 200 only if the database answers and Asterisk is reachable."""
@@ -341,7 +354,7 @@ def health():
     asterisk = ari_mod.Ari().online_users(timeout=2) is not None     # never hold a thread long
     behind = households_behind()          # a household file whose migration failed or is stuck: the deploy must see it
     ok = asterisk and behind == 0
-    return jsonify(ok=ok, database=True, asterisk=asterisk, households_behind=behind), (200 if ok else 503)
+    return jsonify(ok=ok, database=True, asterisk=asterisk, households_behind=behind, release=RELEASE), (200 if ok else 503)
 
 
 _behind = {"at": 0.0, "n": 0}

@@ -207,3 +207,20 @@ class AccessLogKeepsTokensOut(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class HealthNamesTheRelease(unittest.TestCase):
+    def test_health_reports_the_release_the_code_was_deployed_as(self):
+        from treeline import api
+        with mock.patch.object(api, "RELEASE", "v1.2.3"), api.app.test_client() as client:
+            self.assertEqual(client.get("/api/health").get_json()["release"], "v1.2.3")
+
+    def test_release_json_is_read_from_the_release_root_and_absent_in_a_checkout(self):
+        from treeline import api
+        self.assertIsNone(api._release_version())                       # the dev tree has no release.json
+        with tempfile.TemporaryDirectory() as d:
+            os.makedirs(os.path.join(d, "controller", "treeline"))
+            with open(os.path.join(d, "release.json"), "w") as f:
+                f.write('{"version": "v9.9.9"}')
+            with mock.patch.object(api, "__file__", os.path.join(d, "controller", "treeline", "api.py")):
+                self.assertEqual(api._release_version(), "v9.9.9")
