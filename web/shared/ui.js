@@ -223,6 +223,7 @@ export function footerLinks(licenses = "/parent/licenses.html") {
   return html`<span>Made by Jordan Miller · © 2026</span>
   <a class="tl-footer__link" href="${SUPPORT_URL}" target="_blank" rel="noopener">${icon("coffee", 16)}Buy me a coffee</a>
   <a class="tl-footer__link" href="mailto:${CONTACT}">${icon("mail", 16)}Email Jordan</a>
+  <a class="tl-footer__link" href="/privacy/">Privacy</a>
   <a class="tl-footer__link" href="${licenses}">Open-source licenses</a>`;
 }
 export function footer(licenses = "/parent/licenses.html") {
