@@ -1,0 +1,24 @@
+# What the Asterisk build takes in. Plain KEY=VALUE lines: read by build.sh and scripts/sbom.py with a strict parser,
+# never sourced. Changing a value here changes what production runs: see asterisk/build/README.md.
+# Everything below was checked on 2026-11-20 against two or more sources (see docs/SECURITY.md, Review 9).
+ASTERISK_VERSION=24.0.0
+ASTERISK_URL=https://downloads.asterisk.org/pub/telephony/asterisk/asterisk-24.0.0.tar.gz
+ASTERISK_SIG_URL=https://downloads.asterisk.org/pub/telephony/asterisk/asterisk-24.0.0.tar.gz.asc
+ASTERISK_SHA256=ece42a75bc965180007c56b03f2fd1dc8484eb84fc4cddc090db0ee5d5da1af9
+ASTERISK_SIZE=26477455
+# The upstream signing key (asterisk-release-key.asc). Changing it is a trust-anchor change: owner review.
+ASTERISK_KEY_FPR=F2FC93DB7587BD1FB49E045A5D984BE337191CE7
+# Asterisk downloads pjproject at build time; we place the verified tarball ourselves, so the build fetches nothing.
+# The MD5 is the one inside the signed Asterisk tarball (third-party/pjproject/pjproject-2.17.tar.bz2.md5).
+PJPROJECT_VERSION=2.17
+PJPROJECT_URL=https://raw.githubusercontent.com/asterisk/third-party/master/pjproject/2.17/pjproject-2.17.tar.bz2
+PJPROJECT_SHA256=04b2eb1f0f01aa0ad1945b167171843448a51aa6b7c3e806496d434f13a112b7
+PJPROJECT_MD5=baacc87418a95107657039269bc71538
+PJPROJECT_SIZE=8975382
+# The toolchain: a pinned base image (created 2026-11-10) and the Ubuntu archive as it was at one moment.
+BASE_IMAGE=ubuntu:24.04@sha256:9c7f200c07e3d4a03e7249d2c16bf66a51120fb876aa2242cf31451412543289
+APT_SNAPSHOT=20261112T000000Z
+# Treeline's own build number for this source (bump when build.sh or modules.txt change the output).
+# The time stamped into the build (the release day of this Asterisk), so two builds can match byte for byte.
+SOURCE_DATE_EPOCH=1793836800
+BUILD_ID=24.0.0-t1

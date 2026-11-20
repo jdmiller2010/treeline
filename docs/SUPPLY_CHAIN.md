@@ -27,6 +27,7 @@ Treeline is a children's phone network, so "a library we use has a hole in it" h
 | `web/phone/vendor/` | JsSIP and qrcode-generator, copied into the softphone. The version is the one `THIRD_PARTY_NOTICES.md` states | yes |
 | `.github/workflows/*.yml` | Every action CI uses | yes when pinned to a commit with a `# v1.2.3` comment (all are, except the one in `release.yml`, whose comment says only `v4`; Dependabot will write the full version the first time it updates it) |
 | Dockerfiles, compose files | Base images (`ubuntu:24.04`, `python:3.12-slim`, `caddy:2`, the Playwright image) | no: listed only. The tags float on purpose (they are what the VM runs), and none of them is part of a deployment |
+| `asterisk/build/sources.lock` | The upstream Asterisk and the pjproject it bundles that production is moving to, and the toolchain image's digest (see "The Asterisk build" below). Listed with exact versions and sha256; not yet in production, and not yet asked about advisories (OSV does not answer for upstream Asterisk by version: the replacement check is the next change) | not yet |
 | `deploy/native/install.sh` | Every Ubuntu package a fresh VM ends up with (about 260, from the 15 that `install.sh` names). `scripts/os_packages.sh` installs them in a throwaway container to get the list | yes, see below |
 
 A test (`scripts/test_supply_chain.py`) fails if a lock cannot be read completely, if a `.js` file appears in `web/phone/vendor/` that the list does not know, if `THIRD_PARTY_NOTICES.md` names a version a lock does not pin, or if `install.sh`'s package line stops being readable. `./dev check` runs it.
@@ -61,6 +62,17 @@ If OSV cannot be reached or answers in a shape the script does not expect, the r
 Both are installed from Ubuntu 24.04's **universe** section. The first real run found **76 advisories listed against Ubuntu's `asterisk` package (1:20.6.0) with no fixed package**, 73 at Ubuntu's "medium" priority and 3 "low", and none against `caddy`. Many of the 76 are years old and describe Asterisk versions older than 20.6, so they are Ubuntu's tracker not having reviewed them, not 76 holes; but nobody has sorted which ones do apply, and that is open as R8-1 in [SECURITY.md](SECURITY.md). Until that is done, what the tooling gives is the list and an alert whenever a new one is added.
 
 The choices for R8-1, none taken yet: sort the list against Asterisk's own advisories for 20.6.0 and accept what does not apply; find out whether Ubuntu Pro's extended maintenance covers this package (not checked); or install a current Asterisk 20 or 22 release some other way, which changes `install.sh` and the VM-imitation tests. What is designed to limit the exposure is in [DEPLOY_AWS.md](DEPLOY_AWS.md) (ARI and Asterisk's HTTP interface closed to other hosts, fail2ban, an address allowlist during the beta); like the rest of that deployment, it has run only in the VM-imitating job, never on AWS.
+
+### The Asterisk build
+
+Production is changing from Ubuntu's `asterisk` package (above) to an upstream Asterisk that we compile ourselves from the signed source release, which is the answer to R8-1. This section describes the build, which exists and has been run on a developer's machine; **nothing installs it yet**, so the Ubuntu section above is still what a VM gets. The directory is [asterisk/build/](../asterisk/build/README.md); the reasons for each choice are in the review recorded in [SECURITY.md](SECURITY.md).
+
+- **One place, tightly scoped.** Only `asterisk/build/build.sh` compiles third-party code. It runs in a container with no network, no capabilities and a read-only root, started by `run-build.sh`, on source whose sha256 is pinned in `sources.lock` and whose signature `gpgv` accepted against a committed key with a pinned fingerprint. It never runs on the VM, and never in a job with a write token or a secret. This is the second exception to "don't execute downloaded code" in CLAUDE.md.
+- **Only released code.** No cherry-picked upstream commits and no distribution patches. Where an advisory has no fix in a release, the answer is a documented option or an entry in `.vuln-ignore` with a reason, until a release carries the fix.
+- **Only the modules Treeline uses.** `modules.txt` is the list; the build fails if anything else is enabled or installed. Fewer modules, fewer advisories that apply.
+- **Built twice.** `.github/workflows/asterisk.yml` builds the same inputs in two jobs and fails unless the artifacts are byte for byte the same. Publishing is a separate, manual job on `main`, with GitHub's build provenance attestation.
+- **A change cannot slip past the lock.** `artifact.lock` holds the artifact's sha256 and a digest of every input in `asterisk/build/`. `scripts/asterisk_build.py check` (in `./dev check` and a required CI job) fails when an input changed without a new artifact.
+- **Updating it is now our job.** `unattended-upgrades` will not patch an Asterisk we compiled. The plan for hearing about new upstream releases and advisories, and turning them into a release, is part of the same work and is described here when it lands.
 
 ## Updates that happen on their own
 

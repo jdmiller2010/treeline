@@ -134,6 +134,30 @@ class TheRealRepo(unittest.TestCase):
         for v in sbom.VENDORED:
             self.assertIn(v["file"], sources)
 
+    def test_the_asterisk_builds_pinned_inputs_are_in(self):
+        # asterisk/build/sources.lock is what the build compiles: Asterisk, the pjproject it bundles, the toolchain image.
+        import asterisk_build
+        with open(os.path.join(ROOT, "asterisk", "build", "sources.lock")) as f:
+            src = asterisk_build.parse_lock(f.read(), asterisk_build.SOURCES_FIELDS)
+        ast = self.by[("Upstream source", "asterisk")]
+        pj = self.by[("Upstream source", "pjproject")]
+        self.assertEqual(ast["version"], src["ASTERISK_VERSION"])
+        self.assertEqual(pj["version"], src["PJPROJECT_VERSION"])
+        self.assertEqual(ast["purl"], "pkg:github/asterisk/asterisk@%s" % src["ASTERISK_VERSION"])
+        self.assertEqual(pj["purl"], "pkg:github/pjsip/pjproject@%s" % src["PJPROJECT_VERSION"])
+        self.assertEqual(ast["sha256"], [src["ASTERISK_SHA256"]])
+        self.assertIn("asterisk/build/sources.lock", ast["sources"])
+        self.assertFalse(pj["direct"])
+        # The toolchain image is the digest in the lock, and a `FROM ${BASE_IMAGE}` build argument is never a component.
+        toolchain = [c for c in self.components if "asterisk-build-toolchain" in c["roles"]]
+        self.assertEqual(len(toolchain), 1)
+        self.assertIn("@sha256:", toolchain[0]["version"])
+        self.assertFalse([c for c in self.components if "$" in c["name"]])
+
+    def test_a_dockerfile_build_argument_is_not_an_image(self):
+        self.assertEqual(sbom.parse_images("ARG BASE_IMAGE\nFROM ${BASE_IMAGE}\n"), [])
+        self.assertEqual(sbom.parse_images("FROM ubuntu:24.04@sha256:" + "b" * 64 + "\n"), ["ubuntu:24.04@sha256:" + "b" * 64])
+
     def test_every_file_in_the_vendor_directory_is_declared(self):
         # A library dropped into web/phone/vendor/ without an entry in sbom.VENDORED would never be checked.
         declared = {os.path.basename(v["file"]) for v in sbom.VENDORED}
