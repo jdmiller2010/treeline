@@ -1,0 +1,74 @@
+#!/opt/treeline/tools/bin/python -I
+"""Copy the certificate Caddy obtained to where Asterisk can read it, and restart Asterisk only if it changed.
+
+    treeline-certsync [--no-restart]
+
+Caddy owns the certificate and its key is readable only by Caddy. Asterisk (SIP over TLS, port 5061) needs the
+same pair. Caddy is pinned to one ACME issuer and one storage root, so the pair is at
+    <storage>/certificates/<issuer-key>/<host>/<host>.crt  and  .key
+This finds it by that rule and REFUSES to act if there is not exactly one match (a second issuer would
+otherwise be picked silently). Run by a systemd timer, as root.
+"""
+
+import glob
+import hashlib
+import os
+import pwd
+import subprocess
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+import treeline_common as common  # noqa: E402
+
+KEYS = os.environ.get("TREELINE_ASTERISK_KEYS", "/etc/asterisk/keys")
+
+
+def find_pair(storage, host):
+    host = common.check_host(host)
+    crts = sorted(glob.glob(os.path.join(glob.escape(storage), "certificates", "*", glob.escape(host), glob.escape(host) + ".crt")))
+    if not crts:
+        raise SystemExit(f"no certificate for {host} under {storage}/certificates yet (Caddy has not obtained one)")
+    if len(crts) > 1:
+        raise SystemExit("more than one certificate for %s (%s): Caddy must be pinned to one issuer" % (host, ", ".join(crts)))
+    key = crts[0][:-4] + ".key"
+    if not os.path.exists(key):
+        raise SystemExit(f"{key} is missing")
+    return crts[0], key
+
+
+def usable(crt):
+    """Not expired (and openssl can read it)."""
+    return subprocess.run(["openssl", "x509", "-noout", "-checkend", "0", "-in", crt], capture_output=True).returncode == 0
+
+
+def sync(storage, host, keys_dir=KEYS, owner="asterisk"):
+    crt, key = find_pair(storage, host)
+    if not usable(crt):
+        raise SystemExit(f"{crt} is expired or unreadable; not copying it")
+    try:
+        pw = pwd.getpwnam(owner)
+        uid, gid = pw.pw_uid, pw.pw_gid
+    except KeyError:
+        uid = gid = None                           # unit tests run without the asterisk user
+    os.makedirs(keys_dir, mode=0o750, exist_ok=True)
+    if uid is not None:
+        os.chown(keys_dir, uid, gid)
+    changed = False
+    with open(crt, "rb") as f:
+        changed |= common.atomic_write(os.path.join(keys_dir, "treeline.crt"), f.read(), 0o644, uid, gid)
+    with open(key, "rb") as f:
+        changed |= common.atomic_write(os.path.join(keys_dir, "treeline.key"), f.read(), 0o600, uid, gid)
+    return changed
+
+
+def main(argv):
+    host = common.host_settings()["TREELINE_DOMAIN"]
+    changed = sync(os.path.join(common.STATE, "caddy"), host)
+    print("certificate changed" if changed else "certificate unchanged")
+    if changed and "--no-restart" not in argv:
+        subprocess.run(["systemctl", "restart", "asterisk"], check=True)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

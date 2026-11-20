@@ -1,0 +1,140 @@
+#!/opt/treeline/tools/bin/python -I
+"""Render the machine's configuration from a release's templates and /etc/treeline/host.env.
+
+    treeline-config apply --release DIR [--restart]
+    treeline-config show-caddy --release DIR            (print, change nothing)
+
+Writes /etc/asterisk/*.conf (the release's asterisk/config with the production templates over it),
+/etc/caddy/Caddyfile and /etc/treeline/app.env, each only if it changed, and with --restart restarts what changed.
+Nothing environment-specific is committed: the addresses, the domain and the ARI password come from host.env
+and the files the installer made, at install or deploy time.
+"""
+
+import ipaddress
+import os
+import pwd
+import shutil
+import subprocess
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+import treeline_common as common  # noqa: E402
+
+ASTERISK_DIR = os.environ.get("TREELINE_ASTERISK_DIR", "/etc/asterisk")
+CADDYFILE = os.environ.get("TREELINE_CADDYFILE", "/etc/caddy/Caddyfile")
+LE_DIRECTORY = "https://acme-v02.api.letsencrypt.org/directory"
+
+
+def read(path):
+    with open(path, encoding="utf-8") as f:
+        return f.read()
+
+
+def settings(etc=None):
+    etc = etc or common.ETC
+    h = common.host_settings(etc)
+    s = {
+        "DOMAIN": common.check_host(h["TREELINE_DOMAIN"]),
+        "MAIL_DOMAIN": common.check_host(h.get("TREELINE_MAIL_DOMAIN") or h["TREELINE_DOMAIN"]),
+        "REGION": h.get("TREELINE_AWS_REGION", "us-west-2"),
+        "PRIVATE_IP": common.check_ip(h["TREELINE_PRIVATE_IP"]),
+        "PUBLIC_IP": common.check_ip(h["TREELINE_PUBLIC_IP"]),
+        "LOCAL_NET": [str(ipaddress.ip_network(n, strict=False)) for n in h["TREELINE_LOCAL_NET"].split(",") if n],
+    }
+    if not s["REGION"].replace("-", "").isalnum():
+        raise ValueError("bad region")
+    s["VAPID_CONTACT"] = h.get("TREELINE_VAPID_CONTACT") or f"admin@{s['MAIL_DOMAIN']}"
+    if "@" not in s["VAPID_CONTACT"] or any(c in s["VAPID_CONTACT"] for c in " \n\"<>"):
+        raise ValueError("bad VAPID contact")
+    s["ACME_DIR"] = h.get("TREELINE_ACME_DIR") or LE_DIRECTORY
+    if not s["ACME_DIR"].startswith("https://") or any(c in s["ACME_DIR"] for c in " \n{}\""):
+        raise ValueError("bad ACME directory")
+    s["ACME_ROOT_FILE"] = h.get("TREELINE_ACME_ROOT", "")       # CI only: trust a local test CA
+    with open(os.path.join(etc, "ari-password"), encoding="utf-8") as f:
+        s["ARI_PASS"] = f.read().strip()
+    if not s["ARI_PASS"].isalnum():
+        raise ValueError("ARI password must be letters and digits (re-run install.sh)")
+    return s
+
+
+def nat_values(s):
+    """Public and private addresses differ behind a one-to-one NAT; when they don't there is nothing to say."""
+    if s["PUBLIC_IP"] == s["PRIVATE_IP"]:
+        return {"NAT_OPTIONS": "", "ICE_HOST_CANDIDATES": "; (no NAT: this machine has a public address of its own)"}
+    lines = [f"external_media_address={s['PUBLIC_IP']}", f"external_signaling_address={s['PUBLIC_IP']}"]
+    lines += [f"local_net={n}" for n in s["LOCAL_NET"]]
+    lines.append("local_net=127.0.0.0/8")
+    return {"NAT_OPTIONS": "\n".join(lines), "ICE_HOST_CANDIDATES": f"{s['PRIVATE_IP']} => {s['PUBLIC_IP']}"}
+
+
+def caddyfile(release, s):
+    tmpl = os.path.join(release, "deploy", "native", "templates")
+    root = ""
+    if s["ACME_ROOT_FILE"]:
+        root = f"\t\t\ttrusted_roots {s['ACME_ROOT_FILE']}"
+    vals = {"DOMAIN": s["DOMAIN"], "ACME_DIR": s["ACME_DIR"], "ACME_ROOT": root, "ACME_GLOBAL": "",
+            "APEX": ""}
+    apex = ""
+    parts = s["DOMAIN"].split(".")
+    if len(parts) > 2:                                           # the bare domain redirects here
+        vals["APEX"] = ".".join(parts[1:])
+        apex = common.render(read(os.path.join(tmpl, "apex.tmpl")), vals)
+    vals["APEX_BLOCK"] = apex
+    return common.render(read(os.path.join(tmpl, "Caddyfile.tmpl")), vals)
+
+
+def asterisk_files(release, s):
+    """{filename: text}: the release's base config, then the production templates over it."""
+    out = {}
+    base = os.path.join(release, "asterisk", "config")
+    for name in sorted(os.listdir(base)):
+        if name.endswith(".conf"):
+            out[name] = read(os.path.join(base, name))
+    vals = dict(nat_values(s), ARI_PASS=s["ARI_PASS"])
+    tdir = os.path.join(release, "deploy", "native", "templates", "asterisk")
+    for name in sorted(os.listdir(tdir)):
+        out[name] = common.render(read(os.path.join(tdir, name)), vals)
+    return out
+
+
+def app_env(release, s):
+    return common.render(read(os.path.join(release, "deploy", "native", "templates", "app.env.tmpl")), s)
+
+
+def apply(release, etc=None, restart=False):
+    etc = etc or common.ETC
+    s = settings(etc)
+    try:
+        pw = pwd.getpwnam("asterisk")
+        uid, gid = pw.pw_uid, pw.pw_gid
+    except KeyError:
+        uid = gid = None
+    changed = set()
+    for name, text in asterisk_files(release, s).items():
+        if common.atomic_write(os.path.join(ASTERISK_DIR, name), text, 0o640, uid, gid):
+            changed.add("asterisk")
+    if common.atomic_write(CADDYFILE, caddyfile(release, s), 0o644):
+        changed.add("caddy")
+    if common.atomic_write(os.path.join(etc, "app.env"), app_env(release, s), 0o644):
+        changed.add("app")
+    if restart:
+        for unit in sorted(changed - {"app"}):
+            subprocess.run(["systemctl", "restart", unit], check=True)
+    return changed
+
+
+def main(argv):
+    if not argv or argv[0] not in ("apply", "show-caddy") or "--release" not in argv:
+        print(__doc__)
+        return 2
+    release = os.path.realpath(argv[argv.index("--release") + 1])
+    if argv[0] == "show-caddy":
+        print(caddyfile(release, settings()))
+        return 0
+    changed = apply(release, restart="--restart" in argv)
+    print("changed: " + (", ".join(sorted(changed)) or "nothing"))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

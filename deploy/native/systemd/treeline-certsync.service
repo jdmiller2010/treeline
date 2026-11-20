@@ -1,0 +1,10 @@
+[Unit]
+Description=Copy Caddy's certificate for Asterisk (SIP over TLS)
+After=caddy.service
+RequiresMountsFor=/var/lib/treeline
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/treeline/treeline-certsync
+# A missing certificate (Caddy has not obtained one yet) is not an error worth alarming about at boot:
+SuccessExitStatus=1

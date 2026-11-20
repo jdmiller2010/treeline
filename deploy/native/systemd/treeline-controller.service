@@ -1,0 +1,45 @@
+[Unit]
+Description=Treeline controller (Asterisk ARI call engine)
+After=network-online.target asterisk.service
+Wants=network-online.target
+RequiresMountsFor=/var/lib/treeline
+
+[Service]
+Type=simple
+User=treeline
+Group=treeline
+UMask=0027
+WorkingDirectory=/opt/treeline/current/controller
+EnvironmentFile=/etc/treeline/app.env
+# The secrets are fetched from SSM into tmpfs just before each start, by root ("+"), so they exist only in memory.
+# The "-" lets systemd start the ExecStartPre when the file does not exist yet; the app itself refuses to start without them.
+EnvironmentFile=-/run/treeline/env
+ExecStartPre=+/usr/local/lib/treeline/treeline-fetch-secrets
+ExecStart=/opt/treeline/current/venv/bin/python -u run_controller.py
+Restart=on-failure
+RestartSec=5
+StartLimitIntervalSec=0
+TimeoutStartSec=60
+
+# Hardening: the app only needs the state directory, the loopback and the network.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/treeline
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+SystemCallFilter=@system-service
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+LimitCORE=0
+
+[Install]
+WantedBy=multi-user.target

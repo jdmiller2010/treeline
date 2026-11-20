@@ -1,0 +1,46 @@
+#!/opt/treeline/tools/bin/python -I
+"""Treeline deploy agent. The first install only stages the release it is run from; fetching, verifying, switching,
+health checks and rollback arrive with work package 2 (docs/DEPLOY_AWS.md).
+
+    treeline-deploy adopt DIR        first install: stage the unpacked release DIR (called by install.sh)
+"""
+
+import os
+import shutil
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+import treeline_common as common  # noqa: E402
+import treeline_release as rel  # noqa: E402
+
+
+def adopt(src):
+    info = rel.read_info(src)
+    dest = os.path.join(common.OPT, "releases", info["version"])
+    if os.path.exists(dest):
+        raise SystemExit(f"{dest} already exists")
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    shutil.copytree(src, dest, symlinks=True)
+    try:
+        rel.build_venv(dest)
+        rel.seal(dest)
+    except BaseException:
+        shutil.rmtree(dest, ignore_errors=True)
+        raise
+    rel.switch(os.path.join(common.OPT, "current"), dest)
+    print(f"staged {info['version']}")
+    return 0
+
+
+def main(argv):
+    if len(argv) == 2 and argv[0] == "adopt":
+        return adopt(os.path.realpath(argv[1]))
+    print(__doc__)
+    return 2
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main(sys.argv[1:]))
+    except rel.ReleaseError as err:
+        sys.exit(f"treeline-deploy: {err}")

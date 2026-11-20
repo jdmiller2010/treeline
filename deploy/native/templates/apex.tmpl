@@ -1,0 +1,10 @@
+
+@APEX@ {
+	tls {
+		issuer acme {
+			dir @ACME_DIR@
+@ACME_ROOT@
+		}
+	}
+	redir https://@DOMAIN@{uri} 308
+}
