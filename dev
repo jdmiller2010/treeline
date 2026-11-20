@@ -14,6 +14,8 @@
 #   ./dev check              regenerate generated files, check syntax and the repo rules, fail if anything was stale
 #   ./dev rules [args]       scan the repo for secrets, addresses and other things that must not be public (docs/REPO_RULES.md)
 #   ./dev hooks              turn on the pre-commit hook that runs those rules on every commit
+#   ./dev sbom [args]        the bill of materials: every third-party thing we run, build with or ship (--table to read it; docs/SUPPLY_CHAIN.md)
+#   ./dev vulns [--os]       ask OSV.dev about every pinned dependency; --os also the VM's Ubuntu packages (needs Docker)
 #   ./dev clean              empty the dev database and every household file (refuses while a test run is going)
 #   ./dev all                check, unit, sip, web, ui smoke, ui pwa
 #
@@ -131,12 +133,25 @@ cmd_check() {
   done
   for f in $(git ls-files '*.py'); do python3 -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "$f" || { echo "Python syntax error: $f"; bad=1; }; done
   python3 scripts/check_repo_rules.py || bad=1
+  python3 -m unittest -q scripts/test_supply_chain.py 2>/dev/null || { echo "the bill of materials is out of step (python3 -m unittest scripts/test_supply_chain.py says what)"; bad=1; }
   dc config -q >/dev/null || { echo "docker-compose.yml is invalid"; bad=1; }
   docker compose -f deploy/docker-compose.prod.yml --env-file deploy/env.example config -q >/dev/null 2>&1 || { echo "deploy/docker-compose.prod.yml is invalid"; bad=1; }
   [ $bad -eq 0 ] && echo "check ok"; return $bad
 }
 
 cmd_rules() { python3 scripts/check_repo_rules.py "$@"; }
+cmd_sbom() { python3 scripts/sbom.py "$@"; }
+cmd_vulns() {   # the same check CI runs every day (.github/workflows/supply-chain.yml)
+  local d; d="$(mktemp -d)"
+  if [ "${1:-}" = "--os" ]; then
+    scripts/os_packages.sh > "$d/os.tsv"
+    python3 scripts/sbom.py --os-packages "$d/os.tsv" -o "$d/sbom.json"
+  else
+    python3 scripts/sbom.py -o "$d/sbom.json"
+  fi
+  local rc=0; python3 scripts/vuln_check.py "$d/sbom.json" --os-watch asterisk,caddy || rc=$?
+  rm -rf "$d"; return $rc
+}
 cmd_hooks() { git config core.hooksPath .githooks && echo "pre-commit hook on (.githooks/pre-commit): commits are scanned by scripts/check_repo_rules.py"; }
 
 # ---------------------------------------------------------------- clean
@@ -198,6 +213,6 @@ case "${1:-help}" in
   up) shift; cmd_up "$@" ;; restart) cmd_restart ;; unit) shift; cmd_unit "$@" ;;
   sip) shift; cmd_sip "$@" ;; web) shift; cmd_web "$@" ;; ui) shift; cmd_ui "$@" ;;
   native) shift; cmd_native "$@" ;; cdk) cmd_cdk ;; vm) shift; cmd_vm "$@" ;; infra) cmd_infra ;;
-  check) cmd_check ;; rules) shift; cmd_rules "$@" ;; hooks) cmd_hooks ;; clean) cmd_clean ;; all) cmd_all ;;
-  *) sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//' ;;
+  check) cmd_check ;; rules) shift; cmd_rules "$@" ;; hooks) cmd_hooks ;; sbom) shift; cmd_sbom "$@" ;; vulns) shift; cmd_vulns "$@" ;; clean) cmd_clean ;; all) cmd_all ;;
+  *) sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//' ;;
 esac

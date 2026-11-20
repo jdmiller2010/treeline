@@ -33,6 +33,7 @@ The scanner is regex-based. It will miss things (it cannot know a stranger's nam
 ## GitHub settings (these cannot be set from the repo; do them once)
 
 - **Settings, Code security**: turn on **secret scanning** and **push protection** (free for public repos), and **private vulnerability reporting**.
+- **Dependabot alerts and security updates, auto-merge, and the required checks on `main`**: the list is in [SUPPLY_CHAIN.md](SUPPLY_CHAIN.md), "GitHub settings". The workflows there follow the rules on this page (first-party actions pinned to a commit, `pull_request` only, no job that can write ever runs pull-request code).
 - **Settings, Branches**: protect `main`: require a pull request and the `repo rules` check to pass, and no force pushes.
 - **Settings, Actions, General**: "Require approval for all outside collaborators" before a fork's workflow runs; default workflow permissions **read-only**; do not allow Actions to create or approve pull requests.
 - **Never** add a self-hosted runner to a public repo, and never use `pull_request_target` in a workflow.
