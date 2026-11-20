@@ -39,7 +39,10 @@ if [ "$cmd" != synth ]; then
   info="$(aws lightsail get-bundles --query "bundles[?bundleId=='$bundle'].[bundleId,ramSizeInGb,cpuCount,price,supportedPlatforms[0]]" --output text)"
   [ -n "$info" ] || { echo "deploy.sh: Lightsail has no bundle '$bundle' any more. See: aws lightsail get-bundles; then set TREELINE_BUNDLE_ID" >&2; exit 1; }
   echo "Lightsail bundle (id, RAM GB, vCPUs, USD/month, platform): $info"
-  if [ "$cmd" = deploy ] && [ "${TREELINE_YES:-}" != 1 ]; then read -r -p "Deploy ${stacks[*]}? [y/N] " a </dev/tty; [ "$a" = y ] || exit 1; fi
+  if [ "$cmd" = deploy ] && [ "${TREELINE_YES:-}" != 1 ]; then
+    { : >/dev/tty; } 2>/dev/null || { echo "deploy.sh: there is no terminal to ask on. Run it from a terminal, or set TREELINE_YES=1 to deploy without asking." >&2; exit 1; }
+    read -r -p "Deploy ${stacks[*]}? [y/N] " a </dev/tty; [ "$a" = y ] || exit 1
+  fi
 fi
 
 cd "$HERE"

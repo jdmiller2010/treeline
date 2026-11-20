@@ -17,6 +17,7 @@ chmod +x "$T/cdk"
 export PATH="$T/bin:$PATH" FAKE_AWS_STATE="$T/state.json" TREELINE_LOCAL_DIR="$T/local" TREELINE_TMPFS="$T/tmpfs" AWS_PAGER="" TREELINE_CDK="$T/cdk" FAKE_CDK_LOG="$T/cdk.log" TREELINE_YES=1
 export TREELINE_PARAM_GOOGLE_CLIENT_ID="123456789-abcdefg1234.apps.googleusercontent.com" TREELINE_PARAM_GOOGLE_CLIENT_SECRET="GOC""SPX-fake-secret-for-tests-0123456789"
 export TREELINE_PARAM_BACKUP_AGE_RECIPIENT="age1$(printf 'q%.0s' $(seq 58))" TREELINE_PARAM_HEALTHCHECK_URL="https://ping.treeline.invalid/0123abcd"
+export TREELINE_PRINT_BETA_CODE=1
 export TREELINE_PARAM_ADMIN_CIDR="203.0.113.9/32" TREELINE_PARAM_ALERT_EMAIL="owner@treeline.invalid"
 fails=0
 pass() { printf 'ok   %s\n' "$1"; }
@@ -50,6 +51,9 @@ TREELINE_PARAM_BETA_CIDRS="198.51.100.0/24,203.0.113.0/24" "$T/infra/bootstrap/b
 expect "the allowlist is passed" grep -q "TREELINE_BETA_CIDRS=198.51.100.0/24,203.0.113.0/24" "$T/cdk.log"
 expect "'host' deploys only the host stack" grep -q "ARGS: deploy --require-approval broadening TreelineHost" "$T/cdk.log"
 if TREELINE_PARAM_BETA_CIDRS="not-a-cidr" "$T/infra/bootstrap/bootstrap.sh" set beta_cidrs >/dev/null 2>&1; then fail "a bad allowlist must be refused"; else pass "a bad allowlist is refused by bootstrap"; fi
+
+# 3b. no terminal and no TREELINE_YES: a clear message instead of a stack trace from a failed read
+if env -u TREELINE_YES "$D" deploy >"$T/out" 2>&1 </dev/null; then fail "deploy without a terminal or TREELINE_YES must stop"; else expect "it says to set TREELINE_YES=1" grep -q "TREELINE_YES=1" "$T/out"; fi
 
 # 4. a missing CDK or venv is explained, not a stack trace
 if TREELINE_CDK="$T/nope" "$D" synth >"$T/out" 2>&1; then fail "a missing cdk must stop"; else expect "a missing CDK CLI says how to install it" grep -q "npm ci" "$T/out"; fi

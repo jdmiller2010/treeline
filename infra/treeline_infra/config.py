@@ -16,6 +16,7 @@ STATIC_IP_NAME = "treeline-ip"
 STATE_DISK_PATH = "/dev/xvdf"
 STATE_DISK_GB = 8                           # Lightsail's smallest disk; the databases are small. Grow it here (never shrinks).
 BACKUP_RETENTION_DAYS = 7
+DNS_TTL_SECONDS = 300
 BLUEPRINT_ID = "ubuntu_24_04"
 DEFAULT_BUNDLE_ID = "nano_3_0"              # planned: the 0.5 GB bundle. Bundles and prices change: deploy.sh prints what it is
 MONTHLY_BUDGET_USD = 20

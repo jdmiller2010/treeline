@@ -1,0 +1,2 @@
+# What infra/restore/restore.py needs on YOUR computer (not the VM).
+boto3>=1.35

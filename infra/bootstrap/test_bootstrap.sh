@@ -19,6 +19,7 @@ export PATH="$T/bin:$PATH" FAKE_AWS_STATE="$T/state.json" TREELINE_LOCAL_DIR="$T
 export TREELINE_PARAM_GOOGLE_CLIENT_ID="123456789-abcdefg1234.apps.googleusercontent.com"
 export TREELINE_PARAM_GOOGLE_CLIENT_SECRET="GOC""SPX-fake-secret-for-tests-0123456789"
 export TREELINE_PARAM_BACKUP_AGE_RECIPIENT="age1$(printf 'q%.0s' $(seq 58))"
+export TREELINE_PRINT_BETA_CODE=1
 export TREELINE_PARAM_ADMIN_CIDR="203.0.113.9/32"
 export TREELINE_PARAM_ALERT_EMAIL="owner@treeline.invalid"
 export TREELINE_PARAM_HEALTHCHECK_URL="https://ping.treeline.invalid/0123abcd-0000-4000-8000-000000000000"
@@ -76,7 +77,7 @@ expect "SMTP password matches the documented derivation" test "$(state '.params[
 "$BOOT" apply >"$T/out" 2>&1 || { cat "$T/out"; fail "second apply failed"; }
 expect "second apply creates nothing" test "$(calls 'put-parameter|create-user|create-access-key|delete-access-key')" = 0
 "$BOOT" check --quiet >"$T/out" 2>&1 && pass "check passes after apply" || { cat "$T/out"; fail "check should pass"; }
-expect "check output has no passing lines with --quiet" bash -c "! grep -q '✔' '$T/out'"
+expect "check output has no passing lines with --quiet" bash -c "! grep -q '\[ok\]' '$T/out'"
 
 # 5. no secret value ever appeared in a command line
 bad=0
@@ -128,6 +129,13 @@ expect "the old hash is gone" test "$(state '.params["/treeline/beta_code_hash"]
 expect "the code itself is never stored or sent on a command line" bash -c "! grep -rqF '${shown/-/}' '$FAKE_AWS_STATE' '$FAKE_AWS_STATE.argv'"
 jq '.params["/treeline/beta_code_expires"].Value = "2020-01-01"' "$FAKE_AWS_STATE" > "$T/s" && mv "$T/s" "$FAKE_AWS_STATE"
 if "$BOOT" check >"$T/out" 2>&1; then fail "check must notice an expired beta code"; else expect "check notices an expired beta code" grep -q "expired" "$T/out"; fi
+
+# 8c. output is ASCII only; a beta code is not printed to a pipe unless asked; the lifetime is validated
+expect "output is plain ASCII" bash -c "! LC_ALL=C grep -qP '[^\\x00-\\x7F]' '$T/out'"
+if env -u TREELINE_PRINT_BETA_CODE "$BOOT" set beta_code >"$T/out" 2>&1 </dev/null; then fail "a beta code must not be printed with no terminal"; else expect "no terminal: the code is refused, not printed" bash -c "! grep -qE '[A-Z2-9]{4}-[A-Z2-9]{4}' '$T/out'"; fi
+for bad_days in abc 0 -5 9999; do
+  if TREELINE_BETA_DAYS="$bad_days" "$BOOT" set beta_code >"$T/out" 2>&1 </dev/null; then fail "TREELINE_BETA_DAYS=$bad_days must be refused"; else pass "TREELINE_BETA_DAYS=$bad_days is refused with a message"; fi
+done
 
 # 9. the root user is refused, bad values are refused, a bare terminal-less run asks for env vars
 if FAKE_AWS_ARN="arn:aws:iam::123456789012:root" "$BOOT" check >"$T/out" 2>&1; then fail "root must be refused"; else expect "root user is refused" grep -q "root user" "$T/out"; fi

@@ -2,6 +2,9 @@
   "name": "treeline-infra",
   "private": true,
   "description": "Only the AWS CDK command line tool, pinned, for infra/. Run from the owner's computer; never on the VM, never at runtime. See infra/README.md.",
+  "engines": {
+    "node": ">=20"
+  },
   "devDependencies": {
     "aws-cdk": "2.1147.0"
   }

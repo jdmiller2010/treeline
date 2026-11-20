@@ -64,6 +64,17 @@ class Foundation(unittest.TestCase):
         self.t.has_resource_properties("AWS::S3::BucketPolicy", {"PolicyDocument": {"Statement": Match.array_with([Match.object_like({
             "Effect": "Deny", "Action": "s3:*", "Condition": {"Bool": {"aws:SecureTransport": "false"}}})])}})
 
+    def test_tls_older_than_1_2_is_denied_as_well_as_plain_http(self):
+        (policy,) = self.t.find_resources("AWS::S3::BucketPolicy").values()
+        conditions = [st.get("Condition", {}) for st in policy["Properties"]["PolicyDocument"]["Statement"] if st["Effect"] == "Deny"]
+        self.assertIn({"Bool": {"aws:SecureTransport": "false"}}, conditions)
+        self.assertIn({"NumericLessThan": {"s3:TlsVersion": 1.2}}, conditions)
+
+    def test_only_lets_encrypt_may_issue_certificates_for_the_domain(self):
+        (caa,) = [r for r in self.t.find_resources("AWS::Route53::RecordSet").values() if r["Properties"]["Type"] == "CAA"]
+        self.assertEqual(caa["Properties"]["Name"], "treelinephone.com.")
+        self.assertEqual(caa["Properties"]["ResourceRecords"], ['0 issue "letsencrypt.org"'])
+
     def test_the_existing_hosted_zone_is_imported_never_created(self):
         self.t.resource_count_is("AWS::Route53::HostedZone", 0)
         self.assertIn("Z0123456789ABCDEFGHIJ", json.dumps(self.t.to_json()))
@@ -135,6 +146,7 @@ class Host(unittest.TestCase):
         self.assertEqual({r["Properties"]["Name"] for r in records.values()}, {"app.treelinephone.com.", "treelinephone.com."})
         for r in records.values():
             self.assertEqual(r["Properties"]["Type"], "A")
+            self.assertEqual(r["Properties"]["TTL"], "300", "a replaced host must be found again within minutes")
             self.assertIn("Fn::GetAtt", json.dumps(r["Properties"]["ResourceRecords"]))
 
     def test_the_host_does_not_own_anything_that_must_survive_it(self):

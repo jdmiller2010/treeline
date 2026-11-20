@@ -9,7 +9,7 @@ It lists the newest backup (or the one at --at) under central/ or households/<id
 private key, and CHECKS it: SQLite's integrity check, the file's marker (central or household), its schema version, and for a
 household that its own `meta` says it is that household. The result is written to <out>/<kind>[-<id>]-<stamp>.db (mode 0600)
 and is never put over a live file: to restore for real, stop the services, put it in place yourself (docs/DEPLOY_AWS.md,
-"Restore drill"), and start them. Needs: boto3 (pip install boto3), the `age` command, and AWS credentials that may read the
+"Restore drill"), and start them. Needs: boto3 (installed from infra/restore/requirements.lock), the `age` command, and AWS credentials that may read the
 bucket (your admin profile: AWS_PROFILE=...). --endpoint is for tests against a fake S3.
 """
 
@@ -118,7 +118,10 @@ def main(argv=None):
     a = ap.parse_args(argv)
     if a.kind == "household" and a.id is None:
         ap.error("--id is required for a household")
-    import boto3
+    try:
+        import boto3
+    except ImportError:
+        raise SystemExit("boto3 is not installed. Run once:  python3 -m venv infra/restore/.venv && infra/restore/.venv/bin/pip install --require-hashes --no-deps -r infra/restore/requirements.lock") from None
     s3 = boto3.client("s3", region_name=a.region, **({"endpoint_url": a.endpoint} if a.endpoint else {}))
     dest, key, summary = restore(s3, a.bucket, a.kind, a.id, a.at, a.identity, a.out)
     print(f"restored s3://{a.bucket}/{key}\n  -> {dest}  (schema version {summary['schema_version']})")

@@ -35,3 +35,4 @@ cdk.context.json
 *.tfstate
 *.tfstate.backup
 infra/.venv/
+infra/restore/.venv/

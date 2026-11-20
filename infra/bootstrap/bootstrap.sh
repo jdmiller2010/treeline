@@ -38,8 +38,8 @@ QUIET=0
 PROBLEMS=0
 
 say()  { printf '%s\n' "$*"; }
-ok()   { [ "$QUIET" = 1 ] || printf '  ✔ %s\n' "$*"; }
-bad()  { PROBLEMS=$((PROBLEMS + 1)); printf '  ✘ %s\n' "$*"; }
+ok()   { [ "$QUIET" = 1 ] || printf '  [ok] %s\n' "$*"; }
+bad()  { PROBLEMS=$((PROBLEMS + 1)); printf '  [!!] %s\n' "$*"; }
 warn() { printf '  ! %s\n' "$*"; }
 die()  { printf 'error: %s\n' "$*" >&2; exit 1; }
 
@@ -155,6 +155,7 @@ ensure_defaults() {
 # One shared 8-character code lets someone create a treehouse (once). Only its SHA-256 and an expiry are stored; the code itself
 # is shown ONCE, here, and never again: if it is lost, make a new one (that also revokes the old one).
 BETA_DAYS="${TREELINE_BETA_DAYS:-180}"
+[[ "$BETA_DAYS" =~ ^[0-9]+$ ]] && [ "$BETA_DAYS" -ge 1 ] && [ "$BETA_DAYS" -le 730 ] || die "TREELINE_BETA_DAYS must be a whole number of days from 1 to 730"
 new_beta_code() {   # prints the code, then its hash, then the expiry date, one per line
   python3 - "$BETA_DAYS" <<'PY'
 import hashlib, secrets, sys, datetime
@@ -167,6 +168,10 @@ PY
 }
 issue_beta_code() {
   local out code hash expires
+  # The code is shown once. Without a terminal it would go to stdout, where a pipe or a log keeps it: refuse unless asked.
+  if ! { : >/dev/tty; } 2>/dev/null && [ "${TREELINE_PRINT_BETA_CODE:-}" != 1 ]; then
+    die "there is no terminal to show the beta code on (it is shown once, and only its hash is stored). Run this from a terminal, or set TREELINE_PRINT_BETA_CODE=1 to print it to stdout"
+  fi
   out=$(new_beta_code) || die "could not generate a beta code"
   code=$(sed -n 1p <<<"$out"); hash=$(sed -n 2p <<<"$out"); expires=$(sed -n 3p <<<"$out")
   put_param beta_code_hash SecureString "$hash" true

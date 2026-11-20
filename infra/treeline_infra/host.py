@@ -1,4 +1,4 @@
-from aws_cdk import Stack, aws_lightsail as lightsail, aws_route53 as route53
+from aws_cdk import Duration, Stack, aws_lightsail as lightsail, aws_route53 as route53
 from constructs import Construct
 
 from . import config
@@ -37,4 +37,6 @@ class Host(Stack):
 
         zone = route53.HostedZone.from_hosted_zone_attributes(self, "Zone", hosted_zone_id=cfg["zone_id"], zone_name=config.ZONE_NAME)
         for rid, name in (("App", cfg["app_host"]), ("Apex", config.ZONE_NAME)):     # the bare domain redirects to the app host
-            route53.ARecord(self, rid, zone=zone, record_name=name + ".", target=route53.RecordTarget.from_ip_addresses(self.ip.attr_ip_address))
+            # a short TTL: a replaced host gets a new address, and clients should follow within minutes, not half an hour
+            route53.ARecord(self, rid, zone=zone, record_name=name + ".", ttl=Duration.seconds(config.DNS_TTL_SECONDS),
+                            target=route53.RecordTarget.from_ip_addresses(self.ip.attr_ip_address))

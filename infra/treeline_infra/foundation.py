@@ -17,6 +17,7 @@ class Foundation(Stack):
             encryption=s3.BucketEncryption.S3_MANAGED,
             block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
             enforce_ssl=True,                                   # a bucket policy statement that denies every non-TLS request
+            minimum_tls_version=1.2,                            # and one that denies TLS older than 1.2
             versioned=False,                                    # versioning would keep deleted households' data past 7 days
             object_ownership=s3.ObjectOwnership.BUCKET_OWNER_ENFORCED,
             removal_policy=RemovalPolicy.RETAIN,
@@ -32,6 +33,9 @@ class Foundation(Stack):
 
         # SES with Easy DKIM: the three CNAME records are written into the zone. Production access is a request to AWS.
         self.mail = ses.EmailIdentity(self, "Mail", identity=ses.Identity.public_hosted_zone(self.zone))
+        # Only Let's Encrypt (Caddy's issuer) may issue certificates for the domain and its subdomains.
+        route53.CaaRecord(self, "Caa", zone=self.zone, record_name=config.ZONE_NAME + ".", ttl=Duration.hours(1),
+                          values=[route53.CaaRecordValue(flag=0, tag=route53.CaaTag.ISSUE, value="letsencrypt.org")])
         route53.TxtRecord(self, "Dmarc", zone=self.zone, record_name=f"_dmarc.{config.ZONE_NAME}", values=["v=DMARC1; p=none"])
 
         # All state lives on this disk (Lightsail encrypts attached disks at rest). Retained when the host stack is replaced.
