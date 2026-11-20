@@ -19,3 +19,15 @@
 ## Exports
 
 Ready-made PNG and ICO files are in the HTML kit under `logo/exports/`: `app-icon-1024.png` for the App Store and Play Store (a full square; the stores round the corners), `app-icon-512.png` and `app-icon-192.png` for a web app manifest (full square, so `"purpose": "any maskable"` is safe: the mark sits inside the 80% safe zone), `apple-touch-icon.png` (180), `favicon.svg`, `favicon.ico` (16, 32, 48), `favicon-16/32/48.png`, and transparent `logo-1200.png` and `lockup-1600.png` for docs and slides.
+
+## Web logo tiles
+
+For websites, social profiles, link previews and any place that needs one self-contained image. Each sits on its own `canvas` rounded tile, like the app icon, so it reads on light and dark pages alike. SVGs open in Inkscape and Illustrator: the lettering is outlined, the washes use `fill-opacity`, and the tile is its own shape (delete it for a transparent logo, light grounds only).
+
+| File | What it is | Sizes |
+| --- | --- | --- |
+| `treeline-web-logo.svg` | The mark alone on the tile | `treeline-web-logo-120.png`, `-240.png` (square) |
+| `treeline-web-logo-name.svg` | The mark with "Treeline" under it | `treeline-web-logo-name-120.png`, `-240.png`, `-512.png`, `-1024.png` (square) |
+| `treeline-web-logo-wide.svg` | The mark with "Treeline" beside it | `treeline-web-logo-wide-120h.png`, `-240h.png` (120 and 240 px tall) |
+
+Use the 240 as the 2x image for a 120 slot.
