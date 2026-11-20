@@ -83,6 +83,19 @@ def caddyfile(release, s):
     return common.render(read(os.path.join(tmpl, "Caddyfile.tmpl")), vals)
 
 
+# What only the development Asterisk config has. The production templates replace every file that has one; if a release ever
+# shipped without one of those templates, the dev file would remain, so nothing is written while any of these is present.
+DEV_MARKERS = (("treeline-dev", "the development ARI password"), ("bindaddr=0.0.0.0", "a web server (ARI) on every interface"),
+               ("[transport-udp]", "plaintext SIP"), ("bind=0.0.0.0:5060", "plaintext SIP"), ("protocol=udp", "plaintext SIP"))
+
+
+def refuse_dev_config(files):
+    """Raise if any rendered production file still carries a development setting (SECURITY.md R6-3)."""
+    found = [f"{name}: {why} ({marker!r})" for name, text in files.items() for marker, why in DEV_MARKERS if marker in text]
+    if found:
+        raise ValueError("refusing to install a development setting in production: " + "; ".join(found))
+
+
 def asterisk_files(release, s):
     """{filename: text}: the release's base config, then the production templates over it."""
     out = {}
@@ -94,6 +107,7 @@ def asterisk_files(release, s):
     tdir = os.path.join(release, "deploy", "native", "templates", "asterisk")
     for name in sorted(os.listdir(tdir)):
         out[name] = common.render(read(os.path.join(tdir, name)), vals)
+    refuse_dev_config(out)
     return out
 
 

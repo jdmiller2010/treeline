@@ -212,6 +212,38 @@ if __name__ == "__main__":
     unittest.main()
 
 
+class DeployedCodeIsAlwaysProduction(unittest.TestCase):
+    """R6-3: code that came from a release (release.json beside it) is production even if TREELINE_ENV was lost or set to
+    something else, so the development sign-in and the default ARI login can never work on a deployed server."""
+
+    def test_a_checkout_is_not_a_release(self):
+        self.assertFalse(prod.is_release())
+        self.assertFalse(prod.is_production({}))
+
+    def test_with_release_json_beside_the_code_it_is_production_without_any_setting(self):
+        with tempfile.TemporaryDirectory() as d:
+            marker = os.path.join(d, "release.json")
+            open(marker, "w").write("{}")
+            with mock.patch.object(prod, "RELEASE_FILE", marker):
+                self.assertTrue(prod.is_production({}))
+                self.assertTrue(prod.is_production({"TREELINE_ENV": "development"}))
+                bad = prod.problems({"TREELINE_ENV": "development", "TREELINE_DEV_CODES": "1"})
+                self.assertTrue(any("deployed release" in p for p in bad))
+                self.assertTrue(any("TREELINE_DEV_CODES" in p for p in bad))
+                with self.assertRaises(SystemExit):
+                    prod.enforce({"TREELINE_DEV_CODES": "1", "ARI_PASS": "treeline-dev"})
+                self.assertEqual(prod.problems(good_env()), [])
+
+    def test_the_emailed_dev_code_route_is_gone_in_a_release_even_with_no_env(self):
+        from treeline import api
+        with tempfile.TemporaryDirectory() as d:
+            marker = os.path.join(d, "release.json")
+            open(marker, "w").write("{}")
+            with mock.patch.object(prod, "RELEASE_FILE", marker), mock.patch.dict(os.environ, {"TREELINE_ENV": ""}), api.app.test_client() as c:
+                self.assertEqual(c.post("/api/auth/request", json={"email": "a@example.com"}).status_code, 404)
+                self.assertEqual(c.post("/api/auth/verify", json={"email": "a@example.com", "code": "123456"}).status_code, 404)
+
+
 class HealthNamesTheRelease(unittest.TestCase):
     def test_health_reports_the_release_the_code_was_deployed_as(self):
         from treeline import api

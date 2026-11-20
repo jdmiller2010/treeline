@@ -266,12 +266,16 @@ class A_Install(VmTestCase):
     def test_state_is_on_its_own_mount_and_nothing_sensitive_is_on_the_system_disk(self):
         self.wait_healthy()
         self.assertEqual(vm("mountpoint -q /var/lib/treeline && echo yes").stdout.strip(), "yes")
-        self.assertIn("treeline.db", vm("ls /var/lib/treeline").stdout)
+        self.assertIn("treeline.db", vm("ls /var/lib/treeline/data").stdout)
+        # the top of the state disk is root's; the app user owns only its own folders (R6-2)
+        self.assertEqual(vm("stat -c %U:%a /var/lib/treeline").stdout.strip(), "root:711")
+        self.assertEqual(vm("stat -c %U:%a /var/lib/treeline/data /var/lib/treeline/backup").stdout.split(), ["treeline:700", "root:700"])
+        self.assertNotEqual(vm("su -s /bin/sh treeline -c 'mv /var/lib/treeline/spool /var/lib/treeline/x' 2>&1; echo RC=$?", check=False).stdout.strip()[-4:], "RC=0")
         # nothing of ours, other than code, lives elsewhere on disk
         stray = vm("find / -xdev \\( -name 'treeline.db*' -o -name 'households' -o -name 'swapfile' \\) -not -path '/srv/state/*' -not -path '/var/lib/treeline/*' -not -path '/proc/*' 2>/dev/null").stdout.strip()
         self.assertEqual(stray, "")
         self.assertEqual(vm("readlink /var/log/asterisk").stdout.strip(), "/var/lib/treeline/logs/asterisk")
-        self.assertEqual(vm("stat -c %a /var/lib/treeline/households").stdout.strip(), "700")
+        self.assertEqual(vm("stat -c %a /var/lib/treeline/data/households").stdout.strip(), "700")
         self.assertIn("Storage=volatile", vm("cat /etc/systemd/journald.conf.d/treeline.conf").stdout)
 
     def test_the_app_runs_as_its_own_user_from_a_root_owned_release(self):
@@ -508,7 +512,7 @@ class F_Deploy(VmTestCase):
         return sorted(vm("ls -A /opt/treeline/releases").stdout.split())
 
     def central_version(self):
-        return int(vm("runuser -u treeline -- python3 -c \"import sqlite3; print(sqlite3.connect('/var/lib/treeline/treeline.db').execute('PRAGMA user_version').fetchone()[0])\"").stdout.strip())
+        return int(vm("runuser -u treeline -- python3 -c \"import sqlite3; print(sqlite3.connect('/var/lib/treeline/data/treeline.db').execute('PRAGMA user_version').fetchone()[0])\"").stdout.strip())
 
     def assert_untouched(self, version, started, listing):
         self.assertEqual(self.current(), version)
@@ -589,7 +593,7 @@ class F_Deploy(VmTestCase):
         self.assertNotIn("v0.0.4", self.releases(), "the failed release must be removed so the fixed one can be deployed under the same name")
 
     def test_09_a_failed_release_that_migrated_the_data_is_undone_with_the_pre_migration_copy(self):
-        vm("runuser -u treeline -- python3 -c \"import sqlite3; c=sqlite3.connect('/var/lib/treeline/treeline.db'); c.execute('CREATE TABLE IF NOT EXISTS ci_marker(x)'); c.execute('INSERT INTO ci_marker VALUES (42)'); c.commit()\"")
+        vm("runuser -u treeline -- python3 -c \"import sqlite3; c=sqlite3.connect('/var/lib/treeline/data/treeline.db'); c.execute('CREATE TABLE IF NOT EXISTS ci_marker(x)'); c.execute('INSERT INTO ci_marker VALUES (42)'); c.commit()\"")
         self.assertEqual(self.central_version(), 1)
         self.variant("v0.0.5", "migrate-bad", patches=MIGRATE + UNHEALTHY, schema=SCHEMA2)
         rc, out = self.deploy("migrate-bad")
@@ -597,10 +601,10 @@ class F_Deploy(VmTestCase):
         self.assertIn("restoring the copies", out)
         self.assertIn("ROLLED BACK to v0.0.2", out)
         self.assertEqual(self.central_version(), 1, "the file must be back at the version the old code understands")
-        self.assertEqual(vm("runuser -u treeline -- python3 -c \"import sqlite3; print(sqlite3.connect('/var/lib/treeline/treeline.db').execute('SELECT x FROM ci_marker').fetchone()[0])\"").stdout.strip(), "42")
+        self.assertEqual(vm("runuser -u treeline -- python3 -c \"import sqlite3; print(sqlite3.connect('/var/lib/treeline/data/treeline.db').execute('SELECT x FROM ci_marker').fetchone()[0])\"").stdout.strip(), "42")
         self.wait_healthy()
         self.assertEqual(self.serving(), "v0.0.2")
-        self.assertEqual(vm("stat -c %U:%a /var/lib/treeline/treeline.db").stdout.strip(), "treeline:600")
+        self.assertEqual(vm("stat -c %U:%a /var/lib/treeline/data/treeline.db").stdout.strip(), "treeline:600")
 
     def test_10_a_healthy_release_that_migrated_cannot_be_rolled_back_by_hand(self):
         self.variant("v0.0.6", "migrate-ok", patches=MIGRATE, schema=SCHEMA2)
@@ -689,7 +693,7 @@ class G_Backup(VmTestCase):
         self.set_params(**{"/treeline/backup_age_recipient": recipient, "/treeline/backup_bucket": self.BUCKET,
                            "/treeline/healthcheck_url": "http://fakeaws:9000/ping/ci-check"})
         # a household, made by the app's own code, so there is more than the central file
-        vm("cd /opt/treeline/current/controller && TREELINE_DB=/var/lib/treeline/treeline.db runuser -u treeline -- /opt/treeline/current/venv/bin/python -c "
+        vm("cd /opt/treeline/current/controller && TREELINE_DB=/var/lib/treeline/data/treeline.db runuser -u treeline -- /opt/treeline/current/venv/bin/python -c "
            "\"from treeline import db, households; c = db.connect(); households.create(7)\"")
         r = vm("systemctl start treeline-backup.service 2>&1; echo RC=$?; journalctl -u treeline-backup -n 12 --no-pager | cut -c1-200", check=False)
         self.assertIn("RC=0", r.stdout, r.stdout)
@@ -701,14 +705,14 @@ class G_Backup(VmTestCase):
             self.assertNotIn(b"SQLite format 3", p.read_bytes())
         # no plaintext copy anywhere on the VM (the spool holds only .age files, work directories are gone)
         names = vm("find /var/lib/treeline/spool -type f -printf '%f\\n'").stdout.split()
-        self.assertTrue(all(n.endswith(".age") or n in ("uploaded.json", "last-success") for n in names), names)
+        self.assertTrue(all(n.endswith(".age") for n in names), names)
         self.assertEqual(vm("ls -A /var/lib/treeline/spool | grep -c '^.work' || true").stdout.strip().splitlines()[-1], "0")
         # nothing the VM holds can open a backup
         self.assertEqual(vm("find / -xdev \\( -name '*.agekey' -o -name 'AGE-SECRET*' \\) -not -path '/proc/*' 2>/dev/null | wc -l").stdout.strip(), "0")
         self.assertEqual(vm("grep -rl 'AGE-SECRET-KEY' /etc /var/lib/treeline /opt/treeline/tools 2>/dev/null | wc -l").stdout.strip(), "0")
         # the VM cannot overwrite a backup: a second write of a key that exists is refused by the bucket (as the policy does), and
         # the upload tool treats its own retry as success
-        vm("rm -f /var/lib/treeline/spool/uploaded.json")
+        vm("rm -f /var/lib/treeline/backup/uploaded.json")
         again = vm("systemctl start treeline-backup.service 2>&1; echo RC=$?", check=False)
         self.assertIn("RC=0", again.stdout, again.stdout)
         self.assertGreaterEqual(len(list(self.s3().rglob("*.age"))), len(keys), "the first backups are still there, unchanged")
@@ -740,7 +744,7 @@ class G_Backup(VmTestCase):
         self.assertIn("pinged", vm("treeline-health 2>&1").stdout)
         self.assertEqual(pings(), before + 1)
         stale = "2020-01-01T00:00:00+00:00"
-        vm(f"printf %s {stale} > /var/lib/treeline/spool/last-success")
+        vm(f"printf %s {stale} > /var/lib/treeline/backup/last-success")
         r = vm("treeline-health 2>&1; echo RC=$?")
         self.assertIn("NOT pinging", r.stdout)
         self.assertEqual(pings(), before + 1, "a stale backup must not be pinged as healthy")

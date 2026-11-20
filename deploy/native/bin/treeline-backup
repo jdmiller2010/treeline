@@ -28,8 +28,18 @@ NAME_RE = re.compile(r"^(\d{8}T\d{6}Z)\.db\.age$")
 STAMP = "%Y%m%dT%H%M%SZ"
 
 
+KEY_RE = re.compile(r"^(central|households/\d+)/\d{8}T\d{6}Z\.db\.age$")
+
+
 def spool_dir():
-    return os.path.join(common.STATE, "spool")
+    return os.path.join(common.STATE, "spool")          # the treeline user's: `make` writes here
+
+
+def records_dir():
+    """root's own folder for what was uploaded and when (never inside the spool, which the app user controls)."""
+    d = os.path.join(common.STATE, "backup")
+    os.makedirs(d, mode=0o700, exist_ok=True)
+    return d
 
 
 def encrypt(plain, out, recipient):
@@ -86,15 +96,16 @@ def pending(uploaded):
     for folder, dirs, names in os.walk(base):
         dirs[:] = [d for d in dirs if not d.startswith(".")]
         for name in names:
-            if NAME_RE.match(name):
-                found.append(os.path.relpath(os.path.join(folder, name), base))
+            rel_path = os.path.relpath(os.path.join(folder, name), base)
+            if KEY_RE.match(rel_path):
+                found.append(rel_path)
     return sorted(p for p in found if p not in uploaded)
 
 
 def load_uploaded():
     try:
-        with open(os.path.join(spool_dir(), "uploaded.json"), encoding="utf-8") as f:
-            return set(json.load(f))
+        with open(os.path.join(records_dir(), "uploaded.json"), encoding="utf-8") as f:
+            return {k for k in json.load(f) if isinstance(k, str) and KEY_RE.match(k)}
     except (OSError, ValueError):
         return set()
 
@@ -109,7 +120,19 @@ def owner():
 
 
 def save_uploaded(done):
-    common.atomic_write(os.path.join(spool_dir(), "uploaded.json"), json.dumps(sorted(done)), 0o600, *owner())
+    common.atomic_write(os.path.join(records_dir(), "uploaded.json"), json.dumps(sorted(done)), 0o600)
+
+
+def read_spool_file(key):
+    """The bytes of a spooled file, without following a link (the spool is the app user's; this runs as root)."""
+    if not KEY_RE.match(key):
+        raise SystemExit(f"{key!r} is not a backup name")
+    path = os.path.join(spool_dir(), key)
+    if os.path.realpath(path) != os.path.abspath(path):
+        raise SystemExit(f"{key} goes through a symlink: refusing to read it")
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    with os.fdopen(fd, "rb") as f:
+        return f.read()
 
 
 def put_once(s3, bucket, key, body):
@@ -129,15 +152,14 @@ def upload(s3, bucket, now=None):
     now = now or dt.datetime.now(dt.timezone.utc)
     done = load_uploaded()
     for key in pending(done):
-        with open(os.path.join(spool_dir(), key), "rb") as f:
-            body = f.read()
+        body = read_spool_file(key)
         if not body.startswith(b"age-encryption.org/v1"):
             raise SystemExit(f"{key} is not an age file: refusing to upload it")
         put_once(s3, bucket, key, body)
         done.add(key)
         save_uploaded(done)
     prune(done, now)
-    common.atomic_write(os.path.join(spool_dir(), "last-success"), now.isoformat(timespec="seconds"), 0o600, *owner())
+    common.atomic_write(os.path.join(records_dir(), "last-success"), now.isoformat(timespec="seconds"), 0o600)
     return len(done)
 
 
@@ -146,14 +168,16 @@ def prune(uploaded, now):
     base = spool_dir()
     for key in sorted(uploaded):
         m = NAME_RE.match(os.path.basename(key))
-        if m and m.group(1) < cutoff:
-            try:
-                os.remove(os.path.join(base, key))
-            except FileNotFoundError:
-                pass
+        if KEY_RE.match(key) and m and m.group(1) < cutoff:
+            path = os.path.join(base, key)
+            if os.path.realpath(os.path.dirname(path)) == os.path.abspath(os.path.dirname(path)):    # never through a link
+                try:
+                    os.remove(path)
+                except FileNotFoundError:
+                    pass
             uploaded.discard(key)
             folder = os.path.dirname(os.path.join(base, key))
-            if folder != os.path.join(base, "central") and os.path.isdir(folder) and not os.listdir(folder):
+            if folder != os.path.join(base, "central") and os.path.isdir(folder) and not os.path.islink(folder) and not os.listdir(folder):
                 os.rmdir(folder)
     save_uploaded(uploaded)
 

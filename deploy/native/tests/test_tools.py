@@ -186,6 +186,27 @@ class Config(unittest.TestCase):
         self.assertNotIn("TREELINE_DEV_CODES", env)
         self.assertNotIn("Abc123", env)
 
+    def test_a_development_setting_is_never_installed_even_if_a_template_went_missing(self):
+        """R6-3: if a production template were missing, the dev file from asterisk/config would be left in place."""
+        s_ = config.settings(str(self.d))
+        files = config.asterisk_files(str(helpers.ROOT), s_)
+        config.refuse_dev_config(files)                    # the real release renders clean
+        for name, text in (("ari.conf", "password=treeline-dev"), ("http.conf", "bindaddr=0.0.0.0"), ("pjsip.conf", "[transport-udp]\nprotocol=udp\nbind=0.0.0.0:5060")):
+            with self.assertRaises(ValueError, msg=name):
+                config.refuse_dev_config(dict(files, **{name: text}))
+        # and the base (development) files really do carry those markers, so the check would bite
+        base = {n: (helpers.ROOT / "asterisk" / "config" / n).read_text() for n in ("ari.conf", "http.conf", "pjsip.conf")}
+        with self.assertRaises(ValueError):
+            config.refuse_dev_config(base)
+
+    def test_the_ci_only_aws_endpoint_is_refused_on_a_real_install(self):
+        import treeline_aws
+        (self.d / "aws-endpoint").write_text("http://fake.example.invalid:9000\n")
+        (self.d / "aws-credentials").write_text("[treeline-vm]\naws_access_key_id = x\naws_secret_access_key = y\n")
+        with self.assertRaises(SystemExit) as caught:
+            treeline_aws.client("ssm", etc=str(self.d))
+        self.assertIn("not a CI install", str(caught.exception))
+
     def test_an_unknown_placeholder_is_an_error(self):
         with self.assertRaises(KeyError):
             common.render("@NOPE@", {})
@@ -271,6 +292,9 @@ class Releases(unittest.TestCase):
             self.assertFalse([n for n in names if f"/{bad}/" in n or n.endswith("/" + bad)], bad)
         for ending in (".db", ".agekey", ".pem", ".key", "/.env"):
             self.assertFalse([n for n in names if n.endswith(ending)], ending)
+        # R6-3: nothing that only exists for development is shipped
+        for dev in ("docker-compose", "Caddyfile.dev", "env.example", "testphones", "/web/site/tests/", "LOCAL_HTTPS", ".override."):
+            self.assertFalse([n for n in names if dev in n], dev)
         self.assertEqual(info["version"], "v0.0.1")
         self.assertEqual(info["schema"], {"central": 1, "household": 1})
         self.assertFalse([n for n in names if n.startswith("./deploy/native/ci") or n.startswith("./deploy/native/tests")])
@@ -389,6 +413,7 @@ class DeployAgentLogic(unittest.TestCase):
             c = sqlite3.connect(path)
             c.execute("CREATE TABLE t(x)"); c.execute("INSERT INTO t VALUES (?)", (marker,))
             c.execute(f"PRAGMA user_version={version}"); c.commit(); c.close()
+        d = d / "data"                                       # the databases live in STATE/data
         make(d / "treeline.db", 2, "migrated")
         make(d / "pre-migrate" / "treeline-v1-20260101T000000-aaaaaa.db", 1, "old-older")
         make(d / "pre-migrate" / "treeline-v1-20260102T000000-bbbbbb.db", 1, "old-newer")

@@ -79,6 +79,7 @@ def make_family(browser, email, name, tz="America/Los_Angeles"):
     watch(page, name)
     sign_in(page, email)
     page.wait_for_selector("#th-name")
+    check(email in page.inner_text("[data-setting-up-as]"), f"{name}: setup says whose account the treehouse will belong to (R6-1)")
     page.fill("#th-name", name)
     page.fill("#th-you", "Pat")
     page.click("button[type=submit]")

@@ -123,13 +123,17 @@ else
   mount "$STATE"
 fi
 mountpoint -q "$STATE" || die "$STATE is not a mount point; refusing to put state on the system disk"
-chown treeline:treeline "$STATE"; chmod 0711 "$STATE"
+# The top of the state disk is root's: the app user owns only its own folders inside it, so it can never swap a folder that a
+# root-run tool (backup upload, certsync, the deploy agent) works in for a symlink to somewhere else (SECURITY.md R6-2).
+chown root:root "$STATE"; chmod 0711 "$STATE"
+install -d -m 0700 -o treeline -g treeline "$STATE/data" "$STATE/data/households"   # the databases (TREELINE_DB), households/, pre-migrate/
+install -d -m 0700 -o root -g root "$STATE/backup" "$STATE/deploy"  # root's own records: what was uploaded, the deploy state
 install -d -m 2750 -o treeline -g asterisk "$STATE/generated"
 # Asterisk's pjsip.conf #includes this file, which the API writes when a handset is added; if it does not exist
 # Asterisk refuses the WHOLE pjsip configuration (found by the CI job), so there must always be one.
 [ -f "$STATE/generated/pjsip_handsets.conf" ] || install -m 0640 -o treeline -g asterisk /dev/null "$STATE/generated/pjsip_handsets.conf"
 install -d -m 0700 -o caddy -g caddy "$STATE/caddy"
-install -d -m 0700 -o treeline -g treeline "$STATE/households" "$STATE/pre-migrate" "$STATE/spool"
+install -d -m 0700 -o treeline -g treeline "$STATE/spool"
 install -d -m 0750 -o asterisk -g asterisk "$STATE/logs" "$STATE/logs/asterisk"
 # Asterisk's logs (addresses, account names) go to the state disk too.
 if [ ! -L /var/log/asterisk ]; then

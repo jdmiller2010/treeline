@@ -115,11 +115,23 @@ def _b64url(raw):
     return base64.urlsafe_b64encode(raw).rstrip(b"=").decode()
 
 
-def start(redirect_uri, gate=None):
-    """The URL to send the browser to. Remembers the PKCE verifier, the nonce and the gate for the callback."""
+def binding_hash(value):
+    return hashlib.sha256(str(value or "").encode()).hexdigest()
+
+
+def bound(saved, cookie):
+    """True if this browser is the one that started the sign-in (its cookie matches the hash kept with the state)."""
+    return bool(cookie) and secrets.compare_digest(saved.get("binding", ""), binding_hash(cookie))
+
+
+def start(redirect_uri, gate=None, binding=None):
+    """The URL to send the browser to. Remembers the PKCE verifier, the nonce, the gate and the browser binding for the callback.
+    `binding` is the hash of a random cookie set on the browser that started; without it, anyone who got hold of the callback URL
+    could finish someone else's sign-in in their own browser (login CSRF, SECURITY.md R6-1)."""
     verifier = secrets.token_urlsafe(48)
     nonce = secrets.token_urlsafe(24)
-    state = put("state", STATE_TTL, {"verifier": verifier, "nonce": nonce, "gate": gate, "redirect_uri": redirect_uri})
+    state = put("state", STATE_TTL, {"verifier": verifier, "nonce": nonce, "gate": gate, "redirect_uri": redirect_uri,
+                                     "binding": binding or ""})
     query = urllib.parse.urlencode({
         "client_id": os.environ["TREELINE_GOOGLE_CLIENT_ID"], "redirect_uri": redirect_uri, "response_type": "code",
         "scope": "openid email", "state": state, "nonce": nonce, "prompt": "select_account",
@@ -166,11 +178,14 @@ def validate_claims(claims, nonce, client_id, now=None):
     return email
 
 
-def finish(code, state, now=None, post=None):
-    """Complete the sign-in. Returns (email, gate) or raises GoogleError. The state is used up even when this fails."""
+def finish(code, state, cookie=None, now=None, post=None):
+    """Complete the sign-in. Returns (email, gate, binding) or raises GoogleError. The state is used up even when this fails,
+    and nothing is sent to Google unless this browser is the one that started (the binding cookie matches)."""
     saved = take("state", state)
     if saved is None:
         raise GoogleError("expired", "unknown or used state")
+    if not bound(saved, cookie):
+        raise GoogleError("expired", "not the browser that started this sign-in")
     if not code:
         raise GoogleError("denied", "no code")
     reply = (post or post_form)(token_url(), {
@@ -180,4 +195,4 @@ def finish(code, state, now=None, post=None):
     if not isinstance(reply, dict) or not reply.get("id_token"):
         raise GoogleError("exchange", "no id_token")
     email = validate_claims(claims_of(reply["id_token"]), saved["nonce"], os.environ["TREELINE_GOOGLE_CLIENT_ID"], now)
-    return email, saved["gate"]
+    return email, saved["gate"], saved["binding"]

@@ -36,6 +36,7 @@ export async function setup(ctx) {
         body.innerHTML = str(html`${stepper()}
         <section class="tl-stack">
           <h1 class="display-md">Name your treehouse</h1>
+          <p class="caption" data-setting-up-as>You're setting this up as <strong>${ctx.me?.email || ""}</strong>. Not you? <a class="tl-footer__link" href="#/signin" data-not-me>Sign out</a></p>
           <p class="body tl-measure" style="color:var(--ink-muted)">Families you connect with see this name. Treeline gives you a four-digit number for your phones.</p>
         </section>
         <section class="tl-card"><form class="tl-stack tl-stack--group" novalidate>
@@ -46,6 +47,8 @@ export async function setup(ctx) {
           <div class="tl-actions">${button({ label: "Continue", variant: "primary", type: "submit" })}</div>
         </form></section>`);
         body.querySelector("#th-name").focus();
+        // Whose account this treehouse will belong to, in plain sight: someone signed in as the wrong person must notice here (R6-1).
+        body.querySelector("[data-not-me]")?.addEventListener("click", (e) => { e.preventDefault(); ctx.signOut(); });
         body.querySelector("form").addEventListener("submit", (e) => {
           e.preventDefault();
           state.name = body.querySelector("#th-name").value.trim();

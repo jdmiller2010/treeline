@@ -386,9 +386,31 @@ def signin_origin():
     return (public_origin() or request.host_url).rstrip("/")
 
 
-def back_to_app(result):
+SIGNIN_COOKIE = "tl_signin"
+
+
+def signin_cookie_name():
+    """`__Host-` (Secure, no Domain, Path=/) on https, which production always is; a plain name on a local http dev server."""
+    https = request.is_secure or request.headers.get("X-Forwarded-Proto", "").split(",")[0].strip() == "https" or prod.is_production()
+    return ("__Host-" if https else "") + SIGNIN_COOKIE
+
+
+def signin_cookie():
+    return request.cookies.get("__Host-" + SIGNIN_COOKIE) or request.cookies.get(SIGNIN_COOKIE)
+
+
+def set_signin_cookie(resp, value, max_age):
+    name = signin_cookie_name()
+    resp.set_cookie(name, value, max_age=max_age, path="/", httponly=True, samesite="Lax", secure=name.startswith("__Host-"))
+    return resp
+
+
+def back_to_app(result, clear_cookie=False):
     """Where the browser lands after Google: the parent app, with a one-time word in the fragment (never in a query)."""
-    return redirect(f"{signin_origin()}/parent/#/signin/{result}")
+    resp = redirect(f"{signin_origin()}/parent/#/signin/{result}")
+    if clear_cookie:
+        set_signin_cookie(resp, "", 0)
+    return resp
 
 
 @app.post("/api/auth/beta")
@@ -409,7 +431,10 @@ def google_start():
     gate = request.args.get("gate") or None
     if gate and not google.alive("gate", gate):
         return back_to_app("e.need_code")
-    return redirect(google.start(f"{signin_origin()}/api/auth/google/callback", gate))
+    # This browser's own secret: the callback and the exchange only work in the browser that holds it.
+    binding = secrets.token_urlsafe(32)
+    resp = redirect(google.start(f"{signin_origin()}/api/auth/google/callback", gate, google.binding_hash(binding)))
+    return set_signin_cookie(resp, binding, google.STATE_TTL)
 
 
 @app.get("/api/auth/google/callback")
@@ -417,18 +442,19 @@ def google_callback():
     rate_limit(f"gcb-ip:{client_ip()}", 60, 3600)
     if request.args.get("error"):
         google.take("state", request.args.get("state"))
-        return back_to_app("e.denied")
+        return back_to_app("e.denied", clear_cookie=True)
     try:
-        email, gate = google.finish(request.args.get("code"), request.args.get("state"))
+        email, gate, binding = google.finish(request.args.get("code"), request.args.get("state"), signin_cookie())
     except google.GoogleError as err:
         log.warning("google sign-in refused: %s", err)
-        return back_to_app("e." + err.reason)
+        return back_to_app("e." + err.reason, clear_cookie=True)
     known = conn().execute("SELECT 1 FROM grown_up g JOIN treehouse t ON t.id=g.treehouse_id "
                            "WHERE g.email=? AND t.left_at IS NULL", (email,)).fetchone()
     # A grown-up a parent added signs in with Google alone. Anyone else needs a beta code (a gate) to get as far as making a treehouse.
     if not known and not (gate and google.take("gate", gate) is not None):
-        return back_to_app("e.need_code")
-    return back_to_app("x." + google.put("exchange", google.EXCHANGE_TTL, {"email": email}))
+        return back_to_app("e.need_code", clear_cookie=True)
+    # The word is bound to the same cookie, so a copied #/signin/x.<word> link is useless in another browser.
+    return back_to_app("x." + google.put("exchange", google.EXCHANGE_TTL, {"email": email, "binding": binding}))
 
 
 @app.post("/api/auth/exchange")
@@ -436,12 +462,12 @@ def auth_exchange():
     """Turn the one-time word from the redirect into a session. It works once, for a minute."""
     rate_limit(f"exch-ip:{client_ip()}", 30, 3600)
     data = google.take("exchange", body().get("code"))
-    if not data:
+    if not data or not google.bound(data, signin_cookie()):
         raise ApiError("That sign-in link has expired. Please sign in again.", 400, "expired_code")
     token = secrets.token_urlsafe(32)
     conn().execute("INSERT INTO session(token_hash,email,expires_at) VALUES(?,?,?)",
                    (db.hash_token(token), data["email"], db.iso(now() + dt.timedelta(days=SESSION_DAYS))))
-    return jsonify(token=token)
+    return set_signin_cookie(jsonify(token=token), "", 0)
 
 
 @app.post("/api/auth/request")

@@ -18,6 +18,7 @@ import { carryOverPush, forgetPushQuietly } from "./push.js";
 const root = document.getElementById("root");
 
 export const ctx = {
+  signOut: () => signOut(),
   me: null,
   async refreshMe() {
     this.me = await get("/api/me");

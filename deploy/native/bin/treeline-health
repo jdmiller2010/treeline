@@ -21,7 +21,7 @@ MAX_BACKUP_AGE = dt.timedelta(hours=3)
 def backup_age(now=None, spool=None, host_env_path=None):
     """How long since the last backup reached the bucket; before the first one, since the install."""
     now = now or dt.datetime.now(dt.timezone.utc)
-    spool = spool or os.path.join(common.STATE, "spool")
+    spool = spool or os.path.join(common.STATE, "backup")      # root's record of the last successful upload
     try:
         with open(os.path.join(spool, "last-success"), encoding="utf-8") as f:
             return now - dt.datetime.fromisoformat(f.read().strip())

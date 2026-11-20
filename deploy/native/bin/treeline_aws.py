@@ -12,14 +12,16 @@ PREFIX = "/treeline"
 
 
 def client(service, etc=None, region=None):
+    etc = etc or common.ETC
+    endpoint = os.path.join(etc, "aws-endpoint")
+    if os.path.exists(endpoint) and common.host_settings(etc).get("TREELINE_CI") != "1":
+        raise SystemExit(f"{endpoint} exists but this is not a CI install: refusing to send AWS calls anywhere but AWS")
     import boto3
     from botocore.config import Config
-    etc = etc or common.ETC
     os.environ["AWS_SHARED_CREDENTIALS_FILE"] = os.path.join(etc, "aws-credentials")
     os.environ["AWS_CONFIG_FILE"] = os.devnull
     os.environ.pop("AWS_PROFILE", None)
     kwargs = {"region_name": region or common.host_settings(etc).get("TREELINE_AWS_REGION", "us-west-2")}
-    endpoint = os.path.join(etc, "aws-endpoint")
     if os.path.exists(endpoint):
         with open(endpoint, encoding="utf-8") as f:
             kwargs["endpoint_url"] = f.read().strip()

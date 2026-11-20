@@ -7,6 +7,9 @@ import tempfile
 
 ETC = os.environ.get("TREELINE_ETC", "/etc/treeline")            # overridable so tests can run without root
 STATE = os.environ.get("TREELINE_STATE", "/var/lib/treeline")
+# Inside STATE (root-owned): data/ is the app's (the databases), spool/ the encrypted backups waiting, backup/ and deploy/ root's own.
+def data_dir():
+    return os.path.join(STATE, "data")
 RUN = os.environ.get("TREELINE_RUN", "/run/treeline")
 OPT = os.environ.get("TREELINE_OPT", "/opt/treeline")
 
@@ -45,15 +48,19 @@ def check_ip(addr):
 
 
 def atomic_write(path, data, mode=0o600, uid=None, gid=None):
-    """Write `data` (bytes or str) to `path` by rename, private from the first byte; returns True if the contents changed."""
+    """Write `data` (bytes or str) to `path` by rename, private from the first byte; returns True if the contents changed.
+    A symlink at `path` is refused: these tools run as root, and must never be steered into changing another file."""
     if isinstance(data, str):
         data = data.encode()
+    if os.path.islink(path):
+        raise ValueError(f"{path} is a symlink; refusing to write through it")
     try:
-        with open(path, "rb") as f:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+        with os.fdopen(fd, "rb") as f:
             if f.read() == data:
-                os.chmod(path, mode)
+                os.fchmod(f.fileno(), mode)
                 if uid is not None or gid is not None:
-                    os.chown(path, -1 if uid is None else uid, -1 if gid is None else gid)
+                    os.fchown(f.fileno(), -1 if uid is None else uid, -1 if gid is None else gid)
                 return False
     except FileNotFoundError:
         pass

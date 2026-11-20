@@ -151,7 +151,7 @@ def data_versions():
             "    c = sqlite3.connect('file:' + p + '?mode=ro', uri=True, timeout=10)\n"
             "    out[os.path.relpath(p, root)] = c.execute('PRAGMA user_version').fetchone()[0]\n"
             "print(json.dumps(out))\n")
-    done = subprocess.run(["runuser", "-u", "treeline", "--", sys.executable, "-I", "-c", code, common.STATE], capture_output=True, text=True)
+    done = subprocess.run(["runuser", "-u", "treeline", "--", sys.executable, "-I", "-c", code, common.data_dir()], capture_output=True, text=True)
     if done.returncode != 0:
         raise Failed("could not read the data files' versions: " + done.stderr.strip()[-300:])
     return json.loads(done.stdout)
@@ -266,7 +266,7 @@ def restore_data_from_pre_migrate(moved, expected, owner="treeline"):
     Returns the files restored; raises Failed if any needed copy is missing (nothing is changed in that case)."""
     plan = []
     for rel_path, version in moved.items():
-        folder = os.path.join(common.STATE, os.path.dirname(rel_path), "pre-migrate")
+        folder = os.path.join(common.data_dir(), os.path.dirname(rel_path), "pre-migrate")
         stem = os.path.basename(rel_path)[:-3] if rel_path != "treeline.db" else "treeline"
         pattern = re.compile(r"^" + re.escape(stem) + r"-v" + str(expected[rel_path]) + r"-(\d{8}T\d{6})-[0-9a-f]+\.db$")
         found = sorted((n for n in (os.listdir(folder) if os.path.isdir(folder) else []) if pattern.match(n)))
@@ -274,14 +274,18 @@ def restore_data_from_pre_migrate(moved, expected, owner="treeline"):
             raise Failed(f"no pre-migration copy of {rel_path} at version {expected[rel_path]} in {folder}")
         plan.append((rel_path, os.path.join(folder, found[-1])))
     for rel_path, copy in plan:
-        target = os.path.join(common.STATE, rel_path)
+        target = os.path.join(common.data_dir(), rel_path)
         for suffix in ("", "-wal", "-shm"):
-            if os.path.exists(target + suffix):
-                os.remove(target + suffix)
-        shutil.copy2(copy, target)
-        if owner:
-            shutil.chown(target, owner, owner)
-        os.chmod(target, 0o600)
+            if os.path.lexists(target + suffix):
+                os.remove(target + suffix)            # a link is removed, never followed
+        # Write the copy ourselves, refusing to follow a link that may have appeared since (root, in the app user's folder).
+        fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(fd, "wb") as out, open(copy, "rb") as src:
+            shutil.copyfileobj(src, out)
+            if owner:
+                import pwd
+                pw = pwd.getpwnam(owner)
+                os.fchown(out.fileno(), pw.pw_uid, pw.pw_gid)
     return [p for p, _ in plan]
 
 
@@ -339,7 +343,12 @@ def preflight(release_dir):
             "sys.path.insert(0, 'controller')\n"
             "from treeline import db, households, rules, accesslog, prod, api, calls, jobs\n"
             "print(json.dumps({'central': len(db.MIGRATIONS) + 1, 'household': len(households.HOUSEHOLD_MIGRATIONS) + 1}))\n")
-    done = subprocess.run(["runuser", "-u", "treeline", "--", py, "-I", "-c", code], capture_output=True, text=True, cwd=release_dir)
+    # The import runs with the machine's real settings: the new code is production (release.json), so it checks them too.
+    env = {"PATH": "/usr/sbin:/usr/bin:/sbin:/bin"}
+    for f in (os.path.join(common.ETC, "app.env"), os.path.join(common.RUN, "env")):
+        if os.path.exists(f):
+            env.update({k: v.replace('\\"', '"').replace("\\\\", "\\") for k, v in common.read_env_file(f).items()})
+    done = subprocess.run(["runuser", "-u", "treeline", "--", py, "-I", "-c", code], capture_output=True, text=True, cwd=release_dir, env=env)
     if done.returncode != 0:
         raise Failed("the code does not import: " + done.stderr.strip()[-400:])
     if json.loads(done.stdout) != info["schema"]:

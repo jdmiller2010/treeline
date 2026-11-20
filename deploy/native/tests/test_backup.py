@@ -141,7 +141,7 @@ class Backups(unittest.TestCase):
         self.assertEqual(sorted(s3.objects), ["central/20260110T120000Z.db.age", "households/12/20260110T120000Z.db.age", "households/3/20260110T120000Z.db.age"])
         self.assertTrue(all(c["ServerSideEncryption"] == "AES256" and c["Bucket"].startswith("treeline-backups-") for c in s3.calls))
         self.assertTrue(all(b.startswith(b"age-encryption.org/v1") for b in s3.objects.values()))
-        self.assertTrue((self.state / "spool" / "last-success").exists())
+        self.assertTrue((self.state / "backup" / "last-success").exists())
         before = len(s3.calls)
         backup.upload(s3, "treeline-backups-123456789012-us-west-2", now=self.now)
         self.assertEqual(len(s3.calls), before, "files already uploaded must not be sent again")
@@ -153,7 +153,7 @@ class Backups(unittest.TestCase):
         self.assertTrue(all(c["IfNoneMatch"] == "*" for c in s3.calls))
         original = dict(s3.objects)
         # the same files sent again (the record of uploads was lost): the bucket says "exists", which is success, and nothing changes
-        (self.state / "spool" / "uploaded.json").unlink()
+        (self.state / "backup" / "uploaded.json").unlink()
         self.assertEqual(backup.upload(s3, "b", now=self.now), 3)
         self.assertEqual(s3.objects, original)
         # a different object under a key that exists is refused by the bucket, and the tool does not pretend otherwise
@@ -167,18 +167,18 @@ class Backups(unittest.TestCase):
                 raise ClientError("AccessDenied")
         with self.assertRaises(ClientError):
             backup.upload(Denying(), "b", now=self.now)
-        self.assertFalse((self.state / "spool" / "last-success").exists())
+        self.assertFalse((self.state / "backup" / "last-success").exists())
 
     def test_a_failed_upload_is_not_recorded_as_success_and_is_retried(self):
         self.make()
         s3 = FakeS3(fail_on="households/12")
         with self.assertRaises(OSError):
             backup.upload(s3, "b", now=self.now)
-        self.assertFalse((self.state / "spool" / "last-success").exists(), "the dead-man must not see a success that did not happen")
+        self.assertFalse((self.state / "backup" / "last-success").exists(), "the dead-man must not see a success that did not happen")
         s3.fail_on = None
         backup.upload(s3, "b", now=self.now)
         self.assertEqual(len(s3.objects), 3)
-        self.assertTrue((self.state / "spool" / "last-success").exists())
+        self.assertTrue((self.state / "backup" / "last-success").exists())
 
     def test_a_file_that_is_not_age_output_is_never_uploaded(self):
         folder = self.state / "spool" / "central"
@@ -189,6 +189,38 @@ class Backups(unittest.TestCase):
             backup.upload(s3, "b", now=self.now)
         self.assertEqual(s3.objects, {})
 
+    def test_root_never_follows_a_link_the_app_user_planted_in_the_spool(self):
+        """R6-2: the spool belongs to the app user, but upload runs as root. A symlink there must not make root read, upload,
+        overwrite or delete another file."""
+        secret = self.d / "root-only.txt"
+        secret.write_text("age-encryption.org/v1 pretend secret")
+        (self.state / "spool" / "central").mkdir(parents=True, exist_ok=True)
+        os.symlink(secret, self.state / "spool" / "central" / "20260110T120000Z.db.age")
+        s3 = FakeS3()
+        with self.assertRaises((SystemExit, OSError)):
+            backup.upload(s3, "b", now=self.now)
+        self.assertEqual(s3.objects, {}, "nothing behind a link is uploaded")
+        # a planted record of 'uploaded' keys cannot make root delete something either: the records are root's own now
+        self.assertFalse((self.state / "spool" / "uploaded.json").exists())
+        bogus = self.state / "backup" / "uploaded.json"
+        bogus.parent.mkdir(exist_ok=True)
+        bogus.write_text(json.dumps(["../../etc/20200101T000000Z.db.age", "central/../../x/20200101T000000Z.db.age"]))
+        self.assertEqual(backup.load_uploaded(), set(), "only real backup names are accepted from the record")
+        self.assertTrue(secret.exists())
+
+    def test_the_records_are_written_in_roots_folder_and_a_link_there_is_refused(self):
+        self.make()
+        backup.upload(FakeS3(), "b", now=self.now)
+        self.assertTrue((self.state / "backup" / "uploaded.json").exists())
+        self.assertFalse((self.state / "spool" / "uploaded.json").exists())
+        target = self.d / "victim"
+        target.write_text("x")
+        (self.state / "backup" / "last-success").unlink()
+        os.symlink(target, self.state / "backup" / "last-success")
+        with self.assertRaises(ValueError):
+            common.atomic_write(str(self.state / "backup" / "last-success"), "y")
+        self.assertEqual(target.read_text(), "x")
+
     def test_the_spool_is_pruned_at_seven_days_by_the_name_and_empty_household_folders_go(self):
         self.make(now=self.now - dt.timedelta(days=9))
         s3 = FakeS3()
@@ -197,7 +229,7 @@ class Backups(unittest.TestCase):
         backup.upload(s3, "b", now=self.now)
         left = sorted(os.path.relpath(os.path.join(d, n), self.state / "spool") for d, _, ns in os.walk(self.state / "spool") for n in ns if n.endswith(".age"))
         self.assertEqual(left, ["central/20260110T120000Z.db.age", "households/12/20260110T120000Z.db.age", "households/3/20260110T120000Z.db.age"])
-        self.assertNotIn("central/20260101T120000Z.db.age", json.load(open(self.state / "spool" / "uploaded.json")))
+        self.assertNotIn("central/20260101T120000Z.db.age", json.load(open(self.state / "backup" / "uploaded.json")))
 
 
 @unittest.skipUnless(AGE, "age is not installed")
@@ -324,8 +356,8 @@ class DeadManPing(unittest.TestCase):
         real_health, real_common_state = health.HEALTH, common.STATE
         try:
             common.STATE = str(self.d.parent)
-            os.makedirs(self.d.parent / "spool", exist_ok=True)
-            shutil.copy(self.d / "last-success", self.d.parent / "spool" / "last-success")
+            os.makedirs(self.d.parent / "backup", exist_ok=True)
+            shutil.copy(self.d / "last-success", self.d.parent / "backup" / "last-success")
             health.HEALTH = self.server(200, {"ok": True})
             self.assertIsNone(health.check())
             health.HEALTH = self.server(503, {"ok": False})
@@ -333,11 +365,11 @@ class DeadManPing(unittest.TestCase):
             health.HEALTH = "http://127.0.0.1:9/api/health"
             self.assertIn("unreachable", health.check())
             health.HEALTH = self.server(200, {"ok": True})
-            (self.d.parent / "spool" / "last-success").write_text((dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=4)).isoformat())
+            (self.d.parent / "backup" / "last-success").write_text((dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=4)).isoformat())
             self.assertIn("last backup", health.check())
         finally:
             health.HEALTH, common.STATE = real_health, real_common_state
-            shutil.rmtree(self.d.parent / "spool", ignore_errors=True)
+            shutil.rmtree(self.d.parent / "backup", ignore_errors=True)
 
 
 if __name__ == "__main__":

@@ -25,14 +25,26 @@ DEV_ONLY = ("TREELINE_DEV_CODES", "TREELINE_OUTBOX", "TREELINE_FACTORY_KEY_DEV",
             "TREELINE_GOOGLE_AUTH_URL", "TREELINE_GOOGLE_TOKEN_URL")      # the last two would point sign-in at another server
 
 
+# Deployed code is production, whatever the environment says. A release always carries release.json at its root (scripts/
+# build_release.sh); a development checkout never does. So even a server whose TREELINE_ENV was lost or mistyped cannot
+# fall back to the development sign-in or the default ARI login (SECURITY.md R6-3).
+RELEASE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "release.json")
+
+
+def is_release(path=None):
+    return os.path.isfile(path or RELEASE_FILE)
+
+
 def is_production(env=None):
-    return (env if env is not None else os.environ).get("TREELINE_ENV") == "production"
+    return (env if env is not None else os.environ).get("TREELINE_ENV") == "production" or is_release()
 
 
 def problems(env=None):
     """What is wrong with this environment for a production start (empty list: fine)."""
     env = os.environ if env is None else env
     out = []
+    if is_release() and env.get("TREELINE_ENV") != "production":
+        out.append(f"this is a deployed release, which only runs in production, but TREELINE_ENV is {env.get('TREELINE_ENV')!r}")
     for name in DEV_ONLY:
         if name in env:
             out.append(f"{name} is a development setting and must not be set in production")

@@ -36,9 +36,9 @@ What already exists and is relied on:
 ```
 /opt/treeline/releases/<version>/      the unpacked release (read-only, root-owned)
 /opt/treeline/current  ->  releases/<version>      the symlink the agent flips
-/var/lib/treeline/                     the attached disk (mount here)
-    treeline.db, households/           the data (owner: treeline, mode 0700)
-    pre-migrate/                       pre-migration copies (7 days)
+/var/lib/treeline/                     the attached disk (mount here); owned by root, 0711
+    data/                              the app's: treeline.db, households/, pre-migrate/ (owner: treeline, 0700)
+    backup/, deploy/                   root's own records (what was uploaded, the deploy state; 0700)
     caddy/                             Caddy's storage root (`storage file_system`): certificates/<issuer-key>/<host>/<host>.crt
     spool/                             backups waiting for upload
 /etc/treeline/aws-credentials          the VM user's key (root, 0600), installed by hand
