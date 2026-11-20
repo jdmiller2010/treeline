@@ -53,8 +53,16 @@ def main():
         print(p["Type"])
 
     elif (svc, cmd) == ("ssm", "put-parameter"):
-        assert opt(rest, "--cli-input-json") == "file:///dev/stdin", rest
-        req = json.loads(sys.stdin.read())
+        # The real CLI (v2.35.17) rejects file:///dev/stdin ("Invalid JSON received"); a regular file works.
+        arg = opt(rest, "--cli-input-json") or ""
+        path = arg[len("file://"):] if arg.startswith("file://") else ""
+        if not path or path.startswith("/dev/") or not os.path.isfile(path):
+            fail("ParamValidation", "Error parsing parameter 'cli-input-json': Invalid JSON received.")
+        with open(ARGV_LOG + ".modes", "a") as f:       # what the test checks: private, and on tmpfs
+            f.write("%o %s\n" % (os.stat(path).st_mode & 0o777, os.path.dirname(path)))
+        with open(path) as f:
+            req = json.loads(f.read())
+        st.setdefault("request_files", []).append(path)
         if req["Name"] in st["params"] and not req["Overwrite"]:
             fail("ParameterAlreadyExists", "The parameter already exists.")
         st["params"][req["Name"]] = {"Type": req["Type"], "Value": req["Value"]}

@@ -32,7 +32,7 @@ It is safe to rerun at any time: it only creates what is missing, and `check` ne
 
 The ARI password is not here: it is generated on the VM at install and never leaves it. The bucket, SES domain identity and DNS records are created later by the CDK stacks, so the policies refer to them by name before they exist; the CDK code must use the same bucket name.
 
-Values are typed at a prompt (or read from `TREELINE_PARAM_<NAME>`, for example `TREELINE_PARAM_ALLOWED_EMAILS`) and sent to AWS on stdin, so they never appear in `ps` output or shell history. A placeholder or malformed value (`<your id>`, an age *private* key as the recipient, a bad email) is refused.
+Values are typed at a prompt (or read from `TREELINE_PARAM_<NAME>`, for example `TREELINE_PARAM_ALLOWED_EMAILS`) and sent to AWS in a `0600` file on tmpfs that is deleted right after the call, so they never appear in `ps` output, shell history or on disk. A placeholder or malformed value (`<your id>`, an age *private* key as the recipient, a bad email) is refused.
 
 ### Getting the key to the VM
 
@@ -59,11 +59,12 @@ infra/bootstrap/bootstrap.sh finish-rotate          # delete the old key
 
 ### By hand, if you would rather
 
-The script is plain AWS CLI calls. The equivalent for one parameter (placeholders only; the value goes in on stdin so it stays out of `ps` and history):
+The script is plain AWS CLI calls. The equivalent for one parameter (placeholders only). AWS CLI v2 cannot read the request from stdin (`file:///dev/stdin` fails with "Invalid JSON received"), so use a private file on tmpfs and delete it at once:
 
 ```bash
-printf '%s' '<VALUE>' | jq -R '{Name:"/treeline/allowed_emails", Type:"SecureString", Overwrite:false, Tier:"Standard", Value:.}' \
-  | aws ssm put-parameter --region us-west-2 --cli-input-json file:///dev/stdin
+f=$(umask 077; mktemp /dev/shm/treeline-param.XXXXXX); trap 'rm -f "$f"' EXIT
+printf '%s' '<VALUE>' | jq -R '{Name:"/treeline/google_client_id", Type:"String", Overwrite:false, Tier:"Standard", Value:.}' > "$f"
+aws ssm put-parameter --region us-west-2 --cli-input-json "file://$f"
 ```
 
 ## How the CDK will use this

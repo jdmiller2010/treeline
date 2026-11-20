@@ -15,7 +15,7 @@
 # Run it from your own machine with AWS admin credentials (an IAM Identity Center profile:
 # AWS_PROFILE=... ; never the root user). Nothing secret is ever written into this repo:
 #   - values are typed at a prompt (or read from TREELINE_PARAM_<NAME> in the environment),
-#     and are sent to AWS on stdin, never as command-line arguments;
+#     and are sent to AWS in a 0600 file on tmpfs, never as command-line arguments;
 #   - generated keys go straight to SSM; the one key that has to reach the VM is written to
 #     infra/.local/ (gitignored, mode 600) until you install it and delete it.
 # See infra/README.md.
@@ -58,11 +58,21 @@ probe() {
 # param_type NAME: prints the parameter's type; 3 if absent. Never decrypts anything.
 param_type() { probe aws ssm get-parameter --name "$PREFIX/$1" --query Parameter.Type --output text; }
 
-# put_param NAME TYPE VALUE OVERWRITE(true|false): the value travels on stdin, not in argv (ps would show it).
+# put_param NAME TYPE VALUE OVERWRITE(true|false): the value must stay out of argv (ps would show it).
+# AWS CLI v2 cannot read --cli-input-json from stdin: `file:///dev/stdin` fails with "Invalid JSON received"
+# (checked on 2.35.17, from a pipe, a here-string, /dev/fd/0 and process substitution), while a regular file works.
+# So the request goes in a 0600 file on tmpfs (never on disk) that is removed when the call ends.
 put_param() {
-  jq -n --arg n "$PREFIX/$1" --arg v "$3" --arg t "$2" --argjson o "$4" \
-    '{Name:$n, Value:$v, Type:$t, Overwrite:$o, Tier:"Standard"}' |
-    aws ssm put-parameter --cli-input-json file:///dev/stdin >/dev/null
+  local dir="${TREELINE_TMPFS:-${XDG_RUNTIME_DIR:-/dev/shm}}"
+  [ -d "$dir" ] && [ -w "$dir" ] || die "no writable tmpfs directory for the request file (set TREELINE_TMPFS)"
+  (
+    umask 077
+    f=$(mktemp "$dir/treeline-param.XXXXXX")
+    trap 'rm -f "$f"' EXIT
+    jq -n --arg n "$PREFIX/$1" --arg v "$3" --arg t "$2" --argjson o "$4" \
+      '{Name:$n, Value:$v, Type:$t, Overwrite:$o, Tier:"Standard"}' > "$f"
+    aws ssm put-parameter --cli-input-json "file://$f" >/dev/null
+  )
 }
 
 # ---------------------------------------------------------------- values

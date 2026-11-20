@@ -13,6 +13,8 @@ trap 'rm -rf "$T"' EXIT
 mkdir -p "$T/bin"
 cp "$HERE/testdata/aws" "$T/bin/aws"; chmod +x "$T/bin/aws"
 
+mkdir -p "$T/tmpfs"; chmod 700 "$T/tmpfs"
+export TREELINE_TMPFS="$T/tmpfs"
 export PATH="$T/bin:$PATH" FAKE_AWS_STATE="$T/state.json" TREELINE_LOCAL_DIR="$T/local" AWS_PAGER=""
 export TREELINE_PARAM_GOOGLE_CLIENT_ID="123456789-abcdefg1234.apps.googleusercontent.com"
 export TREELINE_PARAM_ALLOWED_EMAILS="Parent.One@treeline.invalid, parent.two@treeline.invalid"
@@ -32,6 +34,10 @@ expect "check says what is missing" grep -q "is missing" "$T/out"
 
 # 2. apply creates everything
 "$BOOT" apply >"$T/out" 2>&1 || { cat "$T/out"; fail "apply failed"; }
+expect "request files were 0600" test "$(sort -u "$FAKE_AWS_STATE.argv.modes" | awk '{print $1}' | tr '\n' ' ')" = "600 "
+expect "request files were on the tmpfs directory" test "$(awk '{print $2}' "$FAKE_AWS_STATE.argv.modes" | sort -u)" = "$TREELINE_TMPFS"
+expect "request files were deleted" test -z "$(find "$TREELINE_TMPFS" -mindepth 1 | head -1)"
+expect "stdin is refused by the fake as by the real CLI (regression: file:///dev/stdin)" bash -c "! echo '{}' | '$T/bin/aws' ssm put-parameter --cli-input-json file:///dev/stdin 2>/dev/null"
 expect "7 parameters exist" test "$(state '.params | length')" = 7
 expect "emails were cleaned up" test "$(state '.params["/treeline/allowed_emails"].Value')" = "parent.one@treeline.invalid,parent.two@treeline.invalid"
 expect "secret types are SecureString" test "$(state '.params["/treeline/vapid_private"].Type + .params["/treeline/smtp_password"].Type + .params["/treeline/smtp_user"].Type')" = "SecureStringSecureStringSecureString"
