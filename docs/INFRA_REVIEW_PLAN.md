@@ -61,6 +61,7 @@ the Google client secret. No non-ASCII characters were added. Three small new fi
 | 8 | **Deploy credentials** | F11 | Owner decision first (keep the admin profile, or bootstrap a bounded deploy role); then a synth test for the qualifier | decision |
 | 9 | **Short-lived VM credentials** | F12 | Spike: IAM Roles Anywhere with a certificate on the VM; no code until decided | spike |
 | 10 | **Tidiness and docs** | F13, F14, N3 | `engines` in `package.json`; documented Linux or WSL requirement; pin boto3 for `restore.py` (or document it); a non-interactive failure message in `test_deploy.sh`; document the SSH lockout recovery | trivial |
+| 11 | **Stricter DMARC** (owner's request, a future release) | `foundation.py` publishes `_dmarc` as `p=none` | Template test for each stage's record; a custom MAIL FROM's MX and SPF records if added. Needs AWS (real reports) | small, spread over weeks |
 
 ## Decisions and notes
 
@@ -74,10 +75,27 @@ the Google client secret. No non-ASCII characters were added. Three small new fi
 - Do not commit `cdk.context.json`: the app uses no context lookups, and the repo rules forbid it.
 - Not changed by WP5 and still open: everything in the table above except the three new rows, which are small.
 
+## Stricter DMARC (package 11, future)
+
+Today: `v=DMARC1; p=none` (report nothing, block nothing). The domain sends mail only through SES, with Easy DKIM on the domain
+identity, so DMARC can pass on **DKIM alignment** alone; SPF does not align, because SES's default MAIL FROM is `amazonses.com`.
+Plan, after SES production access and some real mail:
+
+1. **See first.** Add `rua=mailto:<a report address>`. The domain has no mailbox, and an address at another domain must authorize
+   the reports with a DNS record of its own, which a Gmail address cannot do. A free DMARC report service gives an address that
+   already does. Watch for 2 to 4 weeks that everything passes.
+2. **Optional: align SPF too.** Give the SES identity a custom MAIL FROM subdomain (for example `mail.treelinephone.com`), with its
+   MX record and `v=spf1 include:amazonses.com -all`, so a message passes even if a DKIM signature is ever lost.
+3. **Tighten in steps.** `p=quarantine; pct=25`, then `pct=100`, then `p=reject`, with `sp=reject` so subdomains cannot be spoofed
+   either. Each step is a CDK change to the `Dmarc` record and a host-independent Foundation deploy.
+
+Anything else that ever sends as `@treelinephone.com` (a mail provider, a newsletter tool) must be set up for DKIM before step 3,
+or its mail will be rejected.
+
 ## Suggested sequence
 
 1. Packages 3, 4, 6, 10 together (all trivial; one change).
 2. Package 5 (flags), alone, so its diff is reviewable.
 3. Package 2 (backup overwrite protection), with SECURITY.md.
 4. Package 1 prepared as patches, applied only if the first real deploy needs them.
-5. Packages 7, 8, 9 after the first successful deploy.
+5. Packages 7, 8, 9 after the first successful deploy; package 11 (DMARC) once real mail is flowing.
