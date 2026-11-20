@@ -5,3 +5,4 @@
 # protected GitHub environment and pastes the public line here, in a commit of its own. install.sh refuses to
 # install while this file has no key line, and copies it to /etc/treeline/release_signers once: a release can never
 # replace the key that judges it.
+treeline-release namespaces="treeline-release" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICHnk5bhTFIl482tLjKBeFChnbuKmWP/Ee07h0q5xEH/ treeline-release
