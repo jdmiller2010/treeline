@@ -84,7 +84,7 @@ jobs:
           if [ "$EVENT" != pull_request ]; then
             python3 scripts/ci_gate.py --event push >> "$GITHUB_OUTPUT"
           else
-            git diff --name-only HEAD^1 HEAD > "$RUNNER_TEMP/changed.txt"
+            git diff --name-only --no-renames HEAD^1 HEAD > "$RUNNER_TEMP/changed.txt"
             python3 scripts/ci_gate.py "$RUNNER_TEMP/changed.txt" >> "$GITHUB_OUTPUT"
             { echo "### VM imitation"; echo; echo "Changed in this pull request:"; echo '```'; head -40 "$RUNNER_TEMP/changed.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
           fi

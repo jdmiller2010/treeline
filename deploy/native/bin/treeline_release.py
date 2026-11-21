@@ -24,9 +24,9 @@ VERSION_RE = re.compile(r"^v\d+\.\d+\.\d+(-[a-z0-9.]+)?$")
 MAX_MEMBERS = 20000
 MAX_BYTES = 400 * 1024 * 1024
 FORMAT = 2                                   # release.json "format": 2 carries an Asterisk build (1 did not, and is refused)
-ASTERISK_ID_RE = re.compile(r"\d+\.\d+\.\d+-t\d+")
+ASTERISK_ID_RE = re.compile(r"\d+\.\d+\.\d+-[tx]\d+")   # -t<n> is a real build (asterisk/build), -x<n> a test repack
 SHA256_RE = re.compile(r"[0-9a-f]{64}")
-TEST_ID_RE = re.compile(r".*-t9\d*")          # ids a test makes by repacking the real build: never accepted on a real install
+TEST_ID_RE = re.compile(r".*-x\d+")           # ids a test makes by repacking the real build: never accepted on a real install. The real build's ids (-t<n>, any n: t9, t90...) cannot be mistaken for these, and scripts/asterisk_build.py refuses -x for BUILD_ID
 ASTERISK_MAX_BYTES = 64 * 1024 * 1024        # the real artifact is about 10 MB unpacked
 ASTERISK_MAX_MEMBERS = 500                   # and about 60 members
 ASTERISK_SOUNDS_LINK = "/usr/share/asterisk/sounds"   # where the operator messages are built; linked into each build's data dir
@@ -47,6 +47,26 @@ def has_signer(path):
             return any(l.strip() and not l.lstrip().startswith("#") and (" ssh-" in l or " sk-ssh-" in l) for l in f)
     except FileNotFoundError:
         return False
+
+
+def private_copy(path, directory):
+    """Copy `path` once into `directory` (a folder only root can write) and return the copy's path. The signature is checked on the
+    copy and the copy is what is unpacked, so a file that changes between the check and the unpack (a --tarball in a folder somebody
+    else can write, R10-7) cannot become unsigned content. A link is refused, not followed; only a plain file is copied."""
+    os.makedirs(directory, mode=0o700, exist_ok=True)
+    dest = os.path.join(directory, os.path.basename(path) or "file")
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    except OSError as err:
+        raise ReleaseError(f"cannot open {path}: {err}") from err
+    if not stat.S_ISREG(os.fstat(fd).st_mode):
+        os.close(fd)
+        raise ReleaseError(f"{path} is not a plain file")
+    with os.fdopen(fd, "rb") as src:
+        out = os.open(dest, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
+        with os.fdopen(out, "wb") as dst:
+            shutil.copyfileobj(src, dst, 1 << 20)
+    return dest
 
 
 def verify(tarball, sig, signers):
@@ -418,7 +438,10 @@ def check_elf_needs(tree, ast_id, system_dirs=("/lib/x86_64-linux-gnu", "/usr/li
                 if f.read(4) != b"\x7fELF":
                     continue
             rel = os.path.relpath(full, tree)
-            d = elf_dynamic(full)
+            try:
+                d = elf_dynamic(full)
+            except (struct.error, ValueError, IndexError, UnicodeDecodeError) as err:   # R10-8: a short or damaged ELF is a refusal, not a traceback
+                raise ReleaseError(f"{rel} is not a readable ELF file: {err}") from err
             if d["rpath"]:
                 problems.append(f"{rel} has an RPATH")
             if d["runpath"] and d["runpath"] != want_run:

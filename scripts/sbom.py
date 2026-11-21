@@ -193,6 +193,18 @@ def parse_images(text, compose=False):
     return [i for i in re.findall(pat, text, re.M | (0 if compose else re.I)) if i.lower() != "scratch" and "$" not in i]
 
 
+def unresolved_images(text):
+    """FROM lines whose image is a variable. Only the toolchain Dockerfile may have one (its image is pinned in sources.lock, which
+    sbom.py reads itself); anywhere else it would be an image nobody lists or checks (R10-11)."""
+    return [i for i in re.findall(r"^\s*FROM\s+(?:--\S+\s+)*([^\s]+)", text, re.M | re.I) if "$" in i]
+
+
+def check_image_variables(rel, text):
+    if rel != "asterisk/build/Dockerfile" and unresolved_images(text):
+        raise SystemExit(f"{rel}: FROM {unresolved_images(text)[0]} is a variable, so the image would be missing from the bill of materials; "
+                         "write the image (pinned) in the Dockerfile, or add its lock file to scripts/sbom.py")
+
+
 def parse_dockerfile_pip(text):
     """Exact pip pins written straight into a Dockerfile (`pip install ... playwright==1.55.0`)."""
     out = []
@@ -316,6 +328,8 @@ def collect(root=ROOT, os_packages_text=None):
     for rel in walk(root, lambda rel, name: name == "Dockerfile" or re.fullmatch(r"docker-compose[\w.-]*\.ya?ml", name)):
         text = read(rel, root)
         compose = not rel.endswith("Dockerfile")
+        if not compose:
+            check_image_variables(rel, text)
         for image in parse_images(text, compose):
             repo, _, tag = image.partition(":") if "@" not in image else (image, "", "")
             add("container", repo, tag or "latest", purl("docker", repo.rsplit("/", 1)[-1], tag or "latest",

@@ -172,9 +172,9 @@ class VmTestCase(unittest.TestCase):
         return found
 
     @classmethod
-    def repacked_artifact(cls, new_id="24.0.0-t9"):
+    def repacked_artifact(cls, new_id="24.0.0-x9"):
         """A second Asterisk build for the tests: the real artifact with its id changed to another of the same length, in every
-        path, link and file (the binaries' RUNPATH stays correct and the programs run). Ids like this (-t9...) are refused by a
+        path, link and file (the binaries' RUNPATH stays correct and the programs run). Ids like this (-x9...) are refused by a
         real install, and accepted only by this job, which is installed with --ci."""
         old = ast_id()
         assert len(new_id) == len(old)
@@ -590,6 +590,10 @@ class B_Network(VmTestCase):
         # the real thing, from inside, answers: so the check above could have failed
         inside = vm(f"curl -sS -m 5 -u treeline:{ari} http://127.0.0.1:8088/ari/asterisk/info").stdout
         self.assertIn('"system"', inside)
+        # R10-12: the permit/deny lines are an ACL the real Asterisk enforces (checked against the 24.0.0 build: `ari show users` lists
+        # it, and a client on another address gets 403 even with the right password). The test used to grep the file for the text.
+        users = vm("asterisk -rx 'ari show users'").stdout
+        self.assertRegex(users, r"(?m)^\S+\s+Yes\s+treeline\s*$", users)       # read-only? No / ACL? Yes
         # /ws gets a WebSocket from Asterisk
         ws = self.https("/ws", "--http1.1 -o /dev/null -w '%{http_code}' -H 'Connection: Upgrade' -H 'Upgrade: websocket' -H 'Sec-WebSocket-Version: 13' "
                                "-H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' -H 'Sec-WebSocket-Protocol: sip' --max-time 3")
@@ -1130,7 +1134,7 @@ class H_AsteriskDeploy(VmTestCase):
 
     def test_1_a_deploy_to_another_build_moves_the_process_and_a_rollback_brings_the_old_one_back(self):
         self.wait_healthy()
-        old, new = ast_id(), "24.0.0-t9"
+        old, new = ast_id(), "24.0.0-x9"
         account = self.handset()
         code, result = self.probe(account, "--dial", "0001", "--hold", "1")
         self.assertEqual(code, 0, result)                                                      # the phone's contact is in astdb
@@ -1170,7 +1174,7 @@ class H_AsteriskDeploy(VmTestCase):
         pid, exe = self.process()
         before = (self.current(), self.started(), self.releases())
         listing = vm("ls /opt/asterisk").stdout
-        self.variant("v0.4.1", "damaged", asterisk=self.repacked_artifact("24.0.0-t9"), damage_nested=True, **self.same_data())
+        self.variant("v0.4.1", "damaged", asterisk=self.repacked_artifact("24.0.0-x9"), damage_nested=True, **self.same_data())
         rc, out = self.deploy("damaged")
         self.assertEqual(rc, 3, out)
         self.assertIn("does not match the sha256", out)
@@ -1193,7 +1197,7 @@ class H_AsteriskDeploy(VmTestCase):
         old = ast_id()
         before = (self.current(), self.releases())
         # a module that does not exist is `required`: Asterisk refuses to start, the deploy's health check fails, the old build returns
-        self.variant("v0.4.3", "cannotstart", asterisk=self.repacked_artifact("24.0.0-t9"),
+        self.variant("v0.4.3", "cannotstart", asterisk=self.repacked_artifact("24.0.0-x9"),
                      **self.same_data([("asterisk/config/modules.conf", "require => res_sorcery_config.so",
                                        "require => res_sorcery_config.so\nrequire => no_such_module.so")]))
         rc, out = self.deploy("cannotstart")
@@ -1204,7 +1208,7 @@ class H_AsteriskDeploy(VmTestCase):
         self.assertEqual(vm("readlink -f /usr/local/sbin/asterisk").stdout.strip(), f"/opt/asterisk/{old}/sbin/asterisk")
         self.assertEqual(vm("systemctl show asterisk -p NeedDaemonReload --value").stdout.strip(), "no")
         self.assertNotIn("v0.4.3", self.releases(), "the failed release itself was removed")
-        # a build stays while any installed release carries it (v0.4.0, from the first test, still carries 24.0.0-t9), and no longer
+        # a build stays while any installed release carries it (v0.4.0, from the first test, still carries 24.0.0-x9), and no longer
         carried = set(json.loads(vm("python3 -c \"import glob, json; print(json.dumps(sorted(json.load(open(f))['asterisk']['id'] "
                                     "for f in glob.glob('/opt/treeline/releases/v*/release.json'))))\"").stdout))
         self.assertEqual(set(vm("ls /opt/asterisk").stdout.split()), carried | {old}, "builds no installed release carries were removed")

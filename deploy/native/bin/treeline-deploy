@@ -23,6 +23,7 @@ import json
 import os
 import re
 import shutil
+import stat
 import socket
 import subprocess
 import sys
@@ -292,7 +293,7 @@ def running_asterisk_id(proc="/proc"):
         exe = os.readlink(os.path.join(proc, pid, "exe"))
     except OSError:
         return None
-    m = re.fullmatch(re.escape(common.ASTERISK_OPT) + r"/(\d+\.\d+\.\d+-t\d+)/sbin/asterisk", exe)
+    m = re.fullmatch(re.escape(common.ASTERISK_OPT) + "/(" + rel.ASTERISK_ID_RE.pattern + ")/sbin/asterisk", exe)
     return m.group(1) if m else None
 
 
@@ -382,33 +383,89 @@ def restore_config(src):
 
 
 # ------------------------------------------------------------------ data: refusing and undoing a rollback
+_DIR_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+
+
+def open_data_dir(parts=(), create=False):
+    """A descriptor for data/<parts...>, opened one component at a time with O_NOFOLLOW (R10-5). Root works inside a folder the
+    `treeline` user owns, and that user can replace a folder with a link between two path lookups; a descriptor cannot be redirected.
+    None if a component is missing (and `create` is False). Raises OSError (ELOOP/ENOTDIR) when a component is a link or not a folder."""
+    fd = os.open(common.data_dir(), _DIR_FLAGS)
+    try:
+        for part in parts:
+            if part in ("", ".", "..") or "/" in part:
+                raise OSError(f"bad path component {part!r}")
+            try:
+                nxt = os.open(part, _DIR_FLAGS, dir_fd=fd)
+            except FileNotFoundError:
+                if not create:
+                    os.close(fd)
+                    return None
+                os.mkdir(part, 0o700, dir_fd=fd)
+                nxt = os.open(part, _DIR_FLAGS, dir_fd=fd)
+            os.close(fd)
+            fd = nxt
+    except BaseException:
+        os.close(fd)
+        raise
+    return fd
+
+
 def restore_data_from_pre_migrate(moved, expected, owner="treeline"):
     """The release that never became healthy migrated some files. The old code refuses a newer file (DATA_LAYER rule 3),
     so put back the copies the data layer took just before migrating, which are at the version the old code expects.
-    Returns the files restored; raises Failed if any needed copy is missing (nothing is changed in that case)."""
+    Returns the files restored; raises Failed if any needed copy is missing (nothing is changed in that case).
+    Every step goes through descriptors opened without following links (open_data_dir): a link planted by the app user in place of
+    `households/` or `pre-migrate/` is refused, never followed as root."""
     plan = []
     for rel_path, version in moved.items():
-        folder = os.path.join(common.data_dir(), os.path.dirname(rel_path), "pre-migrate")
+        parts = tuple(os.path.dirname(rel_path).split("/")) if os.path.dirname(rel_path) else ()
         stem = os.path.basename(rel_path)[:-3] if rel_path != "treeline.db" else "treeline"
         pattern = re.compile(r"^" + re.escape(stem) + r"-v" + str(expected[rel_path]) + r"-(\d{8}T\d{6})-[0-9a-f]+\.db$")
-        found = sorted((n for n in (os.listdir(folder) if os.path.isdir(folder) else []) if pattern.match(n)))
+        try:
+            folder_fd = open_data_dir(parts + ("pre-migrate",))
+        except OSError as err:
+            raise Failed(f"the pre-migration folder for {rel_path} is not a plain folder ({err}); nothing was changed") from err
+        try:
+            found = sorted(n for n in (os.listdir(folder_fd) if folder_fd is not None else []) if pattern.match(n))
+        finally:
+            if folder_fd is not None:
+                os.close(folder_fd)
         if not found:
-            raise Failed(f"no pre-migration copy of {rel_path} at version {expected[rel_path]} in {folder}")
-        plan.append((rel_path, os.path.join(folder, found[-1])))
-    for rel_path, copy in plan:
-        target = os.path.join(common.data_dir(), rel_path)
-        for suffix in ("", "-wal", "-shm"):
-            if os.path.lexists(target + suffix):
-                os.remove(target + suffix)            # a link is removed, never followed
-        # Write the copy ourselves, refusing to follow a link that may have appeared since (root, in the app user's folder).
-        fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
-        with os.fdopen(fd, "wb") as out, open(copy, "rb") as src:
-            shutil.copyfileobj(src, out)
-            if owner:
-                import pwd
-                pw = pwd.getpwnam(owner)
-                os.fchown(out.fileno(), pw.pw_uid, pw.pw_gid)
-    return [p for p, _ in plan]
+            raise Failed(f"no pre-migration copy of {rel_path} at version {expected[rel_path]} in "
+                         f"{os.path.join(common.data_dir(), *parts, 'pre-migrate')}")
+        plan.append((rel_path, parts, found[-1]))
+    for rel_path, parts, copy_name in plan:
+        try:
+            folder_fd = open_data_dir(parts + ("pre-migrate",))
+            target_fd = open_data_dir(parts)
+        except OSError as err:
+            raise Failed(f"a data folder for {rel_path} is not a plain folder ({err})") from err
+        try:
+            if folder_fd is None or target_fd is None:
+                raise Failed(f"a data folder for {rel_path} went missing")
+            name = os.path.basename(rel_path)
+            for suffix in ("", "-wal", "-shm"):
+                try:
+                    os.unlink(name + suffix, dir_fd=target_fd)            # a link is removed, never followed
+                except FileNotFoundError:
+                    pass
+            src_fd = os.open(copy_name, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=folder_fd)
+            with os.fdopen(src_fd, "rb") as src:
+                if not stat.S_ISREG(os.fstat(src.fileno()).st_mode):
+                    raise Failed(f"{copy_name} is not a plain file")
+                out_fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600, dir_fd=target_fd)
+                with os.fdopen(out_fd, "wb") as out:
+                    shutil.copyfileobj(src, out)
+                    if owner:
+                        import pwd
+                        pw = pwd.getpwnam(owner)
+                        os.fchown(out.fileno(), pw.pw_uid, pw.pw_gid)
+        finally:
+            for fd in (folder_fd, target_fd):
+                if fd is not None:
+                    os.close(fd)
+    return [p for p, _, _ in plan]
 
 
 def plan_rollback(before, after, expected):
@@ -423,13 +480,27 @@ def quarantine_dir():
 
 
 def quarantine(files):
-    dest = quarantine_dir()
+    """Set aside, with its -wal/-shm, each file the failed release created. Descriptors, no links followed (R10-5): the source folder
+    and the quarantine folder are opened without following links, and the move is a rename between those two descriptors."""
+    stamp = os.path.basename(quarantine_dir())
     for rel_path in files:
-        target = os.path.join(common.data_dir(), rel_path)
-        os.makedirs(os.path.join(dest, os.path.dirname(rel_path)), mode=0o700, exist_ok=True)
-        for suffix in ("", "-wal", "-shm"):
-            if os.path.lexists(target + suffix):
-                os.rename(target + suffix, os.path.join(dest, rel_path + suffix))
+        parts = tuple(os.path.dirname(rel_path).split("/")) if os.path.dirname(rel_path) else ()
+        src_fd = open_data_dir(parts)
+        if src_fd is None:
+            continue
+        try:
+            dst_fd = open_data_dir(("quarantine", stamp) + parts, create=True)
+            try:
+                name = os.path.basename(rel_path)
+                for suffix in ("", "-wal", "-shm"):
+                    try:
+                        os.rename(name + suffix, name + suffix, src_dir_fd=src_fd, dst_dir_fd=dst_fd)
+                    except FileNotFoundError:
+                        pass
+            finally:
+                os.close(dst_fd)
+        finally:
+            os.close(src_fd)
 
 
 def schema_of(release_dir):
@@ -448,12 +519,24 @@ def stage(tarball, sig, version, p, host_env, signers=None):
     """Verify, unpack, check and prepare a release, and install its Asterisk build beside the others. Nothing is switched.
     Returns its directory."""
     ci = is_ci(host_env)
+    os.makedirs(p["releases"], exist_ok=True)
+    mine = os.path.join(p["releases"], f".verified-{os.getpid()}")
+    shutil.rmtree(mine, ignore_errors=True)
     try:
+        # R10-7: one private copy is both verified and unpacked, so nothing can change between the two.
+        tarball, sig = rel.private_copy(tarball, mine), rel.private_copy(sig, mine)
         rel.verify(tarball, sig, signers or rel.signers_file())
     except rel.ReleaseError as err:
+        shutil.rmtree(mine, ignore_errors=True)
         raise Refused(str(err)) from err
     log("signature verified")
-    os.makedirs(p["releases"], exist_ok=True)
+    try:
+        return _stage_verified(tarball, version, p, ci)
+    finally:
+        shutil.rmtree(mine, ignore_errors=True)
+
+
+def _stage_verified(tarball, version, p, ci):
     tmp = os.path.join(p["releases"], f".staging-{os.getpid()}")
     shutil.rmtree(tmp, ignore_errors=True)
     try:
@@ -474,18 +557,29 @@ def stage(tarball, sig, version, p, host_env, signers=None):
         shutil.rmtree(tmp, ignore_errors=True)
         raise
     created = False
+    checks_began = False
     try:
-        rel.build_venv(dest)
+        rel.build_venv(dest)         # needs the network (pip): a failure here is not marked, so the next timer run tries again
+        checks_began = True
         rel.seal(dest)
         # Only from the sealed release directory, whose signature has been checked: the build is read once, hashed against
         # release.json, validated, unpacked by our own code, and compared with what is on disk if it is already there.
         created = rel.install_asterisk(dest, opt=common.ASTERISK_OPT, ci=ci)
         preflight(dest, ci=ci)
-    except (rel.ReleaseError, Failed) as err:
+    except BaseException as err:     # R10-2: anything at all (a hung `asterisk -V`, a short ELF, a missing modules.txt) leaves nothing behind
         shutil.rmtree(dest, ignore_errors=True)
         if created:
             shutil.rmtree(os.path.join(common.ASTERISK_OPT, info["asterisk"]["id"]), ignore_errors=True)
-        raise Refused(f"{info['version']} failed its own checks: {err}") from err
+        if not isinstance(err, Exception):
+            raise                    # Ctrl-C, SystemExit: cleaned up above, not turned into a refusal
+        if checks_began:
+            # R10-3: a release that fails its own checks fails the same way on every timer run (a download, a pip install, a build
+            # each time), so it is recorded like a release that failed its health check: only an explicit --version retries it.
+            try:
+                mark_failed(p, info["version"])
+            except Exception as again:   # noqa: BLE001
+                log(f"could not record that {info['version']} failed its checks: {again}")
+        raise Refused(f"{info['version']} failed its own checks: {type(err).__name__}: {err}") from err
     return dest
 
 
@@ -499,7 +593,7 @@ def smoke_asterisk(tree, ast_id, run=subprocess.run):
     """`asterisk -V` as the asterisk user (never as root: it runs code from the release), with an empty environment."""
     done = run(["runuser", "-u", common.ASTERISK_USER, "--", "env", "-i", "PATH=/usr/bin:/bin",
                 os.path.join(tree, "sbin", "asterisk"), "-V"], capture_output=True, text=True, cwd="/", timeout=30)
-    want = "Asterisk " + ast_id.split("-t")[0]
+    want = "Asterisk " + re.sub(r"-[tx]\d+$", "", ast_id)
     if done.returncode != 0 or done.stdout.strip() != want:
         raise Failed(f"asterisk -V said {done.stdout.strip()!r} {done.stderr.strip()[-200:]!r}, not {want!r}")
 
@@ -573,8 +667,9 @@ def previous_asterisk(prev_dir):
         raise Refused(f"the running release ({os.path.basename(prev_dir)}) does not name an Asterisk build (an old release format), "
                       "so there would be nothing to roll back to. Nothing was changed. Install a release of this format by hand "
                       "(docs/DEPLOY_AWS.md).")
+    ci = is_ci(common.host_settings())      # R10-5: a test id (-x<n>) in the running release is accepted only in the CI job, as everywhere else
     try:
-        rel.verify_asterisk_tree(os.path.join(common.ASTERISK_OPT, ast_id), prev_dir, rel.read_info(prev_dir, ci=True), ci=True)
+        rel.verify_asterisk_tree(os.path.join(common.ASTERISK_OPT, ast_id), prev_dir, rel.read_info(prev_dir, ci=ci), ci=ci)
     except rel.ReleaseError as err:
         raise Refused(f"the running release's Asterisk build is not intact, so a rollback would not work: {err}") from err
     return ast_id
@@ -613,8 +708,14 @@ def recover(p):
         if ast_id:
             switch_asterisk(ast_id)
         subprocess.run(["systemctl", "daemon-reload"], check=True)
-        if ast_id and running_asterisk_id() != ast_id:
-            subprocess.run(["systemctl", "restart", "asterisk"], check=True)
+        # R10-1: a deploy or rollback stops the app's services before it starts them again, and a kill in between leaves them stopped
+        # (systemd does not restart a unit that was stopped on purpose). Start them, and restart what the re-render changed.
+        changed = set(done.stdout.replace("changed:", "").replace(",", " ").split()) - {"nothing", "app"}
+        restart_ast = bool(ast_id) and (running_asterisk_id() != ast_id or "asterisk" in changed)
+        restart([u for u in ("asterisk", "caddy") if (u == "asterisk" and restart_ast) or (u == "caddy" and u in changed)])
+        restart(SERVICES)
+        if not health(cur):
+            log(f"{cur} is not healthy after recovery; the next run will say more")
     clear_inflight(p)
 
 
@@ -787,6 +888,8 @@ def prune_asterisk(p):
 def manual_rollback(p):
     state = read_state(p)
     prev, cur = state.get("previous"), current_version(p)
+    if not cur:
+        raise Refused("no release is current on this machine (the current link is missing), so there is nothing to roll back from")
     if not prev or not os.path.isdir(os.path.join(p["releases"], prev)):
         raise Refused("there is no previous release on this machine")
     prev_dir, cur_dir = os.path.join(p["releases"], prev), os.path.join(p["releases"], cur)
@@ -933,6 +1036,10 @@ def run(argv):
         opts[a] = True if isinstance(opts[a], bool) else next(it, None)
     with take_lock(p):
         rel.sweep_leftovers(common.ASTERISK_OPT)
+        if os.path.isdir(p["releases"]):          # what a killed run left: its private copy and its half-unpacked release
+            for n in os.listdir(p["releases"]):
+                if n.startswith((".verified-", ".staging-")):
+                    shutil.rmtree(os.path.join(p["releases"], n), ignore_errors=True)
         recover(p)
         if opts["--rollback"]:
             return manual_rollback(p)

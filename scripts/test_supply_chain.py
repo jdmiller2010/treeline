@@ -160,6 +160,20 @@ class TheRealRepo(unittest.TestCase):
         self.assertEqual(sbom.parse_images("ARG BASE_IMAGE\nFROM ${BASE_IMAGE}\n"), [])
         self.assertEqual(sbom.parse_images("FROM ubuntu:24.04@sha256:" + "b" * 64 + "\n"), ["ubuntu:24.04@sha256:" + "b" * 64])
 
+    def test_a_variable_image_outside_the_toolchain_dockerfile_is_an_error_not_a_silent_gap(self):
+        """R10-11: `FROM ${BASE}` was dropped from the bill of materials without a word."""
+        self.assertEqual(sbom.unresolved_images("ARG B\nFROM ${B}\n"), ["${B}"])
+        self.assertEqual(sbom.unresolved_images("FROM --platform=linux/amd64 $IMG:latest AS x\n"), ["$IMG:latest"])
+        self.assertEqual(sbom.unresolved_images("FROM ubuntu:24.04\n"), [])
+        with self.assertRaises(SystemExit) as cm:
+            sbom.check_image_variables("tools/Dockerfile", "ARG BASE\nFROM ${BASE}\n")
+        self.assertIn("is a variable", str(cm.exception))
+        sbom.check_image_variables("asterisk/build/Dockerfile", "ARG BASE\nFROM ${BASE}\n")      # the one pinned through sources.lock
+        sbom.check_image_variables("tools/Dockerfile", "FROM ubuntu:24.04\n")
+        # the one allowed variable is the toolchain's, and it is in the list through sources.lock
+        with open(os.path.join(ROOT, "asterisk", "build", "Dockerfile"), encoding="utf-8") as f:
+            self.assertTrue(sbom.unresolved_images(f.read()))
+
     def test_every_file_in_the_vendor_directory_is_declared(self):
         # A library dropped into web/phone/vendor/ without an entry in sbom.VENDORED would never be checked.
         declared = {os.path.basename(v["file"]) for v in sbom.VENDORED}

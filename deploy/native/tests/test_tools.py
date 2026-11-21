@@ -471,6 +471,49 @@ class DeployAgentLogic(unittest.TestCase):
         kept = list((d / "data" / "quarantine").rglob("42.db*"))
         self.assertEqual(len(kept), 2, "set aside with its WAL, not deleted")
 
+    def test_root_never_follows_a_link_the_app_user_planted_in_the_data_folder(self):
+        """R10-4: the rollback runs as root inside a folder the `treeline` user owns. A link in place of households/ or pre-migrate/ must
+        not make root delete, overwrite or move files elsewhere."""
+        import sqlite3
+        base = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, base, True)
+        real = deploy.common.STATE
+        deploy.common.STATE = str(base / "state")
+        self.addCleanup(setattr, deploy.common, "STATE", real)
+        data = base / "state" / "data"
+        victim = base / "victim"                                   # a root-owned place the attacker wants touched
+        victim.mkdir()
+        (victim / "7.db").write_text("precious")
+        (victim / "7.db-wal").write_text("precious wal")
+        (victim / "pre-migrate").mkdir()
+        c = sqlite3.connect(victim / "pre-migrate" / "7-v1-20260101T000000-aaaaaa.db")
+        c.execute("PRAGMA user_version=1"); c.commit(); c.close()
+        data.mkdir(parents=True)
+        os.symlink(victim, data / "households")                     # households/ is now a link to the victim folder
+        with self.assertRaises(deploy.Failed):
+            deploy.restore_data_from_pre_migrate({"households/7.db": 2}, {"households/7.db": 1}, owner=None)
+        self.assertEqual((victim / "7.db").read_text(), "precious")
+        self.assertEqual((victim / "7.db-wal").read_text(), "precious wal")
+        with self.assertRaises(OSError):                            # a link is refused (the rollback reports failure), nothing moves through it
+            deploy.quarantine({"households/7.db": 2})
+        self.assertTrue((victim / "7.db").exists() and (victim / "7.db-wal").exists())
+        self.assertFalse(list((data / "quarantine").rglob("7.db*")) if (data / "quarantine").exists() else [])
+        # the same with a plain households/ whose pre-migrate/ is the link
+        os.remove(data / "households")
+        (data / "households").mkdir()
+        (data / "households" / "7.db").write_text("migrated")
+        os.symlink(victim / "pre-migrate", data / "households" / "pre-migrate")
+        with self.assertRaises(deploy.Failed):
+            deploy.restore_data_from_pre_migrate({"households/7.db": 2}, {"households/7.db": 1}, owner=None)
+        self.assertEqual((data / "households" / "7.db").read_text(), "migrated", "nothing was changed")
+        # and the quarantine folder itself being a link: refused, nothing moved through it
+        os.remove(data / "households" / "pre-migrate")
+        os.symlink(victim, data / "quarantine")
+        with self.assertRaises(OSError):
+            deploy.quarantine({"households/7.db": 2})
+        self.assertEqual((data / "households" / "7.db").read_text(), "migrated")
+        self.assertEqual((victim / "7.db").read_text(), "precious")
+
     def test_state_keeps_the_failed_list_and_a_success_clears_it(self):
         d = pathlib.Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, d, True)

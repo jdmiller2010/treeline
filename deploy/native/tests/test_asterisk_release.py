@@ -86,14 +86,19 @@ class ReadInfo(Base):
 
     def test_a_test_id_is_refused_unless_this_is_the_ci_job(self):
         good = hashlib.sha256(b"x").hexdigest()
-        for ident in ("24.0.0-t9", "24.0.0-t91"):
+        for ident in ("24.0.0-x9", "24.0.0-x91"):
             shutil.rmtree(self.d / "ri", ignore_errors=True)
             folder = make_release(self.d / "ri", tar_bytes(good_members(ident)), ast_id=ident)
             with self.assertRaises(rel.ReleaseError):
                 rel.read_info(str(folder))
             self.assertEqual(rel.read_info(str(folder), ci=True)["asterisk"]["id"], ident)
         shutil.rmtree(self.d / "ri", ignore_errors=True)
-        make_release(self.d / "ri", tar_bytes(good_members("24.0.0-t19")), ast_id="24.0.0-t19")   # t19 is a real build number
+        for real in ("24.0.0-t9", "24.0.0-t19", "24.0.0-t90", "24.1.2-t99", "24.0.0-t900"):   # R10-10: these are real build numbers, never test ids
+            shutil.rmtree(self.d / "ri", ignore_errors=True)
+            folder = make_release(self.d / "ri", tar_bytes(good_members(real)), ast_id=real)
+            self.assertEqual(rel.read_info(str(folder))["asterisk"]["id"], real)
+        shutil.rmtree(self.d / "ri", ignore_errors=True)
+        make_release(self.d / "ri", tar_bytes(good_members("24.0.0-t19")), ast_id="24.0.0-t19")
         rel.read_info(str(self.d / "ri"))
         self.assertTrue(good)
 
@@ -341,6 +346,17 @@ class Elf(Base):
                 t = self.tree(sbin__asterisk=blob)
                 with self.assertRaises(rel.ReleaseError):
                     rel.check_elf_needs(str(t), ID, system_dirs=(str(system),))
+
+    def test_a_truncated_or_damaged_elf_is_a_refusal_not_a_traceback(self):
+        """R10-8: struct.error, ValueError and IndexError from the header reader escaped as tracebacks."""
+        good = fake_elf(["libc.so.6"], f"/opt/asterisk/{ID}/lib")
+        for what, blob in (("cut after the header", good[:70]), ("cut in the middle", good[:len(good) // 2]),
+                           ("only the magic and class", b"\x7fELF\x02\x01\x01" + b"\0" * 5)):
+            with self.subTest(what):
+                shutil.rmtree(self.d / "tree", ignore_errors=True)
+                t = self.tree(sbin__asterisk=blob)
+                with self.assertRaises(rel.ReleaseError):
+                    rel.check_elf_needs(str(t), ID, system_dirs=())
 
     def test_a_file_that_is_not_elf_is_not_a_library_problem_but_a_broken_elf_is_an_error(self):
         t = self.tree(sbin__script=b"#!/bin/sh\n")
