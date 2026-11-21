@@ -29,7 +29,9 @@ decides what the compiled result is. It is the only place third-party code is co
 5. After the build, assertions fail it if something Treeline relies on has been lost: the `PJSIP_DONT_SWITCH_TO_TLS=1`
    setting (the documented workaround for GHSA-j4c2, which has no released fix) reached pjproject, systemd notify support, the
    log line fail2ban matches, ICE, and RELRO/BIND_NOW/non-executable stack on every binary.
-6. Only released upstream code is built. Nothing is patched. Where an upstream advisory has no released fix, the answer is a
+6. Only released upstream code is built. We patch nothing: the one thing that touches pjproject is Asterisk's own build, which applies the five
+   patches its official tarball ships (`third-party/pjproject/patches/`: the SSL path, removing the bundled third-party copies, OpenSSL
+   version guards, one retransmission flag and `pjsip_endpt_send_request2`; none is a security fix). Where an upstream advisory has no released fix, the answer is a
    documented option, or an entry in `.vuln-ignore` with a reason (docs/SECURITY.md, Review 9).
 
 ## What the artifact contains

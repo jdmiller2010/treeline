@@ -286,14 +286,14 @@ def collect(root=ROOT, os_packages_text=None):
         version = vendored_version(notices, v["notice"])
         add("npm", v["name"], version, purl("npm", v["name"], version), v["file"], "browser-vendored", True, sha256=[digest])
 
-    # The Asterisk build's pinned inputs (asterisk/build/README.md). Until a release carries the artifact they are not
-    # in production; once it does, they are what runs there, and artifact.lock names the exact build.
+    # The Asterisk build's pinned inputs (asterisk/build/README.md): what every release carries and the VM runs. artifact.lock
+    # names the exact build.
     lock_path = os.path.join(root, "asterisk", "build", "sources.lock")
     if os.path.exists(lock_path):
         import asterisk_build
         src = asterisk_build.parse_lock(read("asterisk/build/sources.lock", root), asterisk_build.SOURCES_FIELDS, "sources.lock")
         lock_rel = "asterisk/build/sources.lock"
-        shipped = False   # becomes True in the change that makes install.sh and the release carry this build
+        shipped = True    # every release carries this build (release.json format 2) and install.sh runs it
         add("Upstream source", "asterisk", src["ASTERISK_VERSION"], purl("github", "asterisk", src["ASTERISK_VERSION"], namespace="asterisk"),
             lock_rel, "asterisk-build", shipped, sha256=[src["ASTERISK_SHA256"]])
         add("Upstream source", "pjproject", src["PJPROJECT_VERSION"], purl("github", "pjproject", src["PJPROJECT_VERSION"], namespace="pjsip"),

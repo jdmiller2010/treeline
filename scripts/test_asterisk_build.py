@@ -67,6 +67,46 @@ class RealInputs(unittest.TestCase):
         self.assertIn("--cap-drop ALL", run)
 
 
+class ReleaseWorkflow(unittest.TestCase):
+    """.github/workflows/release.yml: the Asterisk build is verified before, and apart from, the step that holds the signing key."""
+    text = ab.read_text(os.path.join(ab.ROOT, ".github", "workflows", "release.yml"))
+
+    def step(self, name):
+        start = self.text.index(f"- name: {name}")
+        nxt = self.text.find("\n      - ", start + 1)
+        return self.text[start:nxt if nxt != -1 else len(self.text)]
+
+    def test_the_build_is_verified_before_the_signing_step_and_in_a_step_that_never_holds_the_key(self):
+        verify = self.step("The Asterisk build this release carries")
+        sign = self.step("Build and sign")
+        self.assertLess(self.text.index(verify), self.text.index(sign))
+        self.assertNotIn("RELEASE_SIGNING_KEY", verify)
+        self.assertIn("gh attestation verify", verify)
+        self.assertIn("--signer-workflow", verify)
+        self.assertIn("--source-ref refs/heads/main", verify)
+        self.assertIn("--deny-self-hosted-runners", verify)
+        self.assertIn("lock-field ARTIFACT_SHA256", verify)
+
+    def test_the_signed_release_is_built_from_exactly_the_verified_file(self):
+        sign = self.step("Build and sign")
+        self.assertRegex(sign, r'--asterisk "dist/asterisk/asterisk-\$\(python3 -I scripts/asterisk_build\.py lock-field ARTIFACT_ID\)\.tar\.gz"')
+        self.assertNotIn("--asterisk-unlocked", self.text)
+
+    def test_nothing_downloaded_is_executed_and_the_source_is_checked_against_the_pins(self):
+        for name in ("The Asterisk build this release carries", "The source of what is shipped"):
+            step = self.step(name)
+            for forbidden in ("./dist", "bash dist", "sh dist", "tar -x", "dpkg -i", "python3 dist", "chmod +x"):
+                self.assertNotIn(forbidden, step, name)
+        self.assertIn("sha256sum", self.step("The source of what is shipped"))
+        self.assertIn("dist/source/*", self.text)
+
+    def test_the_workflow_still_has_no_other_trigger_and_the_job_a_longer_timeout(self):
+        code = "\n".join(l for l in self.text.splitlines() if not l.lstrip().startswith("#"))
+        self.assertNotIn("pull_request_target", code)
+        self.assertRegex(code, r"(?m)^on:\n  push:\n    tags:")
+        self.assertNotRegex(code, r"(?m)^  (pull_request|workflow_dispatch|schedule):")
+
+
 class Command(unittest.TestCase):
     def run_main(self, *argv):
         import contextlib

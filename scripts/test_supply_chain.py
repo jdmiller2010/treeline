@@ -149,6 +149,7 @@ class TheRealRepo(unittest.TestCase):
         self.assertEqual(ast["sha256"], [src["ASTERISK_SHA256"]])
         self.assertIn("asterisk/build/sources.lock", ast["sources"])
         self.assertFalse(pj["direct"])
+        self.assertTrue(ast["production"] and pj["production"], "every release carries them and the VM runs them")
         # The toolchain image is the digest in the lock, and a `FROM ${BASE_IMAGE}` build argument is never a component.
         toolchain = [c for c in self.components if "asterisk-build-toolchain" in c["roles"]]
         self.assertEqual(len(toolchain), 1)

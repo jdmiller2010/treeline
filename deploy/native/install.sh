@@ -284,7 +284,7 @@ if [ "${#ubuntu_ast[@]}" -gt 0 ]; then
   apt-get purge -y -qq "${ubuntu_ast[@]}" >/dev/null
   apt-get autoremove -y -qq --purge >/dev/null
   rm -f /etc/systemd/system/asterisk.service.d/treeline.conf        # the old drop-in; treeline-config writes the new one
-  rm -f /usr/share/asterisk/sounds/en                               # the package's alternatives link, left dangling
+  [ ! -L /usr/share/asterisk/sounds/en ] || rm -f /usr/share/asterisk/sounds/en    # the package's alternatives link, left dangling (a real directory is ours)
   rm -rf /usr/share/asterisk/sounds/en_US_f_Allison
   ensure_asterisk_user
 fi

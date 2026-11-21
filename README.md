@@ -119,8 +119,12 @@ Put the project in your Linux home folder (much faster than under `/mnt/c`):
 ```bash
 git clone https://github.com/<you>/treeline.git ~/treeline
 cd ~/treeline
-docker compose up -d --build       # Asterisk, the control app and the API
+./dev up                           # Asterisk, the control app and the API
 ```
+
+The first time, `./dev up` builds the Asterisk that production runs, from the signed upstream source in a sealed container
+(about a minute; [asterisk/build/README.md](asterisk/build/README.md)), then checks it against `asterisk/build/artifact.lock` before the
+image is made. It needs Docker and nothing else.
 
 Then open **http://localhost:8080/** (the parent app) and sign in. This is a
 test server on your own network: it shows your sign-in code on the page, so no
@@ -142,8 +146,8 @@ docker compose logs -f controller  # watch calls being allowed or blocked
 | The softphone's screen | `docker compose run --rm webtests phone_ui.py` | Pairing and the dial |
 | The parent app | `./dev ui smoke` | A local API on a throwaway database and a real browser; 286 checks across screens and widths, including the Google sign-in screen |
 | The installable app | `./dev ui pwa` | The manifest, the service worker, the launcher and the install prompts |
-| The VM's tools | `./dev native` | 58 tests: secrets, certificates, configuration rendering, signed releases, the deploy agent's logic, backups and restore (backup tests need `age`) |
-| The production install | `./dev vm` | 40 tests: the real `install.sh` and deploy agent on Ubuntu 24.04 with systemd in Docker: routing, ports, TLS, secrets, signed releases, rollback, backups. About 10 minutes; needs privileged Docker |
+| The VM's tools | `./dev native` | 143 tests: secrets, certificates, configuration rendering, signed releases (and the Asterisk build inside them: every way a hostile artifact could be built is refused), the deploy agent's logic (which build is running, when Asterisk restarts, what a rollback restores), backups and restore (backup tests need `age`) |
+| The production install | `./dev vm` (CI skips it for a change that cannot affect it, such as a screen or a document: `scripts/ci_gate.py`) | 40 tests: the real `install.sh` and deploy agent on Ubuntu 24.04 with systemd in Docker: routing, ports, TLS, secrets, signed releases, rollback, backups. About 10 minutes; needs privileged Docker |
 | AWS scripts and CDK | `./dev infra`, `./dev cdk` | `bootstrap.sh` and `deploy.sh` against a fake `aws`; the CDK templates' assertions and a real `cdk synth` (no AWS account) |
 
 A passing scripted run ends with `22/22 scenarios passed`. The scripted tests

@@ -6,7 +6,12 @@
 #   - the signing key is the one secret (RELEASE_SIGNING_KEY, in that environment, an unencrypted ed25519 private key) and
 #     it is only ever in the environment of the one step that signs, written to a 0600 file in a temp directory;
 #   - GitHub-provided values (the tag name) go through env:, never straight into a command; there is no
-#     pull_request_target, and the workflow has no other trigger.
+#     pull_request_target, and the workflow has no other trigger;
+#   - the release carries its own Asterisk build (asterisk/build/README.md). It is downloaded from the asterisk-<id> prerelease
+#     and checked, in a step that does not hold the signing key and executes nothing from the file: its sha256 and size must be
+#     the ones asterisk/build/artifact.lock names (which `scripts/asterisk_build.py check` ties to every build input at this
+#     commit), and GitHub's attestation must say the `asterisk build` workflow made it on main. Only then does the signing step
+#     put it into the tarball it signs.
 name: release
 
 on:
@@ -19,7 +24,7 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     environment: release
     permissions:
       contents: write      # only to attach the two files to the release
@@ -41,6 +46,38 @@ jobs:
           python3 scripts/check_repo_rules.py
           (cd deploy/native/tests && python3 -W error::ResourceWarning -m unittest)
 
+      - name: The Asterisk build this release carries (checked; nothing in it is run)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          python3 -I scripts/asterisk_build.py check --require-lock
+          id="$(python3 -I scripts/asterisk_build.py lock-field ARTIFACT_ID)"
+          sha="$(python3 -I scripts/asterisk_build.py lock-field ARTIFACT_SHA256)"
+          size="$(python3 -I scripts/asterisk_build.py lock-field ARTIFACT_SIZE)"
+          mkdir -p dist/asterisk
+          gh release download "asterisk-$id" --repo "$REPO" --pattern "asterisk-$id.tar.gz" --dir dist/asterisk
+          f="dist/asterisk/asterisk-$id.tar.gz"
+          [ "$(sha256sum "$f" | cut -d' ' -f1)" = "$sha" ] || { echo "the published asterisk-$id is not the artifact artifact.lock names"; exit 1; }
+          [ "$(stat -c %s "$f")" = "$size" ] || { echo "the published asterisk-$id is not the size artifact.lock names"; exit 1; }
+          # Where it came from: built by our own workflow, on main, on a GitHub-hosted runner.
+          out="$(gh attestation verify "$f" --repo "$REPO" --signer-workflow "$REPO/.github/workflows/asterisk.yml" \
+                   --source-ref refs/heads/main --deny-self-hosted-runners)"
+          [ -n "$out" ] || { echo "the attestation check printed nothing"; exit 1; }
+
+      - name: The source of what is shipped (the GPL), checked against the pins
+        run: |
+          set -euo pipefail
+          lock() { grep -E "^$1=" asterisk/build/sources.lock | head -n1 | cut -d= -f2-; }
+          mkdir -p dist/source
+          for what in ASTERISK PJPROJECT; do
+            url="$(lock ${what}_URL)"; want="$(lock ${what}_SHA256)"; f="dist/source/$(basename "$url")"
+            case "$url" in https://*) ;; *) echo "not https: $url"; exit 1 ;; esac
+            curl -fsSL --proto '=https' --tlsv1.2 --retry 3 -o "$f" "$url"
+            [ "$(sha256sum "$f" | cut -d' ' -f1)" = "$want" ] || { echo "$f does not match sources.lock"; exit 1; }
+          done
+
       - name: Build and sign
         env:
           VERSION: ${{ github.ref_name }}
@@ -49,7 +86,8 @@ jobs:
           [ -n "$RELEASE_SIGNING_KEY" ] || { echo "RELEASE_SIGNING_KEY is not set in the release environment"; exit 1; }
           keydir="$(mktemp -d)"; chmod 700 "$keydir"; trap 'rm -rf "$keydir"' EXIT
           ( umask 077; printf '%s\n' "$RELEASE_SIGNING_KEY" > "$keydir/key" )
-          scripts/build_release.sh "$VERSION" --sign "$keydir/key" --out dist
+          scripts/build_release.sh "$VERSION" --asterisk "dist/asterisk/asterisk-$(python3 -I scripts/asterisk_build.py lock-field ARTIFACT_ID).tar.gz" \
+            --sign "$keydir/key" --out dist
           # the public key in the repo must be the one that verifies what we just signed, or no VM would accept it
           ssh-keygen -Y verify -f deploy/native/release_signers -I treeline-release -n treeline-release \
             -s "dist/treeline-$VERSION.tar.gz.sig" < "dist/treeline-$VERSION.tar.gz"
@@ -59,5 +97,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ github.ref_name }}
         run: |
-          gh release create "$VERSION" "dist/treeline-$VERSION.tar.gz" "dist/treeline-$VERSION.tar.gz.sig" \
-            --verify-tag --title "$VERSION" --notes "Signed release. Deployed by the VM's deploy agent after it verifies the signature."
+          gh release create "$VERSION" "dist/treeline-$VERSION.tar.gz" "dist/treeline-$VERSION.tar.gz.sig" dist/source/* \
+            --verify-tag --title "$VERSION" --notes "Signed release. Deployed by the VM's deploy agent after it verifies the signature. Carries its own Asterisk build; the corresponding source (Asterisk and pjproject, as pinned in asterisk/build/sources.lock) is attached."

@@ -52,7 +52,7 @@ class Phone:
         self.ip, self.port = self.sock.getsockname()[:2]
         self.buf = b""
         self.cseq = 0
-        self.tag = base64.b32encode(os.urandom(5)).decode().lower()
+        self.tag = os.urandom(5).hex()
 
     def read_message(self):
         while b"\r\n\r\n" not in self.buf:
@@ -90,7 +90,7 @@ class Phone:
 
     def send(self, method, uri, call_id, extra_headers, body="", to_tag=None, cseq_method=None):
         self.cseq += 1
-        branch = "z9hG4bK" + base64.b32encode(os.urandom(6)).decode().lower()
+        branch = "z9hG4bK" + os.urandom(6).hex()
         to = f"<sip:{self.user}@{self.host}>" if method == "REGISTER" else f"<{uri}>"
         if to_tag:
             to += f";tag={to_tag}"
@@ -110,7 +110,7 @@ class Phone:
         header = "www-authenticate" if status == 401 else "proxy-authenticate"
         realm, nonce, qop = parse_challenge(msg["headers"][header][0])
         secret = "not-the-password" if bad_password else self.secret
-        cnonce = base64.b32encode(os.urandom(4)).decode().lower()
+        cnonce = os.urandom(4).hex()
         auth = digest(self.user, secret, realm, nonce, method, uri, qop, cnonce=cnonce)
         self.send(method, uri, call_id, headers + ct + [("Authorization: " if status == 401 else "Proxy-Authorization: ") + auth], body)
         return self.final_response()

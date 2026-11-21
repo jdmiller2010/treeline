@@ -61,6 +61,13 @@ class Modules(unittest.TestCase):
             self.assertRegex(text, r"(?m)^\[system\]\ntype=system\ntaskpool_idle_timeout=0$", str(path))
             self.assertIn("2314", text)                                       # the reason is written next to the setting
 
+    def test_the_stasis_task_pool_cannot_shrink_either(self):
+        # the controller is an ARI client, so Stasis's own pool matters as much as PJSIP's; production uses this same file
+        text = (ROOT / "asterisk" / "config" / "stasis.conf").read_text()
+        self.assertRegex(text, r"(?m)^\[taskpool\]\nidle_timeout_sec=0$")
+        self.assertIn("2314", text)
+        self.assertFalse((ROOT / "deploy" / "native" / "templates" / "asterisk" / "stasis.conf").exists(), "one file, so dev and production agree")
+
     def test_ari_answers_to_this_machine_only_in_dev_and_production(self):
         for path in (ROOT / "asterisk" / "config" / "ari.conf", ROOT / "deploy" / "native" / "templates" / "asterisk" / "ari.conf"):
             text = path.read_text()
@@ -70,8 +77,9 @@ class Modules(unittest.TestCase):
 
     def test_the_optional_files_asterisk_would_log_errors_for_are_present_and_ami_stays_off(self):
         cfg = ROOT / "asterisk" / "config"
-        for name in ("stasis", "pjproject", "websocket_client", "udptl", "features", "acl", "ccss", "cdr", "cel"):
+        for name in ("pjproject", "websocket_client", "udptl", "features", "acl", "ccss", "cdr", "cel"):
             self.assertTrue((cfg / f"{name}.conf").is_file(), name)
+        self.assertTrue((cfg / "stasis.conf").is_file())
         self.assertFalse((cfg / "manager.conf").exists(), "AMI is off because it has no configuration")
 
 
