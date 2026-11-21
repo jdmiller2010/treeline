@@ -343,6 +343,13 @@ async function lift() {
   if (S.incoming) { answer(); return; }
   // Use what we knew, then check: the line may have changed since we last asked.
   S.phase = "dialtone"; render();
+  // Joining a call is the one decision that must not rest on what we knew a moment ago: hanging up asks the server who is on the
+  // line, and can ask before the server has noticed the call is over, so the answer we hold may say "in a call" for up to 15
+  // seconds after it ended. A phone that then joins gets a fast busy instead of a dial tone. Ask first.
+  if (S.line === "in_call") {
+    await refreshLine();
+    if (S.hook !== "off") return;                // put down again while we asked
+  }
   decideLift(S.line);
   const before = S.line;
   await refreshLine();

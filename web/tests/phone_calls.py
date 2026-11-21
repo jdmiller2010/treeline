@@ -205,6 +205,20 @@ def run(families):
         check("joined" in kinds or "joined" in [e["event"] for e in sam.call("GET", f"/api/calls/{newest_call(sam)['id']}")["events"]],
               "the join is in the audit")
 
+        # ---- a phone that still remembers its line as busy must ask before it joins a call that is already over
+        # (hanging up refreshes the line state once, and can do it before the server has noticed the call ended; without the
+        # check the next pickup dialed 0001 and got a fast busy, which showed as an intermittent failure further down)
+        s.page.evaluate("() => { window.__phone.S.line = 'in_call'; }")
+        s.lift()
+        for _ in range(40):                                   # the tone starts once the phone has asked the server
+            if s.tone() == "dial":
+                break
+            time.sleep(0.2)
+        check(s.tone() == "dial" and s.page.evaluate("() => window.__phone.S.phase") == "dialtone",
+              "a phone that remembers its line as busy asks first, and gets a dial tone when the call is over",
+              f"phase {s.page.evaluate('() => window.__phone.S.phase')} tone {s.tone()}")
+        s.lift()                                               # put it back
+
         # ---- a disconnected tablet is simply off: no ringing in, no calling out
         ah = alex.call("GET", "/api/handsets")["handsets"][0]["id"]
         alex.call("PATCH", f"/api/handsets/{ah}", {"disabled": True})
