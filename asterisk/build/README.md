@@ -26,7 +26,10 @@ decides what the compiled result is. It is the only place third-party code is co
    anyway.
 4. menuselect turns every category off, then enables `modules.txt`. The build fails if the enabled set, or the set that
    ends up installed, is anything but exactly that list.
-5. Only released upstream code is built. Nothing is patched. Where an upstream advisory has no released fix, the answer is a
+5. After the build, assertions fail it if something Treeline relies on has been lost: the `PJSIP_DONT_SWITCH_TO_TLS=1`
+   setting (the documented workaround for GHSA-j4c2, which has no released fix) reached pjproject, systemd notify support, the
+   log line fail2ban matches, ICE, and RELRO/BIND_NOW/non-executable stack on every binary.
+6. Only released upstream code is built. Nothing is patched. Where an upstream advisory has no released fix, the answer is a
    documented option, or an entry in `.vuln-ignore` with a reason (docs/SECURITY.md, Review 9).
 
 ## What the artifact contains

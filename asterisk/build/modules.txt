@@ -43,9 +43,10 @@ res_pjsip_caller_id
 res_rtp_asterisk
 res_srtp
 res_timing_timerfd
-# Bridges
+# Bridges (chan_bridge_media is the Announcer channel ARI's bridges/{id}/play needs: without it no pips or join tone play)
 bridge_simple
 bridge_softmix
+chan_bridge_media
 # Codecs and formats (no Opus: see docs/DEPLOY_AWS.md)
 codec_ulaw
 codec_alaw

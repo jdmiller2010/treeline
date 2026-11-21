@@ -40,7 +40,8 @@ class RealInputs(unittest.TestCase):
                        "res_pjsip_diversion", "codec_opus", "chan_ooh323", "res_resolver_unbound"):
             self.assertNotIn(banned, names)
         for needed in ("res_pjsip", "chan_pjsip", "res_ari", "app_stasis", "res_rtp_asterisk", "res_srtp",
-                       "res_http_websocket", "res_pjsip_transport_websocket", "res_sorcery_config"):
+                       "res_http_websocket", "res_pjsip_transport_websocket", "res_sorcery_config",
+                       "chan_bridge_media"):   # ARI's bridges/{id}/play needs the Announcer channel: no pips or join tone without it
             self.assertIn(needed, names)
 
     def test_build_script_stays_sealed(self):
@@ -54,6 +55,13 @@ class RealInputs(unittest.TestCase):
             self.assertIn(stamped, text)
         for forbidden in ("curl ", "git clone", "pip install", "apt-get install"):
             self.assertNotIn(forbidden, text)   # fetching is run-build.sh's job, before the container loses its network
+        # What the build is required to have produced (each was true of the real build when written, and a mutation test
+        # confirmed the first one fails the build): the TLS-switch mitigation for GHSA-j4c2, systemd notify support, the
+        # log line fail2ban matches, ICE, and hardened linking.
+        for required in ("PJSIP_DONT_SWITCH_TO_TLS=1", "libsystemd", "failed for '%s' (callid: %s) - %s", "icesupport",
+                         "GNU_RELRO", "BIND_NOW", "executable stack"):
+            self.assertIn(required, text)
+        self.assertIn('-Wl,-z,relro,-z,now', text)
         run = ab.read_text(os.path.join(ab.BUILD, "run-build.sh"))
         self.assertIn("--network none", run)
         self.assertIn("--cap-drop ALL", run)

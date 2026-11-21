@@ -73,7 +73,11 @@ exec /usr/bin/id "$@"
 SH
 chmod 755 "$SHIM"/*
 export PATH="$SHIM:$PATH" SOURCE_DATE_EPOCH="$EPOCH" TZ=UTC LC_ALL=C
-export CFLAGS="-O2 -ffile-prefix-map=$WORK=/build"
+# PJSIP_DONT_SWITCH_TO_TLS=1: pjproject 2.17's advisory GHSA-j4c2-253v-jgxw (a crash in pjsip_get_dest_info() when a dialog's
+# route set holds a non-SIP URI) has no released fix; its documented workaround is this compile-time setting, which only
+# turns off the automatic switch to TLS for sips: addresses, which Treeline does not use. It reaches pjproject through CFLAGS.
+export CFLAGS="-O2 -ffile-prefix-map=$WORK=/build -DPJSIP_DONT_SWITCH_TO_TLS=1"
+export LDFLAGS="-Wl,-z,relro,-z,now"
 
 echo "[${SECONDS}s] == 4. configure"
 cd "$SRC"
@@ -129,6 +133,24 @@ rm -rf "$ROOT/share/man" "$ROOT/bin"
 find "$ROOT/sbin" -mindepth 1 -not -name asterisk -not -name rasterisk -delete
 [ "$(ls "$ROOT/sbin" | sort | tr '\n' ' ')" = "asterisk rasterisk " ] || die "sbin/ is not exactly asterisk and rasterisk: $(ls "$ROOT/sbin")"
 find "$ROOT" -type f \( -name '*.so' -o -perm -u+x \) -exec sh -c 'file -b "$1" | grep -q "^ELF" && strip --strip-unneeded "$1"' _ {} \; 2>/dev/null || true
+echo "[${SECONDS}s]    checks on what was built"
+# Things Treeline relies on that would otherwise be lost without a sound: each was true of the real build when this was written.
+# (grep reads all of its input and discards the output: `grep -q` would exit early, the writer would get SIGPIPE, and
+# `pipefail` would call that a failure.)
+PJ="$SRC/third-party/pjproject/source"
+contains() { grep -F -- "$1" >/dev/null; }          # contains TEXT < input
+grep -F "PJSIP_DONT_SWITCH_TO_TLS=1" "$PJ/build.mak" >/dev/null || die "PJSIP_DONT_SWITCH_TO_TLS=1 did not reach pjproject's build"
+grep -F "PJSIP_DONT_SWITCH_TO_TLS" "$PJ/pjsip/include/pjsip/sip_config.h" >/dev/null || die "this pjproject has no PJSIP_DONT_SWITCH_TO_TLS setting any more"
+objdump -p "$ROOT/sbin/asterisk" | grep 'NEEDED.*libsystemd' >/dev/null || die "asterisk was built without systemd support (the unit is Type=notify)"
+strings -a "$ROOT/lib/asterisk/modules/res_pjsip.so" | contains "Request '%s' from '%s' failed for '%s' (callid: %s) - %s" \
+  || die "the log line fail2ban's filter matches is not in res_pjsip.so"
+strings -a "$ROOT/lib/asterisk/modules/res_rtp_asterisk.so" | contains "icesupport" || die "ICE support was compiled out of res_rtp_asterisk"
+while IFS= read -r f; do
+  file -b "$f" | grep '^ELF' >/dev/null || continue
+  readelf -lW "$f" | grep GNU_RELRO >/dev/null || die "$f has no RELRO"
+  readelf -dW "$f" | grep BIND_NOW >/dev/null || die "$f is not linked with BIND_NOW"
+  if readelf -lW "$f" | grep GNU_STACK | grep RWE >/dev/null; then die "$f has an executable stack"; fi
+done < <(find "$ROOT" -type f)
 INSTALLED="$(find "$ROOT/lib/asterisk/modules" -name '*.so' -printf '%f\n' | sed 's/\.so$//' | sort -u)"
 [ "$INSTALLED" = "$WANT" ] || { diff <(echo "$WANT") <(echo "$INSTALLED") >&2 || true; die "the installed modules are not exactly modules.txt"; }
 # Asterisk's data directory defaults to /var/lib/asterisk. ARI needs rest-api/ and the CLI needs the XML documentation at
