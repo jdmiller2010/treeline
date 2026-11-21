@@ -198,10 +198,15 @@ export function emptyState({ art: name, title, body, action }) {
 </div></section>`;
 }
 
-export function steps(names, current, label = "Setup progress") {
-  return html`<nav class="tl-stepsnav" aria-label="${label}">
+const STEP_LEAF = (cls) => `<svg class="${cls}" viewBox="-11 -12 22 24" aria-hidden="true" focusable="false"><path class="w-leaf" transform="translate(1.2 1) scale(.7)" d="M0 -10C6 -5 6 5 0 10C-6 5 -6 -5 0 -10Z"/><path class="lf" transform="scale(.62)" d="M0 -10C6 -5 6 5 0 10C-6 5 -6 -5 0 -10Z"/></svg>`;
+const STEP_WIND = raw('<svg class="tl-steps__wind" viewBox="0 0 100 28" preserveAspectRatio="none" aria-hidden="true" focusable="false"><path class="tl-steps__gust tl-steps__gust--rest" d="M0 14C18 7 34 9 52 14S86 20 100 12"/></svg><svg class="tl-steps__wind tl-steps__wind--drawn" viewBox="0 0 100 28" preserveAspectRatio="none" aria-hidden="true" focusable="false"><path class="tl-steps__gust tl-steps__gust--drawn" d="M0 14C18 7 34 9 52 14S86 20 100 12"/></svg>');
+/** Steps: a gust of wind carrying leaves along a line, one length per step (the LeafLoader's look, as progress).
+ *  A finished step ends in a leaf that has landed; the current one has a leaf tumbling along it.
+ *  `pinned` keeps it at the top of the screen while the page scrolls. */
+export function steps(names, current, label = "Setup progress", pinned = false) {
+  return html`<nav class="tl-stepsnav${pinned ? " tl-stepsnav--pinned" : ""}" aria-label="${label}">
   <p class="tl-steps__summary">Step ${current} of ${names.length}: ${names[current - 1]}</p>
-  <ol class="tl-steps">${names.map((n, i) => html`<li class="tl-steps__item${i + 1 < current ? " is-done" : ""}" ${i + 1 === current ? raw('aria-current="step"') : ""}><span class="tl-steps__bar" aria-hidden="true"></span><span class="tl-steps__label">${n}</span></li>`)}</ol>
+  <ol class="tl-steps">${names.map((n, i) => html`<li class="tl-steps__item${i + 1 < current ? " is-done" : ""}" ${i + 1 === current ? raw('aria-current="step"') : ""}><span class="tl-steps__bar" aria-hidden="true">${STEP_WIND}${raw(STEP_LEAF("tl-steps__fly"))}</span>${raw(STEP_LEAF("tl-steps__leaf"))}<span class="tl-steps__label">${n}</span></li>`)}</ol>
 </nav>`;
 }
 
@@ -226,8 +231,13 @@ export function footerLinks(licenses = "/parent/licenses.html") {
   <a class="tl-footer__link" href="/privacy/">Privacy</a>
   <a class="tl-footer__link" href="${licenses}">Open-source licenses</a>`;
 }
+/** The hairline that fades in from both sides and meets at a small sprig of two leaves (LeafDivider). */
+export function leafDivider() {
+  return raw('<div class="tl-leafdiv" role="separator"><span class="tl-fade-line tl-leafdiv__line"></span><svg class="tl-art tl-leafdiv__sprig" viewBox="0 0 28 18" width="28" height="18" aria-hidden="true"><path class="ln-soft" d="M2 12C10 10 18 8 26 6"/><path class="w-leaf" transform="translate(11.6 9.4) rotate(-55) scale(.62)" d="M0 -10C6 -5 6 5 0 10C-6 5 -6 -5 0 -10Z"/><path class="ln" transform="translate(10 8) rotate(-55) scale(.6)" d="M0 -10C6 -5 6 5 0 10C-6 5 -6 -5 0 -10ZM0 -8V8"/><path class="w-leaf" transform="translate(19.6 11.4) rotate(45) scale(.62)" d="M0 -10C6 -5 6 5 0 10C-6 5 -6 -5 0 -10Z"/><path class="ln" transform="translate(18 10) rotate(45) scale(.6)" d="M0 -10C6 -5 6 5 0 10C-6 5 -6 -5 0 -10ZM0 -8V8"/></svg><span class="tl-fade-line tl-leafdiv__line"></span></div>');
+}
+/** The footer every page ends with: a small sprig, then who made it and the links. */
 export function footer(licenses = "/parent/licenses.html") {
-  return html`<p class="caption tl-footer">${footerLinks(licenses)}</p>`;
+  return html`<div class="tl-footer-wrap">${leafDivider()}<p class="caption tl-footer">${footerLinks(licenses)}</p></div>`;
 }
 
 /** The brand mark and name with the tagline under it, for the top of a page that has no app bar. */

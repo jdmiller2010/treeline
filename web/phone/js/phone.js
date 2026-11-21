@@ -4,7 +4,7 @@
 // plain no-911 line, a "How to dial" sheet with the guide's pictures, and the footer.
 import { api, token } from "/shared/api.js";
 import { CARDFILE, ROTARY } from "/shared/assets.js";
-import { alert, brandLine, button, footerLinks, html, icon, presence, raw, setBusy, sheet, steps, str, tag, textField } from "/shared/ui.js";
+import { alert, brandLine, button, footer, html, icon, presence, raw, setBusy, sheet, steps, str, tag, textField } from "/shared/ui.js";
 import { forgetPhone, pairScreen, savedPhone } from "./pair.js";
 import { loggedIn, registerApp } from "/shared/pwa.js";
 import * as tones from "./tones.js";
@@ -88,7 +88,7 @@ function draw() {
       <div class="ph__actions">${button({ label: "How to dial", icon: "phone", attrs: { "data-tl-open": "guide", id: "guide-open" } })}${button({ label: "For parents", icon: "key", attrs: { "data-tl-open": "leave", id: "leave-open" } })}</div>
     </div>
   </main>
-  <footer class="tl-footer ph__foot">${footerLinks("/phone/licenses.html")}</footer>
+  <footer class="ph__foot">${footer("/phone/licenses.html")}</footer>
   <span class="ph__sr" id="reg" role="status"></span>
 </div>
 ${sheet({ id: "guide", title: "How to call a friend", body: html`<div id="guide-step"></div>`,

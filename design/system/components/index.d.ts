@@ -48,7 +48,7 @@ export declare function Checkbox(props: CheckboxProps): React.ReactElement;
 export interface TextFieldProps extends React.InputHTMLAttributes<HTMLInputElement> { label?: string; hint?: string; error?: string; icon?: IconName }
 export declare function TextField(props: TextFieldProps): React.ReactElement;
 
-export interface CardProps { title?: React.ReactNode; eyebrow?: string; action?: React.ReactNode; tone?: 'sun' | 'plank' | 'dusk' | 'night'; elevated?: boolean; as?: string; children?: React.ReactNode; className?: string }
+export interface CardProps { title?: React.ReactNode; eyebrow?: string; action?: React.ReactNode; tone?: 'sun' | 'plank' | 'dusk' | 'night'; elevated?: boolean; sprig?: boolean; as?: string; children?: React.ReactNode; className?: string }
 export declare function Card(props: CardProps): React.ReactElement;
 
 export interface FriendRowProps { name: string; household?: string; speedDial?: string; status?: Status; action?: React.ReactNode; onClick?: () => void; className?: string }
@@ -102,7 +102,10 @@ export interface SliderProps { label: string; min?: number; max?: number; step?:
 export declare function Slider(props: SliderProps): React.ReactElement;
 export interface BadgeProps { count?: number | string; dot?: boolean; tone?: "alert" | "quiet"; label?: string; children?: React.ReactNode; className?: string }
 export declare function Badge(props: BadgeProps): React.ReactElement;
-export interface StepsProps { steps: string[]; current: number; label?: string; className?: string }
+export interface DoodleProps { name: 'snail' | 'ladybug' | 'tuft' | 'sprout' | 'acorn' | 'pebbles' | 'mushroom' | 'pinecone' | 'owl' | 'bluebird' | 'tulip' | 'fern' | 'bow' | 'butterfly' | 'bee' | 'seeds' | 'maple' | 'blossom'; x?: number; y?: number; rotate?: number; scale?: number; flip?: boolean; className?: string }
+/** A tiny pencil-and-wash drawing placed by hand over a page: decoration only, never over text or a control. See the design system README, "The artist's layer". */
+export declare function Doodle(props: DoodleProps): React.ReactElement | null;
+export interface StepsProps { steps: string[]; current: number; label?: string; /** Stick to the top of the screen while the page scrolls under it. */ pinned?: boolean; className?: string }
 export declare function Steps(props: StepsProps): React.ReactElement;
 export interface ProgressBarProps { label?: string; value?: number; className?: string }
 export declare function ProgressBar(props: ProgressBarProps): React.ReactElement;

@@ -159,6 +159,96 @@ Things fade in like pigment soaking into paper, and fade away rather than snappi
 - Ringing: a gentle `shadow-glow` that breathes every 1.6s. No shaking.
 - Respect `prefers-reduced-motion`: drop transitions, arrivals and the glow entirely.
 
+## Nature touches
+
+Treeline is a treehouse, and the interface says so quietly. Two layers do it, and neither changes the UI itself:
+
+- **In the components.** `Steps` is a gust of wind carrying leaves along a line (the LeafLoader's look used as progress; a leaf only on a finished step). `LeafDivider` ends every page above the footer. The success `Toast` and the live "Strung" `Tag` carry a leaf instead of a check. `Card` with `sprig` puts a small pencil sprig in the corner of a treehouse card. All are drawn in the pencil-and-wash style, in existing tokens, with the LeafLoader's motion and nothing new.
+- **Over the page: the artist's layer.** Doodles and scenes, below.
+
+## The artist's layer: doodles and scenes
+
+Treeline's interface is ordinary and calm. On top of it, an artist has been through the pages with a pencil and a little watercolor, drawing as if the screen were paper: a snail crawling along the top of a card, a bluebird on its edge, a butterfly drifting in the gap between two cards. The artist is not bound by the interface's rules (they cross a card's border, hang over a corner, trail a dotted path between two cards), but is bound by how the physical world works.
+
+**The UI never changes.** A doodle is decoration laid over the page. It takes no room, moves nothing, and the product works exactly the same without it. This is enforced, not hoped for: doodles are drawn into one overlay layer at the end of `<body>` (placed by page coordinates), never inside the app's own markup, and the smoke test checks that every element sits exactly where it would without them.
+
+### The set
+
+Eighteen pieces in one hand (pencil `ink-muted` line, one to three washes, paper showing through). Exported as static SVGs in `assets/Doodles/` for graphics editors; drawn live from `ui/js/doodles.js` (`TLDoodles.SET`) and the React `Doodle` component.
+
+| Doodle | Role | Means |
+|---|---|---|
+| `snail` | grounded | slow, patient (crawls the top of a card) |
+| `ladybug` | grounded | luck, small and cheerful |
+| `tuft` | grounded | grass with a wildflower |
+| `sprout` | grounded | new, just started |
+| `acorn` | grounded | kept safe, saved for later |
+| `seeds` | air | carried on the wind |
+| `bee` | air | busy, on its way |
+| `butterfly` | air | change, something light |
+| `blossom` | cling | friends, a twig reaching in |
+| `tulip` | grounded | a gift, a welcome |
+| `bow` | grounded | a little care, tied on |
+| `pebbles` | grounded | a quiet stop |
+| `mushroom` | grounded | the forest floor |
+| `fern` | grounded | quiet, unfurling |
+| `pinecone` | grounded | autumn, tucked away |
+| `maple` | air | a leaf drifting down |
+| `bluebird` | grounded | good news, perched |
+| `owl` | grounded | watching over, night |
+
+### Physics: how a doodle sits on the page
+
+The interface already has a light from above (its shadows fall straight down). Doodles live in the same world.
+
+- **Grounded** doodles stand or crawl on a surface: a card's top edge, a row divider, a button. They are anchored by their feet to that exact point, stay level (a few degrees of tilt at most), and cast a tight shadow straight down.
+- **Air** doodles fly or drift through empty space: the gap between cards, the margin. They never touch a surface, bob very slowly, and cast a faint shadow far below to show how high they are. A bee leaves a dotted flight path.
+- **Cling** doodles grow from or hang on an edge, attached at one end (a blossom twig over a card's corner).
+- A doodle may be hidden by what is in front of it (an owl behind a card shows only its head), and may overhang an edge. That is the point of the layer.
+
+### Rules that never bend
+
+1. **Never over text or a control.** A doodle never covers a heading, body text, button, field, link or tag. Surfaces are chosen so it sits in the empty space around them.
+2. **Takes no room.** Lives in the overlay layer (`.tl-doodle-layer`), never inside a component; adds no padding, margin or reflow; never makes the page scroll sideways. Scenes appear only where room already exists and are skipped otherwise; never add space for a doodle.
+3. **Inert.** `aria-hidden`, no pointer events, no focus. Hidden when printed.
+4. **Few, and a sprinkle.** Usually one or two on a phone, two or three on a wide screen, sometimes fewer. A spot that could take a doodle usually does not get one: the fun is in not knowing where, or whether. Quiet beats busy.
+5. **Still when asked.** Under reduced motion nothing moves. Otherwise motion is tiny and slow: a bob of a few pixels, a snail that inches along over minutes.
+6. **Fits or skips.** A doodle only appears where its surface has room for it. It is never shrunk to fit and never squeezed in.
+
+### Alive: different every load
+
+Placement is drawn at random every time the page loads, within the rules above: which doodles, which cards they stand on, where along the edge, which way they face, how big (a little). It stays put while you use the page (a re-render does not move them) and changes on reload and between pages. `TLDoodles.scatter(root, key)` does it; the seed is per page load, mixed with the page key.
+
+### Scenes: a doodle that belongs to its card
+
+Some cards have a small scene that fits what the card is about. Mark the card with `data-scene` and the artist draws that scene on its top edge when there is room, still within the rules. A page shows at most one scene on a phone and two on a wide screen (picked at random among its scened cards), so it never becomes a pattern.
+
+| `data-scene` | Where | What |
+|---|---|---|
+| `sprout` | Setup, name your treehouse | a seedling with a butterfly above |
+| `acorn` | Parent code | acorns and a sprout: kept safe, will grow |
+| `forest` | Records | mushroom, grass tuft, pebbles: the forest floor |
+| `fern` | Notifications | a fern and a ladybug: quiet |
+| `bloom` | A live string | a tulip, grass and a butterfly: a friendship in bloom |
+
+### Inside a card, and paintings
+
+- **Inside a card.** Where a card has empty floor (the corner beside a short row of buttons, the strip under its last line), a doodle may stand there, on the card's bottom edge inside. It only goes where it clears every line of text, control, tag and picture with padding to spare, so it never covers content and never makes the card taller. Doodles inside a card follow the same sprinkle: a free spot usually stays empty.
+- **Paintings.** A scene can be upgraded to a small watercolor painting (`sprout` to a seedling, `forest` to mushrooms, `fern` to a fern, `bloom` to a meadow). The painting stands on the card's top edge and is used only when the room above the card already holds it at 60% of full size or more; otherwise the card keeps its doodle scene. Paintings are drawn from the same hand as the doodles: pencil line, one to three washes, paper showing through. They share the same overlay layer and the same rules, and never add space for themselves.
+- **The test.** The smoke suite measures every element with the doodles shown and hidden and fails on any difference, fails if a doodle is inside the app's own markup, and fails if one covers text.
+
+### Using it
+
+- **App (HTML):** include `/ui/js/doodles.js`; call `TLDoodles.scatter(mainElement, pageKey)` after rendering a page. Add `data-scene="..."` to cards that have a scene. Nothing else.
+- **React:** `<Doodle name="snail" kind="grounded" x={120} />` for a hand-placed one (design pages, docs). Props: `name`, `x`, `y`, `rotate`, `scale`, `flip`.
+- **Adding a doodle:** draw it in the same hand (viewBox ~24 to 52 wide, a ground line at the bottom for grounded ones, 1.3 line, washes from `wash-*` tokens), give it a role (grounded, air or cling) and a meaning, add the SVG to `assets/Doodles/`, to `ui/js/doodles.js` and to the `Doodle` component, then list it in the table above.
+- **Adding a scene:** add an entry to `SCENES` in `ui/js/doodles.js` and list it above. Name it for the card's meaning, not its look.
+- **What not to do:** no doodles on forms the person is filling in, on error or safety copy (911, delete, danger), or on the phone screen. Do not add one to "fill space". Do not animate beyond a bob.
+
+### Words go with it
+
+Copy follows the same theme, plainly. A treehouse is a household, a string is a connection, a string code is how you make one, "the line" is the network. Safety, money and error copy stays plain: no cleverness where someone needs to be sure.
+
 ## Iconography
 
 - Treeline icons are a single family: 24px grid, 1.75 stroke, round caps and joins, no fills. Every phone icon is the rotary phone, Treeline's signature object: `phone`, `phone-incoming` and `phone-outgoing` (with an arrow), and `phone-off` (struck through). Never use a modern handset. They're in the **Icons** asset group as SVG, and in the bundle as `Treeline.Icon` (drawn in `currentColor`).
