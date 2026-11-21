@@ -235,6 +235,46 @@ db.connect({path!r}, migrations=[step])
             self.assertEqual(pragma(path, "user_version"), 1)
 
 
+class EnableWal(unittest.TestCase):
+    """CI flake, then a real race: opening a new file from several processes at once could fail with "database is locked"."""
+
+    class Conn:
+        def __init__(self, failures, message="database is locked"):
+            self.failures, self.message, self.calls = failures, message, 0
+
+        def execute(self, sql):
+            self.calls += 1
+            if self.calls <= self.failures:
+                raise sqlite3.OperationalError(self.message)
+
+    def test_it_waits_out_a_lock_and_then_succeeds(self):
+        c, slept = self.Conn(3), []
+        db.enable_wal(c, sleep=slept.append)
+        self.assertEqual(c.calls, 4)
+        self.assertEqual(len(slept), 3)
+        self.assertTrue(all(0 < s <= 0.25 for s in slept))
+
+    def test_it_gives_up_after_the_deadline_with_the_real_error(self):
+        clock = iter(range(0, 1000))
+        with self.assertRaises(sqlite3.OperationalError):
+            db.enable_wal(self.Conn(10**6), seconds=5, sleep=lambda s: None, now=lambda: next(clock))
+
+    def test_any_other_error_is_raised_at_once(self):
+        c = self.Conn(1, message="disk I/O error")
+        with self.assertRaises(sqlite3.OperationalError):
+            db.enable_wal(c, sleep=lambda s: self.fail("must not wait"))
+        self.assertEqual(c.calls, 1)
+
+    def test_a_file_already_in_wal_never_waits(self):
+        path = new_path()
+        db.connect(path).close()
+        c = db.connect(path)
+        slept = []
+        db.enable_wal(c, sleep=slept.append)
+        self.assertEqual(slept, [])
+        c.close()
+
+
 class PreMigrationBackup(unittest.TestCase):
     def test_a_backup_is_taken_before_a_step_and_restores_to_the_old_version(self):
         path = new_path()
