@@ -87,6 +87,20 @@ class ReleaseWorkflow(unittest.TestCase):
         self.assertIn("--deny-self-hosted-runners", verify)
         self.assertIn("lock-field ARTIFACT_SHA256", verify)
 
+    def test_the_attestation_check_asks_for_json_and_needs_one_verified_attestation(self):
+        """The first real release failed here: plain `gh attestation verify` prints nothing on success, and the step demanded output."""
+        import re
+        import subprocess
+        import sys
+        verify = self.step("The Asterisk build this release carries")
+        self.assertIn("--format json", verify)
+        code = re.search(r"python3 -I -c '([^']+)'", verify).group(1)
+        def passes(stdin):
+            return subprocess.run([sys.executable, "-I", "-c", code], input=stdin, text=True, capture_output=True).returncode == 0
+        self.assertTrue(passes('[{"verificationResult": {}}]'))
+        for bad in ("", "[]", "{}", "not json", "null"):
+            self.assertFalse(passes(bad), repr(bad))
+
     def test_the_signed_release_is_built_from_exactly_the_verified_file(self):
         sign = self.step("Build and sign")
         self.assertRegex(sign, r'--asterisk "dist/asterisk/asterisk-\$\(python3 -I scripts/asterisk_build\.py lock-field ARTIFACT_ID\)\.tar\.gz"')
