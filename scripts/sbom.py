@@ -189,7 +189,8 @@ def parse_actions(text):
 def parse_images(text, compose=False):
     """Image references: FROM lines of a Dockerfile, or `image:` lines of a compose file."""
     pat = r"^\s*image:\s*['\"]?([^\s'\"#]+)" if compose else r"^\s*FROM\s+(?:--\S+\s+)*([^\s]+)"
-    return [i for i in re.findall(pat, text, re.M | (0 if compose else re.I)) if i.lower() != "scratch"]
+    # `FROM ${BASE_IMAGE}` is a build argument: the real image is pinned in a lock file that sbom.py reads itself.
+    return [i for i in re.findall(pat, text, re.M | (0 if compose else re.I)) if i.lower() != "scratch" and "$" not in i]
 
 
 def parse_dockerfile_pip(text):
@@ -284,6 +285,22 @@ def collect(root=ROOT, os_packages_text=None):
             digest = hashlib.sha256(f.read()).hexdigest()
         version = vendored_version(notices, v["notice"])
         add("npm", v["name"], version, purl("npm", v["name"], version), v["file"], "browser-vendored", True, sha256=[digest])
+
+    # The Asterisk build's pinned inputs (asterisk/build/README.md). Until a release carries the artifact they are not
+    # in production; once it does, they are what runs there, and artifact.lock names the exact build.
+    lock_path = os.path.join(root, "asterisk", "build", "sources.lock")
+    if os.path.exists(lock_path):
+        import asterisk_build
+        src = asterisk_build.parse_lock(read("asterisk/build/sources.lock", root), asterisk_build.SOURCES_FIELDS, "sources.lock")
+        lock_rel = "asterisk/build/sources.lock"
+        shipped = False   # becomes True in the change that makes install.sh and the release carry this build
+        add("Upstream source", "asterisk", src["ASTERISK_VERSION"], purl("github", "asterisk", src["ASTERISK_VERSION"], namespace="asterisk"),
+            lock_rel, "asterisk-build", shipped, sha256=[src["ASTERISK_SHA256"]])
+        add("Upstream source", "pjproject", src["PJPROJECT_VERSION"], purl("github", "pjproject", src["PJPROJECT_VERSION"], namespace="pjsip"),
+            lock_rel, "asterisk-build", shipped, direct=False, sha256=[src["PJPROJECT_SHA256"]])
+        image, _, digest = src["BASE_IMAGE"].partition("@")
+        repo, _, tag = image.partition(":")
+        add("container", repo, tag + "@" + digest, purl("docker", repo, tag + "@" + digest), lock_rel, "asterisk-build-toolchain", False)
 
     wf_dir = os.path.join(root, ".github", "workflows")
     for wf in sorted(os.listdir(wf_dir)) if os.path.isdir(wf_dir) else []:

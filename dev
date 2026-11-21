@@ -133,6 +133,7 @@ cmd_check() {
   done
   for f in $(git ls-files '*.py'); do python3 -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "$f" || { echo "Python syntax error: $f"; bad=1; }; done
   python3 scripts/check_repo_rules.py || bad=1
+  python3 -m unittest -q scripts/test_asterisk_build.py 2>/dev/null && python3 scripts/asterisk_build.py check >/dev/null || { echo "asterisk/build is out of step (python3 scripts/asterisk_build.py check says what)"; bad=1; }
   python3 -m unittest -q scripts/test_supply_chain.py 2>/dev/null || { echo "the bill of materials is out of step (python3 -m unittest scripts/test_supply_chain.py says what)"; bad=1; }
   dc config -q >/dev/null || { echo "docker-compose.yml is invalid"; bad=1; }
   docker compose -f deploy/docker-compose.prod.yml --env-file deploy/env.example config -q >/dev/null 2>&1 || { echo "deploy/docker-compose.prod.yml is invalid"; bad=1; }

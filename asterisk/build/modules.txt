@@ -1,0 +1,55 @@
+# The modules Treeline builds, one per line (menuselect names). build.sh turns every menuselect category off, enables
+# these, and fails if the installed module set is not exactly this list: fewer modules means fewer advisories that
+# apply (docs/SECURITY.md, Review 9). A module Asterisk needs at run time that is not here fails the real-call tests.
+# Dialplan and Stasis
+pbx_config
+app_stasis
+func_callerid
+res_stasis
+res_stasis_answer
+res_stasis_playback
+res_stasis_recording
+res_stasis_snoop
+# ARI
+res_ari
+res_ari_model
+res_ari_asterisk
+res_ari_channels
+res_ari_bridges
+res_ari_playbacks
+res_ari_endpoints
+res_ari_events
+# WebSocket
+res_http_websocket
+res_websocket_client
+# Sorcery
+res_pjproject
+res_sorcery_config
+res_sorcery_memory
+res_sorcery_astdb
+# SIP
+res_pjsip
+res_pjsip_session
+chan_pjsip
+res_pjsip_pubsub
+res_pjsip_authenticator_digest
+res_pjsip_endpoint_identifier_user
+res_pjsip_registrar
+res_pjsip_sdp_rtp
+res_pjsip_transport_websocket
+res_pjsip_nat
+res_pjsip_caller_id
+# RTP, SRTP, timing
+res_rtp_asterisk
+res_srtp
+res_timing_timerfd
+# Bridges (chan_bridge_media is the Announcer channel ARI's bridges/{id}/play needs: without it no pips or join tone play)
+bridge_simple
+bridge_softmix
+chan_bridge_media
+# Codecs and formats (no Opus: see docs/DEPLOY_AWS.md)
+codec_ulaw
+codec_alaw
+codec_g722
+codec_resample
+format_wav

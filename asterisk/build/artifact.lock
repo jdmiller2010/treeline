@@ -1,0 +1,6 @@
+# The Asterisk artifact production runs. Written by scripts/asterisk_build.py write-lock, never by hand:
+# BUILD_TREE_SHA256 covers every other file in asterisk/build/, so this cannot describe other instructions.
+ARTIFACT_ID=24.0.0-t1
+ARTIFACT_SHA256=dc189b616058a5efec67f3c7ab39c951ffabd4c4bc8b5c6e5e7a257e3fafb8df
+ARTIFACT_SIZE=3565431
+BUILD_TREE_SHA256=e89ac102df37bf5ee7e8326fc0048c1e31e6c15885f9ee60865a077ebdd13913
