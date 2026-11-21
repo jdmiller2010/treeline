@@ -233,7 +233,7 @@ class VmTestCase(unittest.TestCase):
     @classmethod
     def probe_command(cls, account, *args):
         return ["docker", "exec", "-i", CLIENT, "python3", "-", "--host", DOMAIN, "--cafile", "/shared/root.crt",
-                "--user", account["user"], "--secret", account["secret"], *args]
+                f"--user={account['user']}", f"--secret={account['secret']}", *args]   # `=`: a random secret can start with "-" (about 1 in 64), which argparse takes for an option
 
     @classmethod
     def probe(cls, account, *args, timeout=120):
@@ -1245,3 +1245,45 @@ class I_ReplacingUbuntusPackage(VmTestCase):
         self.assertFalse(vm("ls /etc/asterisk/*.conf | wc -l").stdout.strip() == "0")
         self.assertLess(int(vm("ls /etc/asterisk/*.conf | wc -l").stdout.strip()), 30, "the package's ~100 sample files are gone")
         self.assertEqual(vm("test -e /usr/share/asterisk/sounds/en_US_f_Allison && echo left", check=False).stdout.strip(), "")
+
+
+class J_UpgradeFromFormat1(VmTestCase):
+    """A machine that runs a format-1 release (made before releases carried their own Asterisk: what v0.1.0 and v0.1.1 were) is moved to
+    this release by running install.sh from it, once. The agent refuses format-1 releases, so install.sh does this itself."""
+
+    def test_1_install_sh_replaces_a_format_1_release_and_the_machine_comes_back_healthy(self):
+        self.wait_healthy()
+        ver = vm("basename $(readlink -f /opt/treeline/current)").stdout.strip()
+        # the release install.sh will be run from, kept apart from the releases directory (a new version arriving on the machine)
+        vm(f"rm -rf /root/newrel && cp -a /opt/treeline/releases/{ver} /root/newrel && rm -rf /root/newrel/venv")
+        # the old install: a release called v0.0.9, format 1, naming no Asterisk, which is what `current` points at
+        vm(f"cp -a /opt/treeline/releases/{ver} /opt/treeline/releases/v0.0.9 && python3 -I - <<'PY'\n"
+           "import json\n"
+           "p = '/opt/treeline/releases/v0.0.9/release.json'\n"
+           "d = json.load(open(p)); d['version'] = 'v0.0.9'; d['format'] = 1; d.pop('asterisk', None)\n"
+           "json.dump(d, open(p, 'w'))\n"
+           "s = '/var/lib/treeline/deploy/state.json'\n"
+           "st = json.load(open(s)); st['current'] = 'v0.0.9'; st['previous'] = None; st.pop('asterisk', None); st.pop('asterisk_previous', None)\n"
+           "json.dump(st, open(s, 'w'))\n"
+           "PY\n"
+           f"ln -sfn /opt/treeline/releases/v0.0.9 /opt/treeline/current && rm -rf /opt/treeline/releases/{ver}")
+        self.install(src="/root/newrel")
+        self.wait_healthy()
+        self.assertEqual(vm("basename $(readlink -f /opt/treeline/current)").stdout.strip(), ver)
+        listing = vm("ls /opt/treeline/releases").stdout.split()      # other releases may be there from the earlier tests
+        self.assertNotIn("v0.0.9", listing, "the format-1 release is gone")
+        self.assertIn(ver, listing)
+        state = json.loads(vm("cat /var/lib/treeline/deploy/state.json").stdout)
+        self.assertEqual((state["current"], state["previous"], state["asterisk"]), (ver, None, ast_id()))
+        for unit in ("asterisk", "caddy", "treeline-api", "treeline-controller"):
+            wait_for(lambda u=unit: vm(f"systemctl is-active {u}", check=False).stdout.strip() == "active", 90, f"{unit} active")
+        self.assertEqual(vm("systemctl show asterisk -p MainPID --value | xargs -I{} readlink /proc/{}/exe").stdout.strip(),
+                         f"/opt/asterisk/{ast_id()}/sbin/asterisk")
+        # there is nothing to go back to, and the agent says so cleanly (no traceback)
+        done = vm("treeline-deploy --rollback 2>&1", check=False)
+        self.assertNotEqual(done.returncode, 0)
+        self.assertNotIn("Traceback", done.stdout)
+        # a second run of install.sh from the same release leaves it as it is
+        self.install(src="/opt/treeline/current")
+        self.wait_healthy()
+        self.assertEqual(vm("ls /opt/treeline/releases").stdout.split(), listing, "nothing else changed")

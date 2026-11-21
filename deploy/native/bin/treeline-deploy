@@ -958,16 +958,37 @@ def take_lock(p):
     return lock
 
 
+def legacy_release(p, version):
+    """`version` if the installed release of that name is a format-1 release (made before releases carried their own Asterisk, the
+    ones that ran on Ubuntu's package), else None. Read as plain JSON: this agent's read_info refuses such a release by design."""
+    if version == "" or not rel.VERSION_RE.match(version):
+        return None
+    try:
+        with open(os.path.join(p["releases"], version, "release.json"), encoding="utf-8") as f:
+            info = json.load(f)
+    except (OSError, ValueError):
+        return None
+    if isinstance(info, dict) and info.get("version") == version and type(info.get("format")) is int and info["format"] == 1:
+        return version
+    return None
+
+
 def adopt(src):
-    """Stage the release install.sh was run from, ONLY on a machine with no release yet. Afterwards releases change only through
-    the agent (verified, health-checked, with rollback); re-running an old install.sh must never switch production back."""
+    """Stage the release install.sh was run from, ONLY on a machine with no release yet, or one whose release is format 1 (the
+    one-time move off Ubuntu's Asterisk package). Afterwards releases change only through the agent (verified, health-checked, with
+    rollback); re-running an old install.sh must never switch production back."""
     p = paths()
     host_env = common.host_settings()
     ci = is_ci(host_env)
     with take_lock(p):
+        legacy = None
         if current_version(p):
-            print(f"a release is already installed ({current_version(p)}); install.sh does not change it (use treeline-deploy)")
-            return 0
+            legacy = legacy_release(p, current_version(p))
+            if not legacy:
+                print(f"a release is already installed ({current_version(p)}); install.sh does not change it (use treeline-deploy)")
+                return 0
+            log(f"{legacy} is a format-1 release (it carries no Asterisk build of its own); this install replaces it. It cannot be rolled back "
+                "to: this agent refuses format-1 releases.")
         rel.sweep_leftovers(common.ASTERISK_OPT)
         info = rel.read_info(src, ci=ci)
         dest = os.path.join(p["releases"], info["version"])
@@ -986,7 +1007,9 @@ def adopt(src):
         switch_asterisk(info["asterisk"]["id"])
         os.makedirs(p["state"], mode=0o700, exist_ok=True)
         record(p, current=info["version"], previous=None, asterisk=info["asterisk"]["id"], asterisk_previous=None)
-        print(f"staged {info['version']} with Asterisk {info['asterisk']['id']}")
+        if legacy:        # nothing can go back to it, and a release this agent cannot read would stop old builds from being pruned
+            shutil.rmtree(os.path.join(p["releases"], legacy), ignore_errors=True)
+        print(f"staged {info['version']} with Asterisk {info['asterisk']['id']}" + (f" (replacing {legacy})" if legacy else ""))
     return 0
 
 
