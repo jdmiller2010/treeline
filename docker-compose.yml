@@ -9,8 +9,16 @@
 
 services:
   asterisk:
-    build: ./asterisk
+    build:
+      context: ./asterisk
+      args:
+        # The artifact production runs (asterisk/build/artifact.lock); ./dev puts them in the environment.
+        ASTERISK_ID: ${ASTERISK_ID:-unset}
+        ASTERISK_SHA256: ${ASTERISK_SHA256:-unset}
     network_mode: host
+    # Starts as root only to prepare directories; entrypoint.sh drops to the asterisk user with no capabilities.
+    cap_drop: [ALL]
+    cap_add: [CHOWN, SETUID, SETGID, SETPCAP, DAC_OVERRIDE, FOWNER]
     volumes:
       - ./asterisk/config:/kidphone-config:ro
       - ./data/generated:/generated

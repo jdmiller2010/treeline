@@ -39,7 +39,7 @@ A test (`scripts/test_supply_chain.py`) fails if a lock cannot be read completel
 `scripts/vuln_check.py` sends each exact name and version to [OSV.dev](https://osv.dev) (which gathers GitHub's advisories, PyPI's, npm's, Ubuntu's, and the malicious-package reports) and sorts what comes back into three kinds:
 
 - **To act on**: anything in a Python, npm, vendored or Actions dependency. The run fails. There is almost always a fixed version.
-- **Watched**: Ubuntu packages named in `OS_WATCH` in the workflow (`asterisk`, `caddy`: the two that face the internet). These do not fail the run. They are kept in the issue, and each new advisory gets a comment there.
+- **Watched**: Ubuntu packages named in `OS_WATCH` in the workflow (`caddy`, and `openssl` and `libsrtp2`, the libraries the internet-facing Asterisk links against). These do not fail the run. They are kept in the issue, and each new advisory gets a comment there.
 - **Listed**: every other Ubuntu package. In the report only.
 
 If OSV cannot be reached or answers in a shape the script does not expect, the run fails with status 2. A check that did not run never passes as clean.
@@ -57,18 +57,18 @@ If OSV cannot be reached or answers in a shape the script does not expect, the r
    `until` is required and at most 90 days away. When it passes, the check stops with status 2 until someone looks again. An entry that no longer matches anything is named in the report so it can be removed.
 4. **Malware** (an id starting `MAL-`) is different in kind: assume whatever installed it is compromised. Do not deploy; rotate what that environment could read (`infra/bootstrap/bootstrap.sh`), and record it in [SECURITY.md](SECURITY.md).
 
-### Asterisk and Caddy come from Ubuntu
+### Caddy comes from Ubuntu; Asterisk does not
 
-Both are installed from Ubuntu 24.04's **universe** section. The first real run found **76 advisories listed against Ubuntu's `asterisk` package (1:20.6.0) with no fixed package**, 73 at Ubuntu's "medium" priority and 3 "low", and none against `caddy`. Many of the 76 are years old and describe Asterisk versions older than 20.6, so they are Ubuntu's tracker not having reviewed them, not 76 holes; but nobody has sorted which ones do apply, and that is open as R8-1 in [SECURITY.md](SECURITY.md). Until that is done, what the tooling gives is the list and an alert whenever a new one is added.
+**Caddy** is installed from Ubuntu 24.04's universe section, patched by `unattended-upgrades`; the daily check watches it. The first real run found no advisory against it.
 
-The choices for R8-1, none taken yet: sort the list against Asterisk's own advisories for 20.6.0 and accept what does not apply; find out whether Ubuntu Pro's extended maintenance covers this package (not checked); or install a current Asterisk 20 or 22 release some other way, which changes `install.sh` and the VM-imitation tests. What is designed to limit the exposure is in [DEPLOY_AWS.md](DEPLOY_AWS.md) (ARI and Asterisk's HTTP interface closed to other hosts, fail2ban, an address allowlist during the beta); like the rest of that deployment, it has run only in the VM-imitating job, never on AWS.
+**Asterisk used to be Ubuntu's package too**, and that was R8-1: the first real run found **76 advisories against `asterisk` 1:20.6.0 with no fixed package** (Ubuntu lists every CVE filed against a package until someone reviews it, and does not even for Ubuntu Pro). Production now runs an upstream Asterisk we compile ourselves: see "The Asterisk build" below, and the sorted advisories in [SECURITY.md](SECURITY.md), Review 9. Ubuntu's package is purged by `install.sh` and pinned out of apt. The libraries it links against (`openssl`, `libsrtp2`, and the others in `asterisk/runtime-deps.txt`) still come from Ubuntu and are patched by `unattended-upgrades`; the daily check watches the two that face the network.
 
 ### The Asterisk build
 
-Production is changing from Ubuntu's `asterisk` package (above) to an upstream Asterisk that we compile ourselves from the signed source release, which is the answer to R8-1. This section describes the build, which exists and has been run on a developer's machine; **nothing installs it yet**, so the Ubuntu section above is still what a VM gets. The directory is [asterisk/build/](../asterisk/build/README.md); the reasons for each choice are in the review recorded in [SECURITY.md](SECURITY.md).
+Production is changing from Ubuntu's `asterisk` package (above) to an upstream Asterisk that we compile ourselves from the signed source release, which is the answer to R8-1. This section describes the build and where it ends up. The directory is [asterisk/build/](../asterisk/build/README.md); the reasons for each choice are in the review recorded in [SECURITY.md](SECURITY.md).
 
 - **One place, tightly scoped.** Only `asterisk/build/build.sh` compiles third-party code. It runs in a container with no network, no capabilities and a read-only root, started by `run-build.sh`, on source whose sha256 is pinned in `sources.lock` and whose signature `gpgv` accepted against a committed key with a pinned fingerprint. It never runs on the VM, and never in a job with a write token or a secret. This is the second exception to "don't execute downloaded code" in CLAUDE.md.
-- **Only released code.** No cherry-picked upstream commits and no distribution patches. Where an advisory has no fix in a release, the answer is a documented option or an entry in `.vuln-ignore` with a reason, until a release carries the fix.
+- **Only released code.** No cherry-picked upstream commits and no distribution patches of ours. (Asterisk's own tarball applies five patches of its own to the pjproject it bundles; none is a security fix.) Where an advisory has no fix in a release, the answer is a documented option or an entry in `.vuln-ignore` with a reason, until a release carries the fix.
 - **Only the modules Treeline uses.** `modules.txt` is the list; the build fails if anything else is enabled or installed. Fewer modules, fewer advisories that apply.
 - **Built twice.** `.github/workflows/asterisk.yml` builds the same inputs in two jobs and fails unless the artifacts are byte for byte the same. Publishing is a separate, manual job on `main`, with GitHub's build provenance attestation.
 - **A change cannot slip past the lock.** `artifact.lock` holds the artifact's sha256 and a digest of every input in `asterisk/build/`. `scripts/asterisk_build.py check` (in `./dev check` and a required CI job) fails when an input changed without a new artifact.
@@ -82,7 +82,8 @@ Production is changing from Ubuntu's `asterisk` package (above) to an upstream A
 | CDK command line (`infra/`) | Dependabot, Mondays | 7 days | Patch and minor: yes |
 | Anything with a GitHub security advisory in those two | Dependabot security update, at once | none | same rule |
 | Python locks (all four) | `refresh locks`, Mondays: `scripts/make_locks.sh` with `LOCK_COOLDOWN=P7D`, updates the versions in `THIRD_PARTY_NOTICES.md` and the licenses pages, checks the result against OSV, pushes branch `deps/refresh-locks`, opens or updates an issue with a link | 7 days | No: one click opens the pull request (see below), then merge when green |
-| Ubuntu packages on the VM | `unattended-upgrades` (installed by `install.sh`) | Ubuntu's | yes, on the VM |
+| Ubuntu packages on the VM (Caddy, and the libraries Asterisk links against) | `unattended-upgrades` (installed by `install.sh`). A library update does not reach a *running* Asterisk until it restarts | Ubuntu's | yes, on the VM |
+| Asterisk and pjproject | by hand, for now: a new upstream release means new pins in `asterisk/build/sources.lock`, a new artifact, a new release (the automation for noticing and proposing it is a later change) | | no: unattended-upgrades cannot patch what we compile |
 | Vendored JsSIP and qrcode-generator | by hand | | no |
 | `aws-cdk-lib`, `constructs` (pinned with `==` in `infra/requirements.in`) | by hand, together with the CDK command line | | no |
 | Base images | they float; `./dev up` pulls the current one | | n/a |

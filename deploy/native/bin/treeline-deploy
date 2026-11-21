@@ -7,10 +7,13 @@
     treeline-deploy --rollback               go back to the previous release (refused if the data layout moved since)
     treeline-deploy status
     treeline-deploy adopt DIR                first install: stage the unpacked release DIR (called by install.sh)
+    treeline-deploy install-asterisk DIR     install (or check) the Asterisk build of the installed release DIR (called by install.sh)
 
 Order of events for a deploy: verify the signature -> unpack beside the current release -> check the release's own
 claims -> build its virtualenv from the hash-pinned lock -> dry-run its configuration -> (wait for a quiet moment) ->
-switch the symlink and restart -> wait for /api/health to report the new release -> otherwise roll back.
+switch the symlinks and restart -> wait for /api/health to report the new release and for Asterisk to be running the new
+build -> otherwise roll back. Each release carries its own Asterisk (format 2): installed beside the others in /opt/asterisk/<id>,
+checked file by file, never trusted from a state file (the running build is read from the process).
 Exit codes: 0 deployed / nothing to do, 1 failed and rolled back, 2 usage, 3 REFUSED (bad signature or release), 4 busy, 5 failed and could not roll back.
 """
 
@@ -20,6 +23,7 @@ import json
 import os
 import re
 import shutil
+import socket
 import subprocess
 import sys
 import time
@@ -57,6 +61,10 @@ def log(msg):
 def paths():
     return {"current": os.path.join(common.OPT, "current"), "releases": os.path.join(common.OPT, "releases"),
             "state": os.path.join(common.STATE, "deploy"), "run": os.path.join(common.RUN, "deploy.lock")}
+
+
+def is_ci(host_env):
+    return host_env.get("TREELINE_CI") == "1"
 
 
 # ------------------------------------------------------------------ versions
@@ -112,13 +120,33 @@ def source(host_env):
     return f"https://github.com/{repo}/releases", False
 
 
+def pick_latest(releases):
+    """The highest plain vX.Y.Z among PUBLISHED releases. The repository also holds other releases (the asterisk-* ones, which are
+    prereleases of an Asterisk build and not something to deploy); GitHub's "latest" would be one of them whenever it was newer,
+    so the list is read and chosen from here."""
+    if not isinstance(releases, list):
+        raise Failed("the release list from GitHub is not a list")
+    best = None
+    for r in releases:
+        if not isinstance(r, dict) or r.get("draft") is not False or r.get("prerelease") is not False:
+            continue
+        tag = r.get("tag_name")
+        if not isinstance(tag, str) or not re.fullmatch(r"v\d+\.\d+\.\d+", tag):
+            continue
+        if best is None or vkey(tag) > vkey(best):
+            best = tag
+    if best is None:
+        raise Failed("GitHub lists no published release of the form vX.Y.Z")
+    return best
+
+
 def latest_version(host_env):
     base, local = source(host_env)
     if local:
         text = https_get(base + "/latest", hosts=(), allow_http=True).decode().strip()
     else:
         repo = host_env["TREELINE_RELEASE_REPO"]
-        text = json.loads(https_get(f"https://api.github.com/repos/{repo}/releases/latest"))["tag_name"]
+        text = pick_latest(json.loads(https_get(f"https://api.github.com/repos/{repo}/releases?per_page=100")))
     if not rel.VERSION_RE.match(text) or "-" in text:
         raise Failed(f"the latest release name {text!r} is not a version we deploy automatically")
     return text
@@ -252,6 +280,66 @@ def build_sounds(release_dir):
         shutil.rmtree(work, ignore_errors=True)
 
 
+# ------------------------------------------------------------------ the Asterisk build that is running
+def running_asterisk_id(proc="/proc"):
+    """The build the running Asterisk process was started from, read from the process (/proc/<pid>/exe): state files say what was
+    intended, only the process says what is running. None if Asterisk is not running."""
+    done = subprocess.run(["systemctl", "show", "-p", "MainPID", "--value", "asterisk"], capture_output=True, text=True)
+    pid = done.stdout.strip()
+    if done.returncode != 0 or not pid.isdigit() or int(pid) == 0:
+        return None
+    try:
+        exe = os.readlink(os.path.join(proc, pid, "exe"))
+    except OSError:
+        return None
+    m = re.fullmatch(re.escape(common.ASTERISK_OPT) + r"/(\d+\.\d+\.\d+-t\d+)/sbin/asterisk", exe)
+    return m.group(1) if m else None
+
+
+def switch_asterisk(ast_id):
+    """/usr/local/sbin/asterisk (what an operator types) follows the build that is meant to run."""
+    rel.switch(common.ASTERISK_BIN, os.path.join(common.ASTERISK_OPT, ast_id, "sbin", "asterisk"))
+
+
+def ari_get(path, etc=None, timeout=5):
+    with open(os.path.join(etc or common.ETC, "ari-password"), encoding="utf-8") as f:
+        password = f.read().strip()
+    mgr = urllib.request.HTTPPasswordMgrWithDefaultRealm()
+    mgr.add_password(None, "http://127.0.0.1:8088/ari", "treeline", password)
+    opener = urllib.request.build_opener(urllib.request.HTTPBasicAuthHandler(mgr))
+    with opener.open("http://127.0.0.1:8088/ari" + path, timeout=timeout) as resp:
+        return resp.status, resp.read()
+
+
+def tls_port_open(port=5061):
+    try:
+        with socket.create_connection(("127.0.0.1", port), timeout=2):
+            return True
+    except OSError:
+        return False
+
+
+def asterisk_health(expect_id, seconds=60):
+    """True once Asterisk is active, is running build `expect_id` (the process, not a file), answers ARI with its SIP stack loaded,
+    and listens for SIP over TLS. Asterisk 'running' is not enough: it can be up and deaf (a module that failed to load)."""
+    end = time.time() + seconds
+    last = ""
+    while time.time() < end:
+        active = subprocess.run(["systemctl", "is-active", "--quiet", "asterisk"]).returncode == 0
+        running = running_asterisk_id() if active else None
+        try:
+            ari = ari_get("/asterisk/modules/res_pjsip.so")[0] == 200
+        except (urllib.error.URLError, OSError, ValueError):
+            ari = False
+        tls = tls_port_open()
+        last = f"active={active} running={running} ari={ari} tls={tls}"
+        if active and running == expect_id and ari and tls:
+            return True
+        time.sleep(2)
+    log(f"Asterisk health check failed: {last}")
+    return False
+
+
 def systemctl(*args):
     subprocess.run(["systemctl", *args], check=True)
 
@@ -287,6 +375,10 @@ def restore_config(src):
     ast = os.path.join(src, "asterisk")
     for name in os.listdir(ast):
         shutil.copy2(os.path.join(ast, name), os.path.join("/etc/asterisk", name))
+    for name in os.listdir("/etc/asterisk"):          # what the failed release added (its asterisk-<id>.conf) goes; keys/ stays
+        path = os.path.join("/etc/asterisk", name)
+        if name.endswith(".conf") and not os.path.exists(os.path.join(ast, name)) and os.path.isfile(path) and not os.path.islink(path):
+            os.remove(path)
 
 
 # ------------------------------------------------------------------ data: refusing and undoing a rollback
@@ -341,7 +433,10 @@ def quarantine(files):
 
 
 def schema_of(release_dir):
-    return rel.read_info(release_dir)["schema"]
+    try:
+        return rel.read_info(release_dir, ci=True)["schema"]
+    except rel.ReleaseError as err:
+        raise Refused(f"{release_dir}: {err}") from err
 
 
 def expected_versions(files, schema):
@@ -350,7 +445,9 @@ def expected_versions(files, schema):
 
 # ------------------------------------------------------------------ the deploy
 def stage(tarball, sig, version, p, host_env, signers=None):
-    """Verify, unpack, check and prepare a release. Nothing is switched. Returns its directory."""
+    """Verify, unpack, check and prepare a release, and install its Asterisk build beside the others. Nothing is switched.
+    Returns its directory."""
+    ci = is_ci(host_env)
     try:
         rel.verify(tarball, sig, signers or rel.signers_file())
     except rel.ReleaseError as err:
@@ -361,7 +458,7 @@ def stage(tarball, sig, version, p, host_env, signers=None):
     shutil.rmtree(tmp, ignore_errors=True)
     try:
         rel.extract(tarball, tmp)
-        info = rel.read_info(tmp)
+        info = rel.read_info(tmp, ci=ci)
     except rel.ReleaseError as err:
         shutil.rmtree(tmp, ignore_errors=True)
         raise Refused(str(err)) from err
@@ -376,19 +473,58 @@ def stage(tarball, sig, version, p, host_env, signers=None):
     except BaseException:
         shutil.rmtree(tmp, ignore_errors=True)
         raise
+    created = False
     try:
         rel.build_venv(dest)
         rel.seal(dest)
-        preflight(dest)
+        # Only from the sealed release directory, whose signature has been checked: the build is read once, hashed against
+        # release.json, validated, unpacked by our own code, and compared with what is on disk if it is already there.
+        created = rel.install_asterisk(dest, opt=common.ASTERISK_OPT, ci=ci)
+        preflight(dest, ci=ci)
     except (rel.ReleaseError, Failed) as err:
         shutil.rmtree(dest, ignore_errors=True)
+        if created:
+            shutil.rmtree(os.path.join(common.ASTERISK_OPT, info["asterisk"]["id"]), ignore_errors=True)
         raise Refused(f"{info['version']} failed its own checks: {err}") from err
     return dest
 
 
-def preflight(release_dir):
+def modules_of(release_dir):
+    """The module names the release says its Asterisk contains (asterisk/build/modules.txt)."""
+    with open(os.path.join(release_dir, "asterisk", "build", "modules.txt"), encoding="utf-8") as f:
+        return sorted(l.strip() for l in f if l.strip() and not l.lstrip().startswith("#"))
+
+
+def smoke_asterisk(tree, ast_id, run=subprocess.run):
+    """`asterisk -V` as the asterisk user (never as root: it runs code from the release), with an empty environment."""
+    done = run(["runuser", "-u", common.ASTERISK_USER, "--", "env", "-i", "PATH=/usr/bin:/bin",
+                os.path.join(tree, "sbin", "asterisk"), "-V"], capture_output=True, text=True, cwd="/", timeout=30)
+    want = "Asterisk " + ast_id.split("-t")[0]
+    if done.returncode != 0 or done.stdout.strip() != want:
+        raise Failed(f"asterisk -V said {done.stdout.strip()!r} {done.stderr.strip()[-200:]!r}, not {want!r}")
+
+
+def check_asterisk(release_dir, info, ci=False, run=subprocess.run):
+    """The release's own Asterisk build is installed exactly as the release made it, links only to what exists, starts, and has exactly
+    the modules the release says. Refuse before anything is stopped, switched or restarted."""
+    ast_id = info["asterisk"]["id"]
+    tree = os.path.join(common.ASTERISK_OPT, ast_id)
+    try:
+        rel.verify_asterisk_tree(tree, release_dir, info, ci=ci)
+        rel.check_elf_needs(tree, ast_id)
+    except rel.ReleaseError as err:
+        raise Failed(str(err)) from err
+    smoke_asterisk(tree, ast_id, run=run)
+    modules = os.path.join(tree, "lib", "asterisk", "modules")
+    have = sorted(n[:-3] for n in os.listdir(modules) if n.endswith(".so"))
+    if have != modules_of(release_dir):
+        raise Failed(f"the installed modules differ from the release's modules.txt: {sorted(set(have) ^ set(modules_of(release_dir)))[:5]}")
+
+
+def preflight(release_dir, ci=False):
     """The new release's own claims, checked with its own code, before anything is touched."""
-    info = rel.read_info(release_dir)
+    info = rel.read_info(release_dir, ci=ci)
+    check_asterisk(release_dir, info, ci=ci)
     py = os.path.join(release_dir, "venv", "bin", "python")
     code = ("import json, sys\n"
             "sys.path.insert(0, 'controller')\n"
@@ -425,53 +561,132 @@ def preflight(release_dir):
         os.remove(tmp)
 
 
+def config_tool():
+    return os.path.join(os.path.dirname(os.path.realpath(__file__)), "treeline-config")
+
+
+def previous_asterisk(prev_dir):
+    """The previous release's build id, with its tree verified NOW, before anything is stopped or switched: a rollback to a build that
+    has gone missing or been changed would fail at the worst moment."""
+    ast_id = rel.release_asterisk_id(prev_dir)
+    if not ast_id:
+        raise Refused(f"the running release ({os.path.basename(prev_dir)}) does not name an Asterisk build (an old release format), "
+                      "so there would be nothing to roll back to. Nothing was changed. Install a release of this format by hand "
+                      "(docs/DEPLOY_AWS.md).")
+    try:
+        rel.verify_asterisk_tree(os.path.join(common.ASTERISK_OPT, ast_id), prev_dir, rel.read_info(prev_dir, ci=True), ci=True)
+    except rel.ReleaseError as err:
+        raise Refused(f"the running release's Asterisk build is not intact, so a rollback would not work: {err}") from err
+    return ast_id
+
+
+def inflight_path(p):
+    return os.path.join(p["state"], "inflight.json")
+
+
+def set_inflight(p, **what):
+    os.makedirs(p["state"], mode=0o700, exist_ok=True)
+    common.atomic_write(inflight_path(p), json.dumps(what), 0o600)
+
+
+def clear_inflight(p):
+    try:
+        os.remove(inflight_path(p))
+    except FileNotFoundError:
+        pass
+
+
+def recover(p):
+    """Under the lock, at the start of every run: a deploy that was killed between writing the configuration and finishing the
+    restart (the journal is still there) left a configuration for one release and a process of another. Make the machine whole
+    again for whichever release the `current` link names: its configuration, its units, its build."""
+    if not os.path.exists(inflight_path(p)):
+        return
+    cur = current_version(p)
+    log(f"a deploy was interrupted ({read_json(inflight_path(p))}); putting the machine back in step with {cur}")
+    if cur:
+        cur_dir = os.path.join(p["releases"], cur)
+        ast_id = rel.release_asterisk_id(cur_dir)
+        done = subprocess.run([config_tool(), "apply", "--release", cur_dir], capture_output=True, text=True)
+        if done.returncode != 0:
+            raise Failed("could not re-render the configuration of the current release: " + done.stderr.strip()[-300:])
+        if ast_id:
+            switch_asterisk(ast_id)
+        subprocess.run(["systemctl", "daemon-reload"], check=True)
+        if ast_id and running_asterisk_id() != ast_id:
+            subprocess.run(["systemctl", "restart", "asterisk"], check=True)
+    clear_inflight(p)
+
+
+def read_json(path):
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
 def deploy(dest, p, host_env, prev_version, patience=0, window=True, allow_older=False):
     """Switch to the staged release at `dest`; roll back if it does not become healthy."""
-    info = rel.read_info(dest)
-    new = info["version"]
+    ci = is_ci(host_env)
+    info = rel.read_info(dest, ci=ci)
+    new, new_ast = info["version"], info["asterisk"]["id"]
     if prev_version and not allow_older and vkey(new) <= vkey(prev_version):
         shutil.rmtree(dest, ignore_errors=True)
         raise Refused(f"{new} is not newer than the running {prev_version}")
+    prev_dir = os.path.join(p["releases"], prev_version) if prev_version else None
     try:
+        prev_ast = previous_asterisk(prev_dir) if prev_dir else None
         wait_for_quiet(host_env, window=window, patience=patience)
         before = data_versions()
     except BaseException:
         shutil.rmtree(dest, ignore_errors=True)      # nothing was switched: do not leave a staged release that blocks the retry
         raise
-    prev_dir = os.path.join(p["releases"], prev_version) if prev_version else None
     snap = os.path.join(p["state"], "config-before")
     os.makedirs(p["state"], mode=0o700, exist_ok=True)
     snapshot_config(snap)
-    log(f"switching {prev_version} -> {new}")
+    log(f"switching {prev_version} -> {new} (Asterisk {prev_ast} -> {new_ast})")
     changed = {"asterisk", "caddy"}          # until we know better, assume the worst for a rollback's restarts
-    cfg = os.path.join(os.path.dirname(os.path.realpath(__file__)), "treeline-config")
+    running_before = running_asterisk_id()
+    set_inflight(p, **{"from": prev_version, "to": new, "from_asterisk": prev_ast, "to_asterisk": new_ast})
     try:
-        done = subprocess.run([cfg, "apply", "--release", dest], capture_output=True, text=True)
+        done = subprocess.run([config_tool(), "apply", "--release", dest], capture_output=True, text=True)
         if done.returncode != 0:
             raise Failed("treeline-config failed: " + done.stderr.strip()[-300:])
         changed = set(done.stdout.replace("changed:", "").replace(",", " ").split()) - {"nothing", "app"}
         build_sounds(dest)
         rel.switch(p["current"], dest)
+        switch_asterisk(new_ast)
         subprocess.run(["systemctl", "daemon-reload"], check=True)
-        restart([u for u in ("asterisk", "caddy") if u in changed])
+        # Asterisk is restarted when it is not running the new build (read from the process) or its configuration changed.
+        restart_ast = running_before != new_ast or "asterisk" in changed
+        restart([u for u in ("asterisk", "caddy") if (u == "asterisk" and restart_ast) or (u == "caddy" and u in changed)])
         restart(SERVICES)
-        if health(new):
-            record(p, current=new, previous=prev_version, schema_before=before, schema_new=info["schema"])
-            clear_failed(p, new)
-            prune(p, keep={new, prev_version})
-            log(f"{new} is healthy")
-            return 0
-        raise Failed(f"{new} did not become healthy")
+        if not (health(new) and (not restart_ast or asterisk_health(new_ast))):
+            raise Failed(f"{new} did not become healthy")
+        record(p, current=new, previous=prev_version, schema_before=before, schema_new=info["schema"],
+               asterisk=new_ast, asterisk_previous=prev_ast)
+        clear_failed(p, new)
     except Exception as err:        # noqa: BLE001 -- anything at all after the switch begins means we go back
         log(f"FAILED: {err}")
-        return roll_back(p, prev_dir, prev_version, snap, before, changed, failed_dir=dest)
+        code = roll_back(p, prev_dir, prev_version, snap, before, changed, failed_dir=dest, prev_ast=prev_ast)
+        clear_inflight(p)
+        return code
+    clear_inflight(p)
+    try:                         # tidying up never turns a healthy deploy into a failed one
+        prune(p, keep={new, prev_version})
+    except Exception as err:     # noqa: BLE001
+        log(f"could not remove old releases (the deploy itself succeeded): {err}")
+    log(f"{new} is healthy")
+    return 0
 
 
-def roll_back(p, prev_dir, prev_version, snap, before, changed, failed_dir=None):
+def roll_back(p, prev_dir, prev_version, snap, before, changed, failed_dir=None, prev_ast=None):
     if not prev_dir:
         log("there is no previous release to go back to")
         return 5
     try:
+        prev_ast = prev_ast or rel.release_asterisk_id(prev_dir)
         for s in SERVICES:
             subprocess.run(["systemctl", "stop", s], check=False)
         after = data_versions()
@@ -487,16 +702,28 @@ def roll_back(p, prev_dir, prev_version, snap, before, changed, failed_dir=None)
             log(f"the failed release migrated {sorted(moved)}; restoring the copies taken just before")
             restore_data_from_pre_migrate(moved, expected)
         restore_config(snap)
+        # The old release's own files for Asterisk (its build's asterisk.conf, its unit and drop-in) are rendered again, not
+        # restored from a copy: a restored byte-copy of a drop-in that names one build beside a unit that names another would not run.
+        done = subprocess.run([config_tool(), "apply", "--release", prev_dir], capture_output=True, text=True)
+        if done.returncode != 0:
+            raise Failed("treeline-config failed for the previous release: " + done.stderr.strip()[-300:])
         build_sounds(prev_dir)
         rel.switch(p["current"], prev_dir)
+        if prev_ast:
+            switch_asterisk(prev_ast)
         subprocess.run(["systemctl", "daemon-reload"], check=True)
-        restart([u for u in ("asterisk", "caddy") if u in changed])
+        restart_ast = "asterisk" in changed or (prev_ast is not None and running_asterisk_id() != prev_ast)
+        restart([u for u in ("asterisk", "caddy") if (u == "asterisk" and restart_ast) or (u == "caddy" and u in changed)])
         restart(SERVICES)
-        if health(prev_version):
+        if health(prev_version) and (not restart_ast or not prev_ast or asterisk_health(prev_ast)):
             log(f"ROLLED BACK to {prev_version}, which is healthy")
             if failed_dir:
                 mark_failed(p, os.path.basename(failed_dir))
                 shutil.rmtree(failed_dir, ignore_errors=True)       # so a fixed build of it can be deployed with --version
+            try:
+                prune_asterisk(p)                                    # the failed release's build is not needed any more
+            except Exception as err:    # noqa: BLE001
+                log(f"could not remove the failed release's Asterisk build: {err}")
             return 1
         log(f"ROLLBACK FAILED: {prev_version} is not healthy either")
         return 5
@@ -539,6 +766,22 @@ def prune(p, keep):
     for v in versions[:-KEEP_RELEASES]:
         if v not in keep:
             shutil.rmtree(os.path.join(p["releases"], v), ignore_errors=True)
+    prune_asterisk(p)
+
+
+def prune_asterisk(p):
+    """Remove Asterisk builds that no remaining release carries and that are not running. If any remaining release cannot be read, what
+    it needs is unknown, so nothing is removed."""
+    keep = set()
+    for v in installed(p):
+        ast_id = rel.release_asterisk_id(os.path.join(p["releases"], v))
+        if ast_id is None:
+            return []
+        keep.add(ast_id)
+    running = running_asterisk_id()
+    if running:
+        keep.add(running)
+    return rel.sweep_asterisk(common.ASTERISK_OPT, keep=keep)
 
 
 def manual_rollback(p):
@@ -546,36 +789,43 @@ def manual_rollback(p):
     prev, cur = state.get("previous"), current_version(p)
     if not prev or not os.path.isdir(os.path.join(p["releases"], prev)):
         raise Refused("there is no previous release on this machine")
+    prev_dir, cur_dir = os.path.join(p["releases"], prev), os.path.join(p["releases"], cur)
     now = data_versions()
-    expected = expected_versions(now, schema_of(os.path.join(p["releases"], prev)))
+    expected = expected_versions(now, schema_of(prev_dir))
     moved = sorted(f for f, v in now.items() if v != expected[f])
     if moved:
         raise Refused(f"cannot roll back from {cur} to {prev}: {moved} are at a newer data version than {prev} understands, and "
                       "families have written to them since. Restore from a backup and a pre-migration copy by hand (docs/DEPLOY_AWS.md, rollback).")
+    prev_ast = previous_asterisk(prev_dir)          # verified before anything is stopped
+    cur_ast = rel.release_asterisk_id(cur_dir)
     wait_for_quiet(common.host_settings(), window=False)
-    prev_dir = os.path.join(p["releases"], prev)
     snap = os.path.join(p["state"], "config-before")
-    cur_dir = os.path.join(p["releases"], cur)
-    cfg = os.path.join(os.path.dirname(os.path.realpath(__file__)), "treeline-config")
     os.makedirs(p["state"], mode=0o700, exist_ok=True)
     snapshot_config(snap)
-    log(f"rolling back {cur} -> {prev}")
+    log(f"rolling back {cur} -> {prev} (Asterisk {cur_ast} -> {prev_ast})")
+    set_inflight(p, **{"from": cur, "to": prev, "from_asterisk": cur_ast, "to_asterisk": prev_ast})
     for s in SERVICES:
         subprocess.run(["systemctl", "stop", s], check=False)
     try:
         rel.switch(p["current"], prev_dir)
-        done = subprocess.run([cfg, "apply", "--release", prev_dir, "--restart"], capture_output=True, text=True)
+        switch_asterisk(prev_ast)
+        done = subprocess.run([config_tool(), "apply", "--release", prev_dir, "--restart"], capture_output=True, text=True)
         if done.returncode != 0:
             raise Failed("treeline-config failed for the previous release: " + done.stderr.strip()[-300:])
         build_sounds(prev_dir)
+        if running_asterisk_id() != prev_ast:           # apply restarts only what changed: the process must be the right build
+            subprocess.run(["systemctl", "restart", "asterisk"], check=True)
         restart(SERVICES)
-        if not health(prev):
+        if not (health(prev) and asterisk_health(prev_ast)):
             raise Failed(f"{prev} did not become healthy")
     except Exception as err:        # noqa: BLE001 -- never leave the services stopped: go back to what was running
         log(f"ROLLBACK FAILED: {err}; going back to {cur}")
         try:
             restore_config(snap)
+            subprocess.run([config_tool(), "apply", "--release", cur_dir], capture_output=True, text=True, check=True)
             rel.switch(p["current"], cur_dir)
+            if cur_ast:
+                switch_asterisk(cur_ast)
             subprocess.run(["systemctl", "daemon-reload"], check=False)
             subprocess.run(["systemctl", "restart", "asterisk", "caddy"], check=False)
             subprocess.run(["systemctl", "restart", *SERVICES], check=False)
@@ -583,61 +833,107 @@ def manual_rollback(p):
         except Exception as again:  # noqa: BLE001
             log(f"could not go back to {cur} either: {again}")
             return 5
+        clear_inflight(p)
         return 5 if not health(cur) else 1
-    record(p, current=prev, previous=cur, schema_before=now, schema_new=schema_of(prev_dir))
+    record(p, current=prev, previous=cur, schema_before=now, schema_new=schema_of(prev_dir), asterisk=prev_ast, asterisk_previous=cur_ast)
+    clear_inflight(p)
     return 0
 
 
 # ------------------------------------------------------------------ commands
+def take_lock(p):
+    """The one lock every change to the installed releases and builds goes through (a deploy, a rollback, adopt, install-asterisk)."""
+    os.makedirs(os.path.dirname(p["run"]), exist_ok=True)
+    lock = open(p["run"], "a")
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        lock.close()
+        raise Busy("another deploy is running") from None
+    return lock
+
+
 def adopt(src):
     """Stage the release install.sh was run from, ONLY on a machine with no release yet. Afterwards releases change only through
     the agent (verified, health-checked, with rollback); re-running an old install.sh must never switch production back."""
     p = paths()
-    if current_version(p):
-        print(f"a release is already installed ({current_version(p)}); install.sh does not change it (use treeline-deploy)")
-        return 0
-    info = rel.read_info(src)
-    dest = os.path.join(p["releases"], info["version"])
-    if os.path.exists(dest):
-        raise SystemExit(f"{dest} already exists")
-    os.makedirs(p["releases"], exist_ok=True)
-    shutil.copytree(src, dest, symlinks=True)
-    try:
-        rel.build_venv(dest)
-        rel.seal(dest)
-    except BaseException:
-        shutil.rmtree(dest, ignore_errors=True)
-        raise
-    rel.switch(p["current"], dest)
-    os.makedirs(p["state"], mode=0o700, exist_ok=True)
-    record(p, current=info["version"], previous=None)
-    print(f"staged {info['version']}")
+    host_env = common.host_settings()
+    ci = is_ci(host_env)
+    with take_lock(p):
+        if current_version(p):
+            print(f"a release is already installed ({current_version(p)}); install.sh does not change it (use treeline-deploy)")
+            return 0
+        rel.sweep_leftovers(common.ASTERISK_OPT)
+        info = rel.read_info(src, ci=ci)
+        dest = os.path.join(p["releases"], info["version"])
+        if os.path.exists(dest):
+            raise SystemExit(f"{dest} already exists")
+        os.makedirs(p["releases"], exist_ok=True)
+        shutil.copytree(src, dest, symlinks=True)
+        try:
+            rel.build_venv(dest)
+            rel.seal(dest)
+            rel.install_asterisk(dest, opt=common.ASTERISK_OPT, ci=ci)
+        except BaseException:
+            shutil.rmtree(dest, ignore_errors=True)
+            raise
+        rel.switch(p["current"], dest)
+        switch_asterisk(info["asterisk"]["id"])
+        os.makedirs(p["state"], mode=0o700, exist_ok=True)
+        record(p, current=info["version"], previous=None, asterisk=info["asterisk"]["id"], asterisk_previous=None)
+        print(f"staged {info['version']} with Asterisk {info['asterisk']['id']}")
+    return 0
+
+
+def install_asterisk_cmd(directory):
+    """Install, or check, the Asterisk build of an installed release (install.sh runs this on every run, before Ubuntu's package is
+    removed): the same installer the deploy uses, under the same lock, and the same checks, including starting `asterisk -V`."""
+    p = paths()
+    host_env = common.host_settings()
+    ci = is_ci(host_env)
+    real = os.path.realpath(directory)
+    if os.path.dirname(real) != os.path.realpath(p["releases"]) or not rel.VERSION_RE.match(os.path.basename(real)):
+        raise Refused(f"{directory} is not an installed release (only /opt/treeline/releases/<version> is accepted)")
+    with take_lock(p):
+        rel.sweep_leftovers(common.ASTERISK_OPT)
+        info = rel.read_info(real, ci=ci)
+        created = rel.install_asterisk(real, opt=common.ASTERISK_OPT, ci=ci)
+        try:
+            check_asterisk(real, info, ci=ci)
+        except Failed:
+            if created:
+                shutil.rmtree(os.path.join(common.ASTERISK_OPT, info["asterisk"]["id"]), ignore_errors=True)
+            raise
+        switch_asterisk(info["asterisk"]["id"])
+        print(f"Asterisk {info['asterisk']['id']} is installed and checked" + (" (new)" if created else ""))
     return 0
 
 
 def run(argv):
     if len(argv) == 2 and argv[0] == "adopt":
         return adopt(os.path.realpath(argv[1]))
+    if len(argv) == 2 and argv[0] == "install-asterisk":
+        return install_asterisk_cmd(argv[1])
     p = paths()
     host_env = common.host_settings()
     opts = {"--version": None, "--tarball": None, "--sig": None, "--rollback": False, "--force": False, "--wait": None}
     it = iter(argv)
     for a in it:
         if a == "status":
-            print(json.dumps({"current": current_version(p), "installed": installed(p), "state": read_state(p)}, indent=2))
+            cur = current_version(p)
+            print(json.dumps({"current": cur, "installed": installed(p), "state": read_state(p),
+                              "asterisk": {"running": running_asterisk_id(),
+                                           "current_release_carries": rel.release_asterisk_id(os.path.join(p["releases"], cur)) if cur else None,
+                                           "builds": sorted(n for n in (os.listdir(common.ASTERISK_OPT) if os.path.isdir(common.ASTERISK_OPT) else [])
+                                                            if rel.ASTERISK_ID_RE.fullmatch(n))}}, indent=2))
             return 0
         if a not in opts:
             print(__doc__)
             return 2
         opts[a] = True if isinstance(opts[a], bool) else next(it, None)
-    os.makedirs(os.path.dirname(p["run"]), exist_ok=True)
-    lock = open(p["run"], "w")
-    try:
-        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except OSError:
-        log("another deploy is running")
-        return 4
-    try:
+    with take_lock(p):
+        rel.sweep_leftovers(common.ASTERISK_OPT)
+        recover(p)
         if opts["--rollback"]:
             return manual_rollback(p)
         auto = not (opts["--version"] or opts["--tarball"])
@@ -664,8 +960,6 @@ def run(argv):
             return deploy(dest, p, host_env, cur, patience=int(opts["--wait"] or 0), window=auto, allow_older=bool(opts["--force"]))
         finally:
             shutil.rmtree(with_dir, ignore_errors=True)
-    finally:
-        lock.close()
 
 
 def main(argv):

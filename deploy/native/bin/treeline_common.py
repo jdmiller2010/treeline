@@ -12,6 +12,10 @@ def data_dir():
     return os.path.join(STATE, "data")
 RUN = os.environ.get("TREELINE_RUN", "/run/treeline")
 OPT = os.environ.get("TREELINE_OPT", "/opt/treeline")
+# The Asterisk builds, one directory per build id (asterisk/build/README.md), and the stable link the CLI uses.
+ASTERISK_OPT = os.environ.get("TREELINE_ASTERISK_OPT", "/opt/asterisk")
+ASTERISK_BIN = os.environ.get("TREELINE_ASTERISK_BIN", "/usr/local/sbin/asterisk")
+ASTERISK_USER = "asterisk"
 
 HOST_RE = re.compile(r"^(?=.{4,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$")
 PLACEHOLDER = re.compile(r"@([A-Z][A-Z0-9_]*)@")

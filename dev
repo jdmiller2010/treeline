@@ -40,7 +40,30 @@ locked() {   # run a command while holding the stack lock; say who has it if bus
   "$@"
 }
 
-stack_up() { dc up -d --build "$@"; }
+# The dev Asterisk is the artifact production runs. compose needs its id and hash (build args); ./dev up puts the file where the
+# image build looks, building it with asterisk/build/run-build.sh if it is not here, and refuses any file artifact.lock does not name.
+if [ -f asterisk/build/artifact.lock ]; then
+  ASTERISK_ID="$(python3 scripts/asterisk_build.py lock-field ARTIFACT_ID)"
+  ASTERISK_SHA256="$(python3 scripts/asterisk_build.py lock-field ARTIFACT_SHA256)"
+  export ASTERISK_ID ASTERISK_SHA256
+fi
+asterisk_artifact() {
+  [ -n "${ASTERISK_ID:-}" ] || { echo "asterisk/build/artifact.lock is missing" >&2; return 1; }
+  python3 scripts/asterisk_build.py check --require-lock >/dev/null || return 1
+  local name="asterisk-$ASTERISK_ID.tar.gz" dest="asterisk/runtime/asterisk-$ASTERISK_ID.tar.gz" f
+  mkdir -p asterisk/runtime
+  right() { [ -f "$1" ] && echo "$ASTERISK_SHA256  $1" | sha256sum -c --status; }
+  right "$dest" && return 0
+  for f in "${ASTERISK_ARTIFACT:-/nonexistent}" "dist/asterisk/$name"; do
+    if right "$f"; then cp "$f" "$dest"; return 0; fi
+  done
+  echo "building the Asterisk artifact (asterisk/build/run-build.sh, about two minutes)..." >&2
+  asterisk/build/run-build.sh "$ROOT/dist/asterisk" >&2 || return 1
+  right "dist/asterisk/$name" || { echo "the build produced a different artifact from the one artifact.lock names ($(sha256sum "dist/asterisk/$name" | cut -c1-16)... against ${ASTERISK_SHA256:0:16}...): the inputs changed without a new lock, or the build is not reproducible here" >&2; return 1; }
+  cp "dist/asterisk/$name" "$dest"
+}
+
+stack_up() { asterisk_artifact && dc up -d --build "$@"; }
 
 in_container() { dc run --rm --no-deps -T "$@"; }
 
@@ -150,7 +173,7 @@ cmd_vulns() {   # the same check CI runs every day (.github/workflows/supply-cha
   else
     python3 scripts/sbom.py -o "$d/sbom.json"
   fi
-  local rc=0; python3 scripts/vuln_check.py "$d/sbom.json" --os-watch asterisk,caddy || rc=$?
+  local rc=0; python3 scripts/vuln_check.py "$d/sbom.json" --os-watch caddy,openssl,libsrtp2 || rc=$?
   rm -rf "$d"; return $rc
 }
 cmd_hooks() { git config core.hooksPath .githooks && echo "pre-commit hook on (.githooks/pre-commit): commits are scanned by scripts/check_repo_rules.py"; }

@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Checks for asterisk/build/ (the pinned Asterisk build, asterisk/build/README.md). Standard library only.
 
-  python3 scripts/asterisk_build.py check                      sources.lock is well formed; artifact.lock (if any) agrees
+  python3 scripts/asterisk_build.py check [--require-lock]     sources.lock is well formed; artifact.lock agrees (and must exist)
   python3 scripts/asterisk_build.py write-lock ARTIFACT.tar.gz  write artifact.lock for a built artifact
+  python3 scripts/asterisk_build.py lock-field NAME             print one validated field of artifact.lock (ARTIFACT_ID, ...)
 
 artifact.lock names the artifact that production runs (its sha256 and size) and holds a digest of every other file in
 asterisk/build/. A change to build.sh, modules.txt, sources.lock, the Dockerfile or anything else there therefore fails
@@ -138,9 +139,18 @@ def check_sources_only(build_dir):
 
 def main(argv):
     try:
-        if argv[:1] == ["check"] and len(argv) == 1:
+        if argv[:1] == ["check"] and argv[1:] in ([], ["--require-lock"]):
             _, art = check()
+            if not art and argv[1:]:
+                raise Problem("there is no artifact.lock: build the artifact, publish it and run write-lock")
             print("asterisk/build: inputs are well formed" + ("; artifact.lock matches the tree" if art else "; no artifact.lock yet"))
+        elif argv[:1] == ["lock-field"] and len(argv) == 2:
+            _, art = check()
+            if not art:
+                raise Problem("there is no artifact.lock")
+            if argv[1] not in ARTIFACT_FIELDS:
+                raise Problem("artifact.lock has no field %s" % argv[1])
+            print(art[argv[1]])
         elif argv[:1] == ["write-lock"] and len(argv) == 2:
             write_lock(argv[1])
             print("wrote asterisk/build/artifact.lock")

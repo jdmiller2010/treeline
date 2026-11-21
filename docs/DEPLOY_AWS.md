@@ -21,7 +21,7 @@ What already exists and is relied on:
 |---|---|---|
 | Account and domain | A new AWS account. `treelinephone.com` is registered in Route 53. | |
 | Host | One **Lightsail** Ubuntu 24.04 instance with a **static IP** and an **attached state disk**. Start on the smallest bundle that runs everything (planned: the 0.5 GB one), resize later. | Asterisk needs an always-on host with UDP; Lightsail is the cheapest fit. Resizing a Lightsail instance means a new instance from a snapshot (or a rebuild), so state must not live on the boot disk. |
-| Runtime | **Native** on the VM: apt Asterisk, Caddy, a Python venv, systemd units. **No Docker in production.** | Docker adds memory and a layer to debug on a tiny box. Docker stays for local development and for a CI job that imitates the VM. |
+| Runtime | **Native** on the VM: an upstream Asterisk built by us and carried in each signed release (`asterisk/build/README.md`), apt Caddy, a Python venv, systemd units. **No Docker in production.** | Docker adds memory and a layer to debug on a tiny box. Docker stays for local development and for a CI job that imitates the VM. |
 | Hostname | `app.treelinephone.com` (**confirmed by the owner**). The bare `treelinephone.com` redirects to it (a Caddy block, free). | The hostname is one setting (`TREELINE_DOMAIN`, from SSM `/treeline/domain` at install), never hard-coded in the app or Caddyfile. `bootstrap.sh` still defaults its mail domain to `treelinephone.com`. |
 | Deploys | GitHub Actions builds a release tarball, attached to a GitHub Release. A **pull-based deploy agent on the VM** (a systemd timer) fetches, verifies, switches a symlink, health-checks and rolls back. The repo stays public so the VM pulls anonymously. | No inbound SSH from CI, no deploy credentials in GitHub. |
 | Sign-in | **Google only.** The emailed-code sign-in is removed from production. **Closed beta by access code** (owner's decision, replacing the invite list): a visitor enters a beta access code, and once it is accepted may register with any Google account. No one is invited by address. | One identity provider, no password handling. Details are settled at work package 5. |
@@ -48,7 +48,7 @@ What already exists and is relied on:
 ```
 
 Services (systemd, all `Restart=on-failure`, hardened with `NoNewPrivileges`, `ProtectSystem`, etc.):
-`caddy`, `asterisk` (the package's unit, with the project's config laid over it), `treeline-api` (gunicorn on
+`caddy`, `asterisk` (our own hardened unit, running the build the release carries as the unprivileged `asterisk` user with no capabilities), `treeline-api` (gunicorn on
 `127.0.0.1:8080`), `treeline-controller`, plus timers: `treeline-backup` (hourly), `treeline-deploy`
 (quiet-hours poll), `treeline-certsync`, `treeline-health` (the dead-man ping). Caddy passes only `/ws` to
 Asterisk; ARI stays on localhost.
@@ -98,7 +98,7 @@ Each is its own branch or PR, with tests that pass before the next starts.
 
 ### 1. Native install and release build
 
-- `deploy/native/install.sh` (idempotent): packages (Asterisk 20.6, Caddy 2.6.2, python3-venv, `age`,
+- `deploy/native/install.sh` (idempotent): packages (the runtime libraries Asterisk links against, Caddy 2.6.2, python3-venv, `age`,
   `ca-certificates`, sox and `fail2ban` from Ubuntu 24.04's own repositories; **there is no `awscli` apt
   package on 24.04**, so the VM uses **boto3**, pinned in `controller/requirements-prod.txt`, in the venv),
   users, directories, mounts the disk (found by its size or label at install, not by a hard-coded device
@@ -119,7 +119,7 @@ Each is its own branch or PR, with tests that pass before the next starts.
   `/etc/treeline/host.env` and the Asterisk config, never committed. The public address comes from, in order:
   `--public-ip`, the instance metadata service, DNS for the host name (the metadata service was not
   verified on Lightsail: see the verification record). All of these option names were checked against the
-  documentation shipped in Ubuntu 24.04's Asterisk 20.6.0.
+  documentation shipped in Ubuntu 24.04's Asterisk 20.6.0, and again against the Asterisk 24.0.0 that is now built and shipped (the VM-imitation job loads them with the real binary).
 - **Certificates for SIP-TLS.** Caddy owns them and its key files are not readable by Asterisk. Pin Caddy to
   one ACME issuer (`tls { issuer acme { dir ... } }`, valid in Caddy 2.6.2) and set
   `storage file_system /var/lib/treeline/caddy` so the files are at
@@ -179,6 +179,8 @@ It now has 40 tests, and `deploy/native/ci/mutation_check.py` breaks seven prope
 on every interface, content on port 80, ARI proxied, no rollback, production mode off) and requires the matching test to fail:
 all seven were caught.
 
+
+**When it runs.** The job always starts, so its required check always reports, but its ten-minute step is skipped for a pull request that changes only things that cannot affect it: screens (`web/`), the design kit, documents, `testphones/`, `infra/` (the CDK has its own check), the app's own unit tests and the supply-chain tooling. The list is `scripts/ci_gate.py`; anything it does not recognise runs the step, and so does every push to `main`, a change that touches both kinds, and a release (the release workflow does not skip it). About 60% of this repository's past commits would have skipped it. A path filter on the whole workflow would not do: GitHub leaves a required check that it never ran "pending", which blocks the merge. For a change to a screen, the check that matters is the browser test for it, run on your machine (`./dev ui smoke`, `./dev ui pwa`, `./dev web phone_ui.py`).
 ### 4. Backups
 
 `treeline-backup` (hourly; today's `backup.py --daemon` runs nightly and is replaced by a timer): SQLite's online backup of the central file and each household file (the existing
@@ -238,6 +240,35 @@ on mobile data to a browser on another network, with audio both ways, which is t
 Asterisk memory under a call on the small bundle (resize if it swaps); a backup lands in S3 and **restores**;
 a deploy and a rollback; an SES message arrives (after production access); if `/treeline/beta_cidrs` is set, a non-listed
 address is blocked. Record what was and was not done in README (Phase 4) and SECURITY.md.
+
+## The Asterisk build
+
+Each release carries its own Asterisk (release.json `format: 2`, `asterisk: {id, sha256}`), compiled from signed upstream source by
+[asterisk/build/](../asterisk/build/README.md) and put into the release by `scripts/build_release.sh`, which refuses a file that is not the
+artifact `asterisk/build/artifact.lock` names. Ubuntu's `asterisk` package is not used any more (it had 76 advisories and no fix: R8-1).
+
+- **Installing it.** `treeline-deploy` (the same code for a first install, a deploy and a repair) reads the artifact **once** from the sealed
+  release directory, hashes those bytes against `release.json`, validates every member (plain files, directories and links to a sibling
+  only; no absolute or `..` names, no set-id or group/world-writable entries, no duplicates, no hard links or devices, size caps),
+  unpacks it with its own code into a staging directory, adds the one link root makes (the operator messages), seals it root-owned and
+  renames it to `/opt/asterisk/<id>`. An existing directory is trusted only after every path and hash in it matches what the release's
+  own copy of the artifact makes. Before a deploy the agent also reads the ELF headers (no `ldd`: it can run the file it inspects),
+  runs `asterisk -V` as the `asterisk` user, and checks that the installed modules are exactly the release's `modules.txt`.
+- **Running it.** `asterisk.service` (installed by `treeline-config` from the release) runs as `asterisk` with no capabilities and a
+  strict filesystem; the build it starts is named in a drop-in rendered from the release's build id, so a new build is a *changed
+  configuration file* and Asterisk is restarted when the process is not running the target build (read from `/proc/<pid>/exe`, never from a
+  state file) or its configuration changed. `/etc/asterisk` holds only what a release renders, owned by root and readable by the
+  `asterisk` group. Everything Asterisk writes (its contact database, spool, cache, logs) is on the state disk.
+- **Rolling back.** The previous build's tree is verified before anything is stopped; the old release's files are rendered again
+  (not restored from copies); the agent writes a journal, so a deploy killed half way is put right at the next run; after any restart
+  the health gate requires Asterisk to be running the right build, answering ARI with its SIP stack loaded, and listening on 5061.
+- **Replacing Ubuntu's package.** `install.sh` installs the release's build first, and only then purges Ubuntu's `asterisk*` packages,
+  writes an apt pin that keeps them out, and re-owns the state directories. A failure before that point leaves the old Asterisk
+  running; one after it is repaired by running `install.sh` again.
+- **Old releases.** A release that does not carry its own Asterisk (`format: 1`) is refused everywhere, including as a rollback target:
+  nothing has run on AWS, so there is nothing to upgrade in place. The error says nothing was changed.
+- **What has and has not run.** All of it has run in the VM-imitating job (Ubuntu 24.04 with systemd in Docker). **None of it has run on
+  AWS**: not NAT and call audio on a real address, not Lightsail's CPU credits or disk, not the real IAM policies.
 
 ## What can and cannot be tested before AWS
 
