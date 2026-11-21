@@ -2,7 +2,7 @@
 
 A sheet of paper laid on the papyrus that groups related content.
 
-**Consumer provides:** `children`, optional `title`, `eyebrow` (overline above the title), `action` (a node top-right), `tone` (`breeze` · `plank` · `dusk` · `night`, organic corners), `elevated` (`shadow-md`), `as` (element, default `section`).
+**Consumer provides:** `children`, optional `title`, `eyebrow` (overline above the title), `action` (a node top-right), `tone` (`breeze` · `plank` · `dusk` · `night`, organic corners), `elevated` (`shadow-md`), `sprig` (a small pencil sprig in the top-right corner), `as` (element, default `section`).
 
 - Default card: `surface` with paper grain and a faint mist bloom, no border, `radius-lg`, `shadow-sm`, `space-6` padding. Titles in Fraunces.
 - Tones are for meaning. One toned card per view. Never a green card.
@@ -12,6 +12,8 @@ A sheet of paper laid on the papyrus that groups related content.
   - `plank`: households and parent notes. A wood wash in the top-left corner.
 - Breeze cards reserve 96px of extra right padding so text never runs under the branch (the branch shrinks to 120 × 96 in narrow content); night cards reserve 44px for the moon.
 - A toned card is still a bright `surface` sheet: its wash pools in one corner and covers less than half the card, so it never blends into the page.
+- `sprig` is for the few cards about the treehouse itself (Treehouse settings, About). One or two a page, never on a toned card (the breeze branch and the moon already own that corner) and never on a card with an action or tag top-right.
+- `data-scene="…"` on a card (`sprout`, `acorn`, `forest`, `fern`, `bloom`) lets the artist's layer draw a small scene on its top edge when there is room (see the design system README, "The artist's layer"). It changes nothing about the card.
 - Space cards `space-8` apart. Don't nest cards; use rows inside.
 
 ## HTML

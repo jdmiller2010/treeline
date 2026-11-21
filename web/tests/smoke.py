@@ -63,6 +63,49 @@ def sign_in(page, email):
     page.click("#step-code button[type=submit]")
 
 
+DOODLE_JS = """() => {
+  const ds = [...document.querySelectorAll('.tl-doodle[data-doodle]')];
+  const text = [...document.querySelectorAll('.tl-card__title,.tl-card__eyebrow,.tl-card__body,.tl-btn,input,select,textarea,a,h1,h2,p,.tl-row__title,.tl-tag,.tl-steps__label,.tl-steps__summary')];
+  const textRects = (el) => { const out = [], w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    while (w.nextNode()) { if (!w.currentNode.nodeValue.trim()) continue; const g = document.createRange(); g.selectNodeContents(w.currentNode); out.push(...g.getClientRects()); } return out; };
+  const hit = (a, b) => a.left < b.right - 1 && a.right > b.left + 1 && a.top < b.bottom - 3 && a.bottom > b.top + 3;
+  const bad = [];
+  for (const d of ds) {
+    const r = d.getBoundingClientRect();
+    if (d.getAttribute('aria-hidden') !== 'true' || getComputedStyle(d).pointerEvents !== 'none') bad.push('not inert');
+    for (const t of text) {
+      if (d.contains(t)) continue;
+      const solid = t.matches('.tl-btn,input,select,textarea,a,.tl-tag');
+      const rects = solid ? [t.getBoundingClientRect()] : textRects(t);
+      if (rects.some(q => hit(r, q))) bad.push(d.dataset.doodle + ' over ' + (t.textContent || t.tagName).trim().slice(0, 24));
+    }
+  }
+  return { n: ds.length, bad, wide: document.documentElement.scrollWidth > innerWidth + 1,
+           sig: ds.map(d => d.dataset.doodle + Math.round(d.getBoundingClientRect().left / 12)).sort().join(',') };
+}"""
+
+LAYOUT_JS = """() => {
+  const layer = document.querySelector('.tl-doodle-layer');
+  const snap = () => [...document.body.querySelectorAll('*')].filter(e => !e.closest('.tl-doodle-layer') && !e.classList.contains('tl-doodle-layer'))
+    .map(e => { const r = e.getBoundingClientRect(); return [e.tagName, Math.round(r.left * 10), Math.round(r.top * 10), Math.round(r.width * 10), Math.round(r.height * 10)].join(); })
+    .concat([document.documentElement.scrollWidth, document.documentElement.scrollHeight].join()).join('|');
+  const inTree = document.querySelectorAll('main .tl-doodle, .tl-card .tl-doodle, #app .tl-doodle').length;
+  const withDoodles = snap();
+  if (layer) layer.style.display = 'none';
+  const without = snap();
+  if (layer) layer.style.display = '';
+  return { same: withDoodles === without, inTree, layers: document.querySelectorAll('.tl-doodle-layer').length };
+}"""
+
+def doodle_check(page, where):
+    page.wait_for_timeout(700)
+    r = page.evaluate(DOODLE_JS)
+    check(not r["bad"] and not r["wide"], f"doodles on {where} stay off text and controls, take no room, and never scroll the page sideways" + (f" ({r['bad'][:2]})" if r["bad"] else ""))
+    lay = page.evaluate(LAYOUT_JS)
+    check(lay["same"] and lay["inTree"] == 0, f"on {where}, every element is exactly where it would be without the doodles, and none are inside the app's own markup")
+    check(lay["layers"] <= 1, f"on {where}, there is only ever one doodle layer")
+    return r
+
 def shoot(page, name):
     os.makedirs(SHOTS, exist_ok=True)
     page.screenshot(path=f"{SHOTS}/{name}.png", full_page=True)
@@ -80,10 +123,21 @@ def make_family(browser, email, name, tz="America/Los_Angeles"):
     sign_in(page, email)
     page.wait_for_selector("#th-name")
     check(email in page.inner_text("[data-setting-up-as]"), f"{name}: setup says whose account the treehouse will belong to (R6-1)")
+    shoot(page, "setup-step1-390")
     page.fill("#th-name", name)
     page.fill("#th-you", "Pat")
     page.click("button[type=submit]")
     page.wait_for_selector("#ack")
+    page.wait_for_timeout(900)
+    page.mouse.wheel(0, 500); page.wait_for_timeout(250)
+    top = page.evaluate("() => Math.round(document.querySelector('.tl-stepsnav--pinned').getBoundingClientRect().top)")
+    check(abs(top) <= 1 and page.evaluate("() => window.scrollY") > 100, f"{name}: the setup string stays pinned to the top while the page scrolls ({top}px)")
+    os.makedirs(SHOTS, exist_ok=True)
+    page.screenshot(path=f"{SHOTS}/setup-step2-pinned-390.png")           # the viewport as it is, to see the pinned string over the page
+    page.set_viewport_size({"width": 1280, "height": 800}); page.wait_for_timeout(300)
+    page.screenshot(path=f"{SHOTS}/setup-step2-pinned-1280.png")
+    page.set_viewport_size({"width": 390, "height": 844}); page.wait_for_timeout(300)
+    page.evaluate("window.scrollTo(0, 0)")
     check(page.locator("button[type=submit]").is_disabled(), f"{name}: can't continue without the 911 box")
     page.click("label[for=ack]")
     check(page.locator("button[type=submit]").is_disabled(), f"{name}: one box isn't enough, the privacy box is needed too")
@@ -204,6 +258,7 @@ def main():
         copy_btn.wait_for()
         code = re.search(r"[A-Z2-9]{4}-[A-Z2-9]{4}", a.inner_text(".tl-sheet-scrim:not([hidden])")).group(0)
         check("string code" in a.inner_text(".tl-sheet-scrim:not([hidden])").lower() and "ladder" not in a.inner_text(".tl-sheet-scrim:not([hidden])").lower(), "the new code is called a string code")
+        a.wait_for_timeout(600)                                        # let the sheet finish sliding up before measuring
         cb, db_ = copy_btn.bounding_box(), done_btn.bounding_box()
         check(a.locator(".tl-sheet-scrim:not([hidden]) .tl-actions").count() == 1 and abs(cb["y"] - db_["y"]) < 4 and cb["x"] < db_["x"],
               f"the string code dialog has one row of buttons, Copy message first with Done beside it ({cb['x']:.0f},{cb['y']:.0f} / {db_['x']:.0f},{db_['y']:.0f})")
@@ -221,7 +276,7 @@ def main():
         s.wait_for_selector(".tl-home-hero")
         check(s.locator("h2:has-text('Phones')").count() == 1 and s.locator("text=Add your first phone").count() == 0,
               "with no phones yet, Home has one Phones section, not a second 'add your first phone' prompt")
-        check(s.locator(".tl-art").count() == 1 and s.locator(".tl-empty__art").count() == 0,
+        check(s.locator(".tl-art:not(.tl-leafdiv__sprig)").count() == 1 and s.locator(".tl-empty__art").count() == 0,
               "and one picture on the screen: the treehouse at the top")
         s.goto(f"{BASE}/parent/#/strings")
         s.wait_for_selector("text=No strings yet")
@@ -259,6 +314,14 @@ def main():
         a.wait_for_selector("text=is connected again")
         # Home opens with the treehouse: the picture, the name under it, when it joined and its number (the brand guide's
         # picture-with-text, centered). Scrolled up under the title bar, the name moves into the title bar instead.
+        a.goto(f"{BASE}/parent/#/home"); a.wait_for_selector(".tl-home-hero")
+        r = doodle_check(a, "Home"); shoot(a, "doodles-home-390")
+        a.goto(f"{BASE}/parent/#/settings"); a.wait_for_selector("h2:has-text('Parent code')")
+        sigs = set()
+        for _ in range(8):
+            a.reload(); a.wait_for_selector("h2:has-text('Parent code')"); r = doodle_check(a, "Settings"); sigs.add(r["sig"])
+        check(len(sigs) > 1, "the doodles are drawn differently on each load of the same page")
+        shoot(a, "doodles-settings-390")
         a.goto(f"{BASE}/parent/#/home"); a.wait_for_selector(".tl-home-hero")
         a.set_viewport_size({"width": 390, "height": 700}); a.wait_for_timeout(400)
         check(a.locator(".tl-home-hero .tl-art").count() == 1 and a.inner_text("#home-name") == "Alex's house", "Home opens with the treehouse picture and its name under it")

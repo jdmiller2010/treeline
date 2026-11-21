@@ -5,7 +5,7 @@ import { KIND, addHandsetDialog } from "./house.js";
 import { showStringCode } from "./strings.js";
 import { privacyAccordion } from "./privacy-content.js";
 
-const NAMES = ["Your treehouse", "No 911", "Add a phone", "Invite a friend"];
+const NAMES = ["Your treehouse", "No 911", "First phone", "First string"];
 const COMMON_ZONES = [["America/New_York", "Eastern"], ["America/Chicago", "Central"], ["America/Denver", "Mountain"],
   ["America/Phoenix", "Arizona"], ["America/Los_Angeles", "Pacific"], ["America/Anchorage", "Alaska"], ["Pacific/Honolulu", "Hawaii"]];
 
@@ -28,7 +28,9 @@ export async function setup(ctx) {
     mount(root) {
       const body = root.querySelector("#setup-body");
 
-      const stepper = () => steps(NAMES, state.step);
+      const redraw = () => window.TLDoodles?.scatter(root.closest("main") || root.querySelector("main") || document.getElementById("main"), "setup" + state.step);
+      new MutationObserver(() => requestAnimationFrame(redraw)).observe(body, { childList: true });
+      const stepper = () => steps(NAMES, state.step, "Setting up your treehouse", true);
       const error = (msg) => body.querySelector("[data-error]").innerHTML = msg ? str(alert({ tone: "danger", title: msg })) : "";
 
       function step1() {
@@ -37,9 +39,9 @@ export async function setup(ctx) {
         <section class="tl-stack">
           <h1 class="display-md">Name your treehouse</h1>
           <p class="caption" data-setting-up-as>You're setting this up as <strong>${ctx.me?.email || ""}</strong>. Not you? <a class="tl-footer__link" href="#/signin" data-not-me>Sign out</a></p>
-          <p class="body tl-measure" style="color:var(--ink-muted)">Families you connect with see this name. Treeline gives you a four-digit number for your phones.</p>
+          <p class="body tl-measure" style="color:var(--ink-muted)">Families you string with see this name. Treeline gives your treehouse a four-digit number, and friends dial it to reach you.</p>
         </section>
-        <section class="tl-card"><form class="tl-stack tl-stack--group" novalidate>
+        <section class="tl-card" data-scene="sprout"><form class="tl-stack tl-stack--group" novalidate>
           ${textField({ id: "th-name", label: "Treehouse name", placeholder: "Bennett house", value: state.name, hint: "Most families use the family name." })}
           ${textField({ id: "th-you", label: "Your first name", value: state.yourName, placeholder: "Jordan" })}
           ${selectField({ id: "th-tz", label: "Time zone", options: opts, value: state.tz, hint: "Quiet hours follow this time zone, daylight saving included." })}
@@ -64,7 +66,7 @@ export async function setup(ctx) {
         <section class="tl-stack">
           <h1 class="display-md">Treeline can't call 911</h1>
           <p class="body tl-measure">${NO_911}</p>
-          <p class="body tl-measure" style="color:var(--ink-muted)">Phones on Treeline only connect to treehouses on the Treeline. Outside numbers can't call in, either. Make sure your kids know who to ask, and how to reach help, when they need it.</p>
+          <p class="body tl-measure" style="color:var(--ink-muted)">Phones on Treeline only reach treehouses strung to yours. Outside numbers can't call in, either. Make sure your kids know who to ask, and how to reach help, when they need it.</p>
         </section>
         <section class="tl-card"><form class="tl-stack tl-stack--group" novalidate>
           ${checkRow({ id: "ack", label: "I understand Treeline can't call 911 or any outside number" })}
@@ -99,8 +101,8 @@ export async function setup(ctx) {
           <p class="tl-card__body">Your number is <strong class="tl-num">${state.house.number}</strong>. Friends will dial it.</p>
         </section>
         <section class="tl-stack">
-          <h1 class="display-md">Add your first phone</h1>
-          <p class="body tl-measure" style="color:var(--ink-muted)">Pick what you'll connect first. You can add more later, and they all ring together.</p>
+          <h1 class="display-md">Put a phone in your treehouse</h1>
+          <p class="body tl-measure" style="color:var(--ink-muted)">Pick the first phone to hang up. You can add more later, and they all ring together.</p>
         </section>
         <section class="tl-stack">
           <div class="tl-card tl-card--list" aria-label="Kinds of phone">
@@ -122,8 +124,8 @@ export async function setup(ctx) {
       function step4() {
         body.innerHTML = str(html`${stepper()}
         <section class="tl-stack">
-          <h1 class="display-md">Invite a friend's family</h1>
-          <p class="body tl-measure" style="color:var(--ink-muted)">Make a string code and send it to a parent you know. When they enter it, you both say yes, and the kids can call each other.</p>
+          <h1 class="display-md">Stretch a string to a friend</h1>
+          <p class="body tl-measure" style="color:var(--ink-muted)">A string is the line between your treehouse and a friend's. Make a string code and send it to a parent you know. When they enter it, you both say yes, and the kids can call each other.</p>
         </section>
         <section class="tl-stack">
           <div class="tl-setup-art" style="width:min(240px,100%);margin-inline:auto;padding-block:var(--space-4)">${art("connection")}</div>

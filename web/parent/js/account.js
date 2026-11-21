@@ -39,7 +39,7 @@ export async function account(ctx) {
     <div class="tl-actions">${button({ label: "Sign out", attrs: "data-sign-out-btn" })}</div>
   </div></section>
 
-  ${parent ? html`<form class="tl-card" id="house-form" novalidate><div class="tl-stack tl-stack--group">
+  ${parent ? html`<form class="tl-card tl-card--sprig" id="house-form" novalidate><div class="tl-stack tl-stack--group">
     <h2 class="tl-card__title">Treehouse</h2>
     ${textField({ id: "set-name", label: "Name", value: th.name, hint: "Families you're strung with see this." })}
     ${selectField({ id: "set-tz", label: "Time zone", options: zones, value: th.timezone, hint: "Quiet hours and daily minutes follow it." })}
@@ -49,7 +49,7 @@ export async function account(ctx) {
     <div class="tl-actions">${button({ label: "Save", variant: "primary", type: "submit" })}</div>
   </div></form>` : ""}
 
-  ${parent ? html`<section class="tl-card"><div class="tl-stack tl-stack--group">
+  ${parent ? html`<section class="tl-card" data-scene="acorn"><div class="tl-stack tl-stack--group">
     <h2 class="tl-card__title">Parent code</h2>
     <p class="tl-card__body">${hasParentCode(ctx)
       ? "A parent code is set. It is what takes a device out of phone mode, so keep it to yourselves."
@@ -57,13 +57,13 @@ export async function account(ctx) {
     <div class="tl-actions">${button({ label: hasParentCode(ctx) ? "Change parent code" : "Set a parent code", variant: hasParentCode(ctx) ? "secondary" : "primary", attrs: "data-parent-code" })}</div>
   </div></section>` : ""}
 
-  <section class="tl-card"><div class="tl-stack tl-stack--group">
+  <section class="tl-card" data-scene="fern"><div class="tl-stack tl-stack--group">
     <h2 class="tl-card__title">Notifications</h2>
     <p class="tl-card__body">We email you when a string needs an answer, a phone goes offline, or someone dials numbers that aren't strung. ${PUSH_TEXT[push]}</p>
     ${push === "on" || push === "off" ? html`<div class="tl-actions">${push === "on" ? button({ label: "Turn off on this device", attrs: "data-push-off" }) : button({ label: "Turn on for this device", attrs: "data-push-on" })}</div>` : ""}
   </div></section>
 
-  ${parent ? html`<section class="tl-card"><div class="tl-stack tl-stack--group">
+  ${parent ? html`<section class="tl-card" data-scene="forest"><div class="tl-stack tl-stack--group">
     <h2 class="tl-card__title">Records</h2>
     <p class="tl-card__body">Every change a grown-up makes is written to the action log, so you can see who changed what.</p>
     <div class="tl-actions">${button({ label: "Action log", attrs: 'data-href="#/actions"' })}</div>
@@ -130,7 +130,7 @@ export async function privacy(ctx) {
 
 export async function about(ctx) {
   const content = html`
-  <section class="tl-card"><div class="tl-stack tl-stack--group">
+  <section class="tl-card tl-card--sprig"><div class="tl-stack tl-stack--group">
     <h2 class="tl-card__title">Treeline</h2>
     <p class="tl-tagline">Safe calls for neighborhood kids</p>
     <p class="tl-card__body">A house-to-house phone for kids who live near each other, with parents holding the keys.</p>

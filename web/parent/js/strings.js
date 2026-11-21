@@ -36,7 +36,7 @@ export async function redeemDialog(ctx, code = "") {
 }
 
 function stateTag(s) {
-  if (s.state === "live") return tag("canopy", "Strung", "shield-check");
+  if (s.state === "live") return tag("canopy", "Strung", "leaf");
   if (s.state === "paused") return tag("bark", s.paused_by_me ? "Paused by you" : "Paused by them", "pause");
   return tag("neutral", s.mine_approved ? "Waiting on them" : "Needs your answer", "clock");
 }
@@ -98,7 +98,7 @@ export async function strings(ctx, params) {
 
   const detail = selected ? html`
     <button class="tl-btn tl-btn--quiet tl-btn--sm tl-listdetail__back" type="button" data-back-list><span class="tl-btn__label">‹ All strings</span></button>
-    ${selected.state === "waiting" ? approvalCard(selected, parent) : html`<div class="tl-card">
+    ${selected.state === "waiting" ? approvalCard(selected, parent) : html`<div class="tl-card"${selected.state === "live" ? raw(' data-scene="bloom"') : ""}>
       <header class="tl-card__head"><div><p class="tl-card__eyebrow">String</p><h3 class="tl-card__title">${selected.other.name}</h3></div>${stateTag(selected)}</header>
       <dl class="tl-dl">
         <div class="tl-dl__row"><dt>Their number</dt><dd class="tl-num">${selected.other.number}</dd></div>

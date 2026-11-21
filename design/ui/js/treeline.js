@@ -77,7 +77,7 @@
   var ICON = function (paths) { return '<svg class="tl-icon tl-toast__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + paths + '</svg>'; };
   var TOAST_ICONS = {
     neutral: ICON('<circle cx="12" cy="12" r="9"/><path d="M12 11v5.5"/><path d="M12 7.5v.01"/>'),
-    success: ICON('<path d="M5 12.5l4.5 4.5L19 7.5"/>'),
+    success: ICON('<path d="M5 19c0-8 5-14 14-14 0 9-6 14-14 14z"/><path d="M5 19l8-8"/>'),
     warning: ICON('<path d="M10.3 4.6a2 2 0 0 1 3.4 0l7.4 12.9A2 2 0 0 1 19.4 20.5H4.6a2 2 0 0 1-1.7-3z"/><path d="M12 9.5v4.5"/><path d="M12 17v.01"/>')
   };
   function toast(message, opts) {

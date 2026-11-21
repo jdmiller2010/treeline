@@ -27,7 +27,7 @@ Exact markup for use without React, with `tokens.css` and `components/bundle.css
 
 ```html
 <div class="tl-toast tl-toast--success" role="status">
-  <svg class="tl-icon tl-toast__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+  <svg class="tl-icon tl-toast__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 19c0-8 5-14 14-14 0 9-6 14-14 14z"/><path d="M5 19l8-8"/></svg>
   <span class="tl-toast__msg">Riley removed</span>
   <button type="button" class="tl-toast__action">Undo</button>
 </div>
@@ -47,7 +47,7 @@ Exact markup for use without React, with `tokens.css` and `components/bundle.css
 ```html
 <div class="tl-toasts" aria-live="polite" aria-atomic="false">
   <div class="tl-toast tl-toast--success" role="status">
-    <svg class="tl-icon tl-toast__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+    <svg class="tl-icon tl-toast__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 19c0-8 5-14 14-14 0 9-6 14-14 14z"/><path d="M5 19l8-8"/></svg>
     <span class="tl-toast__msg">Quiet hours saved</span>
   </div>
 </div>

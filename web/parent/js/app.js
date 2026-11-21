@@ -142,6 +142,13 @@ async function render() {
   }
 }
 
+/** The artist's layer: doodles drawn on the page, different on every load. Purely decoration: with the script missing, nothing changes. */
+function decorate(v) {
+  const draw = () => window.TLDoodles?.scatter(root.querySelector(".tl-app__main") || root.querySelector("main"), (v.title || "") + location.hash);
+  draw();
+  document.fonts?.ready.then(draw);
+}
+
 function show(v, mine) {
   if (mine !== renderToken) return;       // a newer navigation won
   if (v.redirect) return ctx.go(v.redirect);
@@ -153,6 +160,7 @@ function show(v, mine) {
   if (region) liveToasts.forEach((t) => region.appendChild(t));
   document.title = (v.title ? v.title + " · " : "") + "Treeline";
   window.scrollTo(0, 0);
+  decorate(v);
   root.querySelector("[data-sign-out]")?.addEventListener("click", signOut);
   root.querySelector("[data-install-app]")?.addEventListener("click", async () => {
     if (await runInstall() === "steps") await infoDialog({ title: "Install Treeline", body: installSteps() });
