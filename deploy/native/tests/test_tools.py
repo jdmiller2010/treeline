@@ -10,6 +10,7 @@ import subprocess
 import tarfile
 import tempfile
 import unittest
+from unittest import mock
 
 import helpers
 
@@ -98,8 +99,22 @@ class CertSync(unittest.TestCase):
     def test_the_one_matching_pair_is_copied_with_a_private_key(self):
         self.put("acme-v02.api.letsencrypt.org-directory")
         self.assertTrue(certsync.sync(str(self.storage), "app.example.invalid", str(self.keys), owner="nonexistent-user"))
-        self.assertEqual(oct((self.keys / "treeline.key").stat().st_mode & 0o777), "0o600")
+        self.assertEqual(oct((self.keys / "treeline.key").stat().st_mode & 0o777), "0o640")      # root's, group asterisk may read it
         self.assertFalse(certsync.sync(str(self.storage), "app.example.invalid", str(self.keys), owner="nonexistent-user"), "second run must report no change")
+
+    def test_a_restart_waits_for_a_deploy_in_progress_and_never_skips(self):
+        import fcntl
+        lock = self.d / "deploy.lock"
+        calls = []
+        with mock.patch.object(certsync.subprocess, "run", lambda cmd, **kw: calls.append(cmd)):
+            with open(lock, "w") as held:
+                fcntl.flock(held, fcntl.LOCK_EX)
+                with self.assertRaises(SystemExit) as why:
+                    certsync.restart_when_idle(str(lock), wait=0)
+                self.assertIn("not restarted", str(why.exception))
+                self.assertEqual(calls, [])                      # held: no restart in the middle of a deploy
+            certsync.restart_when_idle(str(lock), wait=0)
+            self.assertEqual(calls, [["systemctl", "restart", "asterisk"]])
 
     def test_none_or_two_issuers_is_refused(self):
         with self.assertRaises(SystemExit) as none:
@@ -121,6 +136,10 @@ class Config(unittest.TestCase):
     def setUp(self):
         self.d = pathlib.Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.d, True)
+        # The repository root stands in for a release here, and it has no release.json: the build id is a fixed one.
+        patch = mock.patch.object(config, "asterisk_id", lambda release: helpers.ID)
+        patch.start()
+        self.addCleanup(patch.stop)
         (self.d / "ari-password").write_text("Abc123" * 6 + "\n")
         self.write_host()
 
@@ -476,7 +495,6 @@ class DeployAgentLogic(unittest.TestCase):
         def fake_run(cmd, **kw):
             calls.append(cmd)
             return subprocess.CompletedProcess(cmd, 1 if "treeline-config" in cmd[0] else 0, "", "boom: a template")
-        from unittest import mock
         with mock.patch.object(deploy, "data_versions", lambda: {"treeline.db": 1}), \
                 mock.patch.object(deploy, "schema_of", lambda _d: {"central": 1, "household": 1}), \
                 mock.patch.object(deploy, "wait_for_quiet", lambda *a, **k: None), \
@@ -485,11 +503,17 @@ class DeployAgentLogic(unittest.TestCase):
                 mock.patch.object(deploy, "restore_config", lambda src: calls.append(["restore_config"])), \
                 mock.patch.object(deploy, "build_sounds", lambda rd: None), \
                 mock.patch.object(deploy, "health", lambda v, seconds=0: v == "v1.1.0"), \
+                mock.patch.object(deploy, "previous_asterisk", lambda d: "24.0.0-t1"), \
+                mock.patch.object(deploy.rel, "release_asterisk_id", lambda d: "24.0.0-t0"), \
+                mock.patch.object(deploy, "switch_asterisk", lambda i: calls.append(["switch_asterisk", i])), \
+                mock.patch.object(deploy, "running_asterisk_id", lambda *a: "24.0.0-t0"), \
+                mock.patch.object(deploy, "asterisk_health", lambda i, seconds=0: i == "24.0.0-t0"), \
                 mock.patch.object(deploy.subprocess, "run", fake_run):
             rc = deploy.manual_rollback(p)
         self.assertEqual(rc, 1, "it reports the failure ...")
         self.assertEqual(os.path.realpath(d / "current"), str(d / "releases" / "v1.1.0"), "... and is back on what was running")
         self.assertIn(["restore_config"], calls)
+        self.assertIn(["switch_asterisk", "24.0.0-t0"], calls[calls.index(["switch_asterisk", "24.0.0-t1"]):], "and the Asterisk link went back too")
         self.assertTrue(any(c[:2] == ["systemctl", "restart"] and "treeline-api" in c for c in calls), "the services were started again")
 
     def test_expected_versions_come_from_the_old_releases_own_schema(self):

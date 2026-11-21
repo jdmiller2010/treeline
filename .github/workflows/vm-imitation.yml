@@ -42,7 +42,7 @@ jobs:
       - run: sudo apt-get install -y -qq age
       - run: cd deploy/native/tests && python3 -W error::ResourceWarning -m unittest -v
       - name: The pinned Asterisk build's inputs and lock files
-        run: python3 -W error::ResourceWarning -m unittest -v scripts/test_asterisk_build.py && python3 scripts/asterisk_build.py check
+        run: python3 -W error::ResourceWarning -m unittest -v scripts/test_asterisk_build.py scripts/test_ci_gate.py && python3 scripts/asterisk_build.py check
 
   cdk:
     name: the CDK app (template assertions and a real cdk synth, no AWS account)
@@ -70,5 +70,25 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 2                      # a pull request's checkout is a merge commit: its first parent is the base
+      # This job always starts, so the required check always reports (a required check that GitHub does not run stays pending
+      # and blocks the merge). What it may skip is the ten-minute step below, for a change that cannot affect it: a screen, the
+      # design kit, a document (scripts/ci_gate.py holds the list, and anything it does not know runs the step). Pushes to main
+      # and every other event always run it.
+      - name: Does this change need the VM imitation?
+        id: gate
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" != pull_request ]; then
+            python3 scripts/ci_gate.py --event push >> "$GITHUB_OUTPUT"
+          else
+            git diff --name-only HEAD^1 HEAD > "$RUNNER_TEMP/changed.txt"
+            python3 scripts/ci_gate.py "$RUNNER_TEMP/changed.txt" >> "$GITHUB_OUTPUT"
+            { echo "### VM imitation"; echo; echo "Changed in this pull request:"; echo '```'; head -40 "$RUNNER_TEMP/changed.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          grep '^run=' "$GITHUB_OUTPUT" | tail -1 | sed 's/^run=/VM imitation needed: /'
       - name: install.sh, the deploy agent, routing, ports, secrets, rollback
+        if: steps.gate.outputs.run == 'true'
         run: python3 -m unittest -v deploy/native/ci/vm_test.py

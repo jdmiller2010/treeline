@@ -1,0 +1,17 @@
+# Asterisk's logs are on the state disk (astlogdir). Rotated by logrotate (it has a timer of its own); `su` is mandatory: logrotate runs
+# as root and must never work inside a directory the asterisk user can write (docs/SECURITY.md, R6-2). Asterisk is told to open the
+# new file with `logger reload` (a hangup signal would reload everything).
+/var/lib/treeline/logs/asterisk/messages {
+    weekly
+    rotate 4
+    missingok
+    notifempty
+    compress
+    delaycompress
+    sharedscripts
+    su asterisk asterisk
+    create 0640 asterisk asterisk
+    postrotate
+        /usr/local/sbin/asterisk -C /etc/asterisk/asterisk.conf -rx "logger reload" >/dev/null 2>&1 || true
+    endscript
+}

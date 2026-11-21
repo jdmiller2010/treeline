@@ -1,0 +1,13 @@
+# The Ubuntu packages the Asterisk artifact links against (from its bill of materials, asterisk/build/README.md): the dev image
+# installs them, and deploy/native/install.sh installs the same list on the VM (a test keeps the two together).
+libssl3t64
+libsrtp2-1
+libjansson4
+libxml2
+libxslt1.1
+libsqlite3-0
+libedit2
+libuuid1
+liburiparser1
+libcap2
+libsystemd0

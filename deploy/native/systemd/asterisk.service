@@ -1,0 +1,59 @@
+# Asterisk, the phone switch. Installed by treeline-config from the release (so a release can change it); the build that runs is
+# named in the drop-in treeline-config renders from templates/systemd/asterisk-exec.conf. Asterisk never runs as root and has
+# no capabilities: every port it binds is above 1024.
+[Unit]
+Description=Asterisk (Treeline's phone switch)
+After=network-online.target
+Wants=network-online.target
+RequiresMountsFor=/var/lib/treeline
+StartLimitIntervalSec=0
+
+[Service]
+Type=notify
+NotifyAccess=main
+User=asterisk
+Group=asterisk
+UMask=0027
+RuntimeDirectory=asterisk
+RuntimeDirectoryMode=0750
+WorkingDirectory=/var/lib/treeline/asterisk
+# Replaced by the drop-in. -m mute, -q quiet, -f foreground (systemd supervises it). No -p: real-time priority is not needed
+# and would need CAP_SYS_NICE.
+ExecStart=/usr/local/sbin/asterisk -mqf -C /etc/asterisk/asterisk.conf
+ExecReload=/usr/local/sbin/asterisk -C /etc/asterisk/asterisk.conf -rx "core reload"
+# Calls must keep working through a restart of the app. Logs go to the state disk (astlogdir), not the journal.
+Restart=on-failure
+RestartSec=2
+LimitCORE=0
+LimitNOFILE=8192
+StandardOutput=null
+StandardError=journal
+
+# What it may touch: its own state and logs (the state disk), nothing else of ours.
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ReadWritePaths=/var/lib/treeline/asterisk /var/lib/treeline/logs/asterisk
+InaccessiblePaths=-/var/lib/treeline/data -/var/lib/treeline/backup -/var/lib/treeline/deploy -/var/lib/treeline/spool -/var/lib/treeline/caddy -/etc/treeline
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+# AF_NETLINK: listing the machine's addresses (ICE candidates) uses it.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+
+[Install]
+WantedBy=multi-user.target

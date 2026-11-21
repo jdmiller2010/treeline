@@ -3,7 +3,7 @@
 
     python3 scripts/sbom.py -o sbom.json && python3 scripts/vuln_check.py sbom.json
     python3 scripts/vuln_check.py sbom.json --report report.md        also write the report as Markdown
-    python3 scripts/vuln_check.py sbom.json --os-watch asterisk,caddy  Ubuntu packages whose findings count (see below)
+    python3 scripts/vuln_check.py sbom.json --os-watch caddy,openssl,libsrtp2  Ubuntu packages whose findings count (see below)
     python3 scripts/vuln_check.py sbom.json --sync-issue               keep one GitHub issue in step with the result (CI)
 
 Exit status: 0 nothing to act on; 1 something to act on; 2 the check itself could not be done (no network, an answer

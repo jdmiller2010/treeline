@@ -8,9 +8,10 @@ from treeline import calls, db, households, rules
 
 
 class FakeAri:
-    def __init__(self, bridge_ok=True):
+    def __init__(self, bridge_ok=True, play_ok=True):
         self.sent = []
         self.bridge_ok = bridge_ok
+        self.play_ok = play_ok
 
     def request(self, method, path, **params):
         self.sent.append((method, path, params))
@@ -18,6 +19,8 @@ class FakeAri:
             return {"id": "br1"} if self.bridge_ok else None
         if path == "/endpoints/PJSIP":
             return []
+        if path.endswith("/play"):
+            return {"id": "pb-%d" % len(self.sent)} if self.play_ok else None   # a started playback has an id
         return {}
 
     def online_users(self):
@@ -99,6 +102,46 @@ class EngineTests(unittest.TestCase):
         e.on_incoming({"id": "j1", "name": f"PJSIP/{handset['sip_user']}-0001", "dialplan": {"exten": rules.SYSTEM_JOIN_NUMBER}})
         self.assertNotIn("j1", call.legs)
         self.assertTrue(any(m == "POST" and path.startswith("/channels/j1/play/") for m, path, _ in e.ari.sent))   # fast busy
+
+    def call_events(self):
+        return [r["event"] for r in self.conn.execute("SELECT event FROM call_event WHERE call_id=? ORDER BY id", (self.call_id,))]
+
+    def connected_engine(self, **kw):
+        e, call = self.engine(**kw)
+        self.add_legs(e, call)
+        e.connect(call, call.legs["a1"])
+        for t in call.timers:
+            t.cancel()
+        return e, call
+
+    def test_the_time_limit_pips_are_audited_only_when_asterisk_started_them(self):
+        e, call = self.connected_engine()
+        e.warn(call)
+        self.assertIn("pips", self.call_events())
+        self.assertNotIn("pips_failed", self.call_events())
+
+    def test_pips_that_asterisk_could_not_play_are_audited_as_failed_not_as_played(self):
+        # A build without the module that plays into a bridge (chan_bridge_media) answers with an error and nobody hears the
+        # warning: the audit must not claim they did.
+        e, call = self.connected_engine(play_ok=False)
+        e.warn(call)
+        self.assertIn("pips_failed", self.call_events())
+        self.assertNotIn("pips", self.call_events())
+
+    def test_a_join_tone_that_asterisk_could_not_play_is_audited_but_the_join_still_counts(self):
+        e, call = self.connected_engine(play_ok=False)
+        h = self.conn.execute("SELECT * FROM handset WHERE id=?", (self.sam_h,)).fetchone()
+        e.join_call("j1", h)
+        self.assertIn("j1", call.legs)
+        self.assertIn("joined", self.call_events())
+        self.assertIn("join_tone_failed", self.call_events())
+
+    def test_a_join_tone_that_played_is_not_reported_as_failed(self):
+        e, call = self.connected_engine()
+        h = self.conn.execute("SELECT * FROM handset WHERE id=?", (self.sam_h,)).fetchone()
+        e.join_call("j1", h)
+        self.assertIn("joined", self.call_events())
+        self.assertNotIn("join_tone_failed", self.call_events())
 
     def test_busy_tones_play_until_the_caller_hangs_up(self):
         for name in ("busy", "fast_busy"):

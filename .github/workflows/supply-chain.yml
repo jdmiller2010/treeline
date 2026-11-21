@@ -32,7 +32,7 @@ permissions:
   contents: read
 
 env:
-  OS_WATCH: asterisk,caddy     # Ubuntu source packages whose new advisories are announced (they face the internet)
+  OS_WATCH: caddy,openssl,libsrtp2     # Ubuntu source packages whose new advisories are announced (they face the internet: Caddy, and what Asterisk links)
 
 jobs:
   scan:
