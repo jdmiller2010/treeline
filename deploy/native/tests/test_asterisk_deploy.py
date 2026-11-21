@@ -459,6 +459,11 @@ class SigningAndStaging(unittest.TestCase):
         self.assertFalse(os.path.exists(os.path.join(dest, "EVIL")), "the unsigned content was unpacked")
         self.assertEqual([n for n in os.listdir(self.p["releases"]) if n.startswith(".verified-")], [], "the private copy is removed")
 
+    def test_a_missing_signature_file_says_so(self):
+        with self.assertRaises(deploy.Refused) as cm:
+            self.stage(self.tar, str(self.w / "absent.sig"))
+        self.assertIn("no signature", str(cm.exception))
+
     def test_a_tarball_that_is_a_link_or_not_a_plain_file_is_refused(self):
         link = self.w / "link.tar.gz"
         os.symlink(self.tar, link)

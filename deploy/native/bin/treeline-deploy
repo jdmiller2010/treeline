@@ -524,6 +524,8 @@ def stage(tarball, sig, version, p, host_env, signers=None):
     shutil.rmtree(mine, ignore_errors=True)
     try:
         # R10-7: one private copy is both verified and unpacked, so nothing can change between the two.
+        if not os.path.isfile(sig):
+            raise rel.ReleaseError(f"no signature file {sig}")
         tarball, sig = rel.private_copy(tarball, mine), rel.private_copy(sig, mine)
         rel.verify(tarball, sig, signers or rel.signers_file())
     except rel.ReleaseError as err:
