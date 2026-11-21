@@ -10,17 +10,20 @@ This finds it by that rule and REFUSES to act if there is not exactly one match 
 otherwise be picked silently). Run by a systemd timer, as root.
 """
 
+import fcntl
 import glob
 import hashlib
 import os
 import pwd
 import subprocess
 import sys
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import treeline_common as common  # noqa: E402
 
 KEYS = os.environ.get("TREELINE_ASTERISK_KEYS", "/etc/asterisk/keys")
+LOCK_WAIT_SECONDS = int(os.environ.get("TREELINE_CERTSYNC_LOCK_WAIT", "900"))
 
 
 def find_pair(storage, host):
@@ -42,23 +45,45 @@ def usable(crt):
 
 
 def sync(storage, host, keys_dir=KEYS, owner="asterisk"):
+    """Copy the pair to keys_dir: root's files, readable by the asterisk group and not writable by it (Asterisk reads the key to
+    answer TLS; it has no business replacing it)."""
     crt, key = find_pair(storage, host)
     if not usable(crt):
         raise SystemExit(f"{crt} is expired or unreadable; not copying it")
     try:
-        pw = pwd.getpwnam(owner)
-        uid, gid = pw.pw_uid, pw.pw_gid
+        gid = pwd.getpwnam(owner).pw_gid
     except KeyError:
-        uid = gid = None                           # unit tests run without the asterisk user
+        gid = None                                 # unit tests run without the asterisk user
     os.makedirs(keys_dir, mode=0o750, exist_ok=True)
-    if uid is not None:
-        os.chown(keys_dir, uid, gid)
+    os.chmod(keys_dir, 0o750)
+    if gid is not None:
+        os.chown(keys_dir, 0, gid)
     changed = False
     with open(crt, "rb") as f:
-        changed |= common.atomic_write(os.path.join(keys_dir, "treeline.crt"), f.read(), 0o644, uid, gid)
+        changed |= common.atomic_write(os.path.join(keys_dir, "treeline.crt"), f.read(), 0o644, None, gid)
     with open(key, "rb") as f:
-        changed |= common.atomic_write(os.path.join(keys_dir, "treeline.key"), f.read(), 0o600, uid, gid)
+        changed |= common.atomic_write(os.path.join(keys_dir, "treeline.key"), f.read(), 0o640, None, gid)
     return changed
+
+
+def restart_when_idle(lock_path=None, wait=None):
+    """Restart Asterisk, but never in the middle of a deploy: the deploy agent stops, switches and starts it under this lock, and a
+    restart that lands between two of those steps could start the wrong build. Waits for the lock (a skipped restart would never
+    be retried: the next run finds the certificate already copied)."""
+    lock_path = lock_path or os.path.join(common.RUN, "deploy.lock")
+    os.makedirs(os.path.dirname(lock_path), exist_ok=True)
+    deadline = time.time() + (LOCK_WAIT_SECONDS if wait is None else wait)
+    with open(lock_path, "a") as lock:
+        while True:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except OSError:
+                if time.time() >= deadline:
+                    raise SystemExit("a deploy has held the lock for too long; the certificate is copied but Asterisk was not restarted "
+                                     "(run treeline-certsync again, or restart asterisk, when it is done)")
+                time.sleep(5)
+        subprocess.run(["systemctl", "restart", "asterisk"], check=True)
 
 
 def main(argv):
@@ -66,7 +91,7 @@ def main(argv):
     changed = sync(os.path.join(common.STATE, "caddy"), host)
     print("certificate changed" if changed else "certificate unchanged")
     if changed and "--no-restart" not in argv:
-        subprocess.run(["systemctl", "restart", "asterisk"], check=True)
+        restart_when_idle()
     return 0
 
 

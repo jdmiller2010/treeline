@@ -100,6 +100,17 @@ class Rules(unittest.TestCase):
         code, out = self.r.scan()
         self.assertEqual(code, 0, out)
 
+    def test_upstream_license_texts_are_not_scanned_but_the_same_line_anywhere_else_is(self):
+        line = "licensing contact: " + REAL_EMAIL + " (via email)\n"
+        self.r.write("asterisk/licenses/ASTERISK-LICENSE.txt", line)
+        code, out = self.r.scan()
+        self.assertEqual(code, 0, out)
+        self.r.write("asterisk/other/LICENSE.txt", line)
+        self.assertFinds("email-address")
+        self.r.write("asterisk/other/LICENSE.txt", "nothing\n")
+        self.r.write("asterisk/licenses-notes.md", line)          # a look-alike name is not the directory
+        self.assertFinds("email-address")
+
     def test_aws_arn_with_a_real_looking_account_id(self):
         self.r.write("p.json", '"arn:aws:s3:::bucket" "' + REAL_ACCOUNT_ARN + '"\n')
         self.assertFinds("aws-arn-with-account-id")

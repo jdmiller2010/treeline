@@ -4,8 +4,10 @@
     treeline-config apply --release DIR [--restart]
     treeline-config show-caddy --release DIR            (print, change nothing)
 
-Writes /etc/asterisk/*.conf (the release's asterisk/config with the production templates over it),
-/etc/caddy/Caddyfile and /etc/treeline/app.env, each only if it changed, and with --restart restarts what changed.
+Writes /etc/asterisk/*.conf (the release's asterisk/config with the production templates over it, and a asterisk-<id>.conf for
+the release's own Asterisk build), the Asterisk unit and the drop-in that names its binary, /etc/caddy/Caddyfile and
+/etc/treeline/app.env, each only if it changed, and with --restart restarts what changed. Files in /etc/asterisk that are not
+rendered are removed: it holds only what a release says.
 Nothing environment-specific is committed: the addresses, the domain and the ARI password come from host.env
 and the files the installer made, at install or deploy time.
 """
@@ -19,9 +21,12 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import treeline_common as common  # noqa: E402
+import treeline_release as rel  # noqa: E402
 
 ASTERISK_DIR = os.environ.get("TREELINE_ASTERISK_DIR", "/etc/asterisk")
 CADDYFILE = os.environ.get("TREELINE_CADDYFILE", "/etc/caddy/Caddyfile")
+SYSTEMD_DIR = os.environ.get("TREELINE_SYSTEMD_DIR", "/etc/systemd/system")
+ID_IN_NAME = "ID"            # a template named asterisk-ID.conf is rendered as asterisk-<build id>.conf
 LE_DIRECTORY = "https://acme-v02.api.letsencrypt.org/directory"
 
 
@@ -96,19 +101,38 @@ def refuse_dev_config(files):
         raise ValueError("refusing to install a development setting in production: " + "; ".join(found))
 
 
+def asterisk_id(release):
+    """The Asterisk build the release carries (release.json, format 2)."""
+    return rel.read_info(release, ci=True)["asterisk"]["id"]       # the id's own CI-only rule is enforced where it is installed
+
+
 def asterisk_files(release, s):
-    """{filename: text}: the release's base config, then the production templates over it."""
+    """{filename: text}: the release's base config, then the production templates over it. A template named asterisk-ID.conf
+    is the per-build asterisk.conf: it is written as asterisk-<id>.conf and names that build's directories."""
     out = {}
     base = os.path.join(release, "asterisk", "config")
     for name in sorted(os.listdir(base)):
         if name.endswith(".conf"):
             out[name] = read(os.path.join(base, name))
-    vals = dict(nat_values(s), ARI_PASS=s["ARI_PASS"])
+    ast_id = asterisk_id(release)
+    vals = dict(nat_values(s), ARI_PASS=s["ARI_PASS"], ASTERISK_ID=ast_id, ASTERISK_OPT=common.ASTERISK_OPT)
     tdir = os.path.join(release, "deploy", "native", "templates", "asterisk")
     for name in sorted(os.listdir(tdir)):
-        out[name] = common.render(read(os.path.join(tdir, name)), vals)
+        target = name.replace("-" + ID_IN_NAME + ".", "-" + ast_id + ".")
+        out[target] = common.render(read(os.path.join(tdir, name)), vals)
     refuse_dev_config(out)
     return out
+
+
+def systemd_files(release):
+    """{path: text} for the Asterisk unit and the drop-in that names the build's binary. The build id is in the drop-in, so a
+    new build is a configuration change: it changes a file, and the restart follows from that."""
+    ast_id = asterisk_id(release)
+    unit = read(os.path.join(release, "deploy", "native", "systemd", "asterisk.service"))
+    drop = common.render(read(os.path.join(release, "deploy", "native", "templates", "systemd", "asterisk-exec.conf")),
+                         {"ASTERISK_ID": ast_id, "ASTERISK_OPT": common.ASTERISK_OPT})
+    return {os.path.join(SYSTEMD_DIR, "asterisk.service"): unit,
+            os.path.join(SYSTEMD_DIR, "asterisk.service.d", "treeline.conf"): drop}
 
 
 def app_env(release, s):
@@ -119,19 +143,32 @@ def apply(release, etc=None, restart=False):
     etc = etc or common.ETC
     s = settings(etc)
     try:
-        pw = pwd.getpwnam("asterisk")
-        uid, gid = pw.pw_uid, pw.pw_gid
+        gid = pwd.getpwnam(common.ASTERISK_USER).pw_gid
     except KeyError:
-        uid = gid = None
+        gid = None
     changed = set()
-    for name, text in asterisk_files(release, s).items():
-        if common.atomic_write(os.path.join(ASTERISK_DIR, name), text, 0o640, uid, gid):
+    rendered = asterisk_files(release, s)
+    for name, text in rendered.items():
+        # root's, readable by the asterisk group and not writable by it: Asterisk must not be able to rewrite its own config
+        if common.atomic_write(os.path.join(ASTERISK_DIR, name), text, 0o640, None, gid):
             changed.add("asterisk")
+    for name in sorted(os.listdir(ASTERISK_DIR)) if os.path.isdir(ASTERISK_DIR) else []:
+        path = os.path.join(ASTERISK_DIR, name)
+        if name.endswith(".conf") and name not in rendered and os.path.isfile(path) and not os.path.islink(path):
+            os.remove(path)                                  # a release says what /etc/asterisk holds (never the keys/ directory)
+            changed.add("asterisk")
+    units_changed = False
+    for path, text in systemd_files(release).items():
+        if common.atomic_write(path, text, 0o644):
+            changed.add("asterisk")
+            units_changed = True
     if common.atomic_write(CADDYFILE, caddyfile(release, s), 0o644):
         changed.add("caddy")
     if common.atomic_write(os.path.join(etc, "app.env"), app_env(release, s), 0o644):
         changed.add("app")
     if restart:
+        if units_changed:
+            subprocess.run(["systemctl", "daemon-reload"], check=True)      # a changed unit is not seen until it is reloaded
         for unit in sorted(changed - {"app"}):
             subprocess.run(["systemctl", "restart", unit], check=True)
     return changed

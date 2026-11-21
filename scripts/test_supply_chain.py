@@ -96,8 +96,9 @@ jobs:
     def test_the_apt_list_is_read_from_the_real_install_script(self):
         with open(os.path.join(ROOT, "deploy/native/install.sh")) as f:
             names = sbom.apt_packages(f.read())
-        for must in ("asterisk", "caddy", "python3", "age", "unattended-upgrades", "fail2ban"):
+        for must in ("caddy", "python3", "age", "unattended-upgrades", "fail2ban", "libssl3t64", "libsrtp2-1"):
             self.assertIn(must, names)
+        self.assertNotIn("asterisk", names, "Asterisk is built from source (asterisk/build/), not installed from Ubuntu")
         for n in names:
             self.assertRegex(n, r"^[a-z0-9][a-z0-9+.-]+$")
 
@@ -108,7 +109,7 @@ jobs:
             sbom.apt_packages("echo nothing\n")
 
     def test_os_packages(self):
-        text = "asterisk\t1:20.6.0-1\tasterisk\t1:20.6.0-1\tamd64\nlibssl3t64:amd64\t3.0.13-0ubuntu3.5\topenssl\t3.0.13-0ubuntu3.5\tamd64\n"
+        text = "asterisk\t1:20.6.0-1\tasterisk\t1:20.6.0-1\tamd64\nlibssl3t64:amd64\t3.0.13-0ubuntu3.5\topenssl\t3.0.13-0ubuntu3.5\tamd64\nlibc6\t2.39-0ubuntu8.6\tglibc\t2.39-0ubuntu8.6\tamd64\n"
         got = sbom.parse_os_packages(text)
         self.assertEqual(got[1], {"name": "libssl3t64", "version": "3.0.13-0ubuntu3.5", "source": "openssl", "source_version": "3.0.13-0ubuntu3.5", "arch": "amd64"})
         with self.assertRaises(sbom.SbomError):
@@ -122,7 +123,7 @@ class TheRealRepo(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.os_text = "asterisk\t1:20.6.0-1\tasterisk\t1:20.6.0-1\tamd64\nlibssl3t64:amd64\t3.0.13-0ubuntu3.5\topenssl\t3.0.13-0ubuntu3.5\tamd64\n"
+        cls.os_text = "libsrtp2-1\t2.5.0-3build1\tlibsrtp2\t2.5.0-3build1\tamd64\nlibssl3t64:amd64\t3.0.13-0ubuntu3.5\topenssl\t3.0.13-0ubuntu3.5\tamd64\nlibc6\t2.39-0ubuntu8.6\tglibc\t2.39-0ubuntu8.6\tamd64\n"
         cls.components = sbom.collect(os_packages_text=cls.os_text)
         cls.by = {(c["ecosystem"], c["name"]): c for c in cls.components}
 
@@ -172,8 +173,9 @@ class TheRealRepo(unittest.TestCase):
         self.assertTrue(self.by[("PyPI", "boto3")]["production"])           # the root-run tools
         self.assertFalse(self.by[("PyPI", "aws-cdk-lib")]["production"])    # the owner's computer
         self.assertTrue(self.by[("npm", "jssip")]["production"])
-        self.assertTrue(self.by[("Ubuntu", "asterisk")]["direct"])
-        self.assertFalse(self.by[("Ubuntu", "libssl3t64")]["direct"])
+        self.assertTrue(self.by[("Ubuntu", "libsrtp2-1")]["direct"])           # linked by Asterisk, installed by install.sh
+        self.assertTrue(self.by[("Ubuntu", "libssl3t64")]["direct"])           # Asterisk links it, install.sh names it
+        self.assertFalse(self.by[("Ubuntu", "libc6")]["direct"])               # pulled in by something else
 
     def test_versions_named_in_the_notices_match_the_locks(self):
         # THIRD_PARTY_NOTICES.md is the licenses page families see. `python3 scripts/sbom.py --sync-notices` fixes this.

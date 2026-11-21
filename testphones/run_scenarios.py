@@ -419,7 +419,11 @@ def time_limit(w):
     """A 9-second call limit cuts the call off on time."""
     w.set("sam", max_call_minutes=0.15)
     c = call_and_check(w, "sam", "0102", ["alex"], seconds=22)
-    return c["result"] == "time_limit" and 6 <= c["talk_sec"] <= 12, dict(c)
+    ev = w.events(c["id"])
+    # The warning pips must have actually played: the controller audits "pips" only when Asterisk started the playback
+    # (a build without chan_bridge_media answers with an error and the audit says "pips_failed").
+    return c["result"] == "time_limit" and 6 <= c["talk_sec"] <= 12 and "pips" in ev and "pips_failed" not in ev, \
+        {"call": dict(c), "events": ev}
 
 
 def repeat_limit(w):
@@ -477,7 +481,8 @@ def join_mid_call(w):
         for p in s.phones:
             p.wait()
         c = w.last_call()
-        return "joined" in ev and c["result"] == "connected", {"events": w.events(cid), "call": dict(c)}
+        return "joined" in ev and "join_tone_failed" not in ev and c["result"] == "connected", \
+            {"events": w.events(cid), "call": dict(c)}
     finally:
         s.close()
 

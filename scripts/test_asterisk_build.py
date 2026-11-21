@@ -67,6 +67,30 @@ class RealInputs(unittest.TestCase):
         self.assertIn("--cap-drop ALL", run)
 
 
+class Command(unittest.TestCase):
+    def run_main(self, *argv):
+        import contextlib
+        import io
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            rc = ab.main(list(argv))
+        return rc, out.getvalue().strip(), err.getvalue()
+
+    def test_lock_field_prints_a_validated_field(self):
+        rc, out, _ = self.run_main("lock-field", "ARTIFACT_SHA256")
+        self.assertEqual(rc, 0)
+        self.assertRegex(out, r"^[0-9a-f]{64}$")
+        self.assertEqual(self.run_main("lock-field", "ARTIFACT_ID")[1], ab.parse_lock(SOURCES, ab.SOURCES_FIELDS)["BUILD_ID"])
+
+    def test_lock_field_refuses_an_unknown_name_and_odd_arguments(self):
+        self.assertEqual(self.run_main("lock-field", "ARTIFACT_SHA256; id")[0], 1)
+        self.assertEqual(self.run_main("lock-field")[0], 2)
+        self.assertEqual(self.run_main("check", "--require")[0], 2)
+
+    def test_require_lock_passes_with_the_repository_lock(self):
+        self.assertEqual(self.run_main("check", "--require-lock")[0], 0)
+
+
 class Parsing(unittest.TestCase):
     def bad(self, text):
         with self.assertRaises(ab.Problem):

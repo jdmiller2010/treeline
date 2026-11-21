@@ -37,3 +37,4 @@ cdk.context.json
 infra/.venv/
 infra/restore/.venv/
 .cache/
+asterisk/runtime/

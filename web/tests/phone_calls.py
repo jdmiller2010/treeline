@@ -216,7 +216,8 @@ def run(families):
         s.wait_phase("dialtone")
         s.dial(alex.number)
         s.wait_phase("after", 20000)
-        check(newest_call(sam)["result"] == "offline", "calling a treehouse whose only phone is disconnected goes nowhere")
+        check(newest_call(sam)["result"] == "offline", "calling a treehouse whose only phone is disconnected goes nowhere",
+              str(newest_call(sam)))
         s.lift()
         alex.call("PATCH", f"/api/handsets/{ah}", {"disabled": False})
         a.lift()

@@ -90,14 +90,26 @@ export DEBIAN_FRONTEND=noninteractive
 printf '#!/bin/sh\nexit 101\n' > /usr/sbin/policy-rc.d; chmod 755 /usr/sbin/policy-rc.d
 trap 'rm -f /usr/sbin/policy-rc.d' EXIT
 apt-get update -qq
+# Asterisk itself is not an Ubuntu package here: each release carries its own build (asterisk/build/README.md), which is linked
+# against the libraries on this line (asterisk/runtime-deps.txt lists the same ones; a test keeps the two together).
 apt-get install -y -qq --no-install-recommends \
-  asterisk asterisk-core-sounds-en caddy python3 python3-venv age ca-certificates openssh-client openssl curl iproute2 \
-  sox espeak-ng unattended-upgrades $([ "$CI" = 1 ] || echo fail2ban) >/dev/null
+  caddy python3 python3-venv age ca-certificates openssh-client openssl curl iproute2 \
+  sox espeak-ng unattended-upgrades logrotate \
+  libssl3t64 libsrtp2-1 libjansson4 libxml2 libxslt1.1 libsqlite3-0 libedit2 libuuid1 liburiparser1 libcap2 libsystemd0 \
+  $([ "$CI" = 1 ] || echo fail2ban) >/dev/null
 
 # ---------------------------------------------------------------- users and directories
 say "users and directories"
 getent group treeline >/dev/null || groupadd --system treeline
 id treeline >/dev/null 2>&1 || useradd --system --gid treeline --home-dir /nonexistent --no-create-home --shell /usr/sbin/nologin treeline
+# The Asterisk user: no login, no supplementary groups (Ubuntu's package put it in dialout and audio, which it does not need),
+# its home on the state disk. Also recreated after Ubuntu's package is purged, which may delete it.
+ensure_asterisk_user() {
+  getent group asterisk >/dev/null || groupadd --system asterisk
+  id asterisk >/dev/null 2>&1 || useradd --system --gid asterisk --home-dir "$STATE/asterisk" --no-create-home --shell /usr/sbin/nologin asterisk
+  usermod -G "" asterisk 2>/dev/null || true
+}
+ensure_asterisk_user
 install -d -m 0755 -o root -g root "$ETC" "$OPT" "$OPT/releases" "$LIB"
 
 # ---------------------------------------------------------------- the state disk
@@ -146,12 +158,17 @@ install -d -m 2750 -o treeline -g asterisk "$STATE/generated"
 [ -f "$STATE/generated/pjsip_handsets.conf" ] || install -m 0640 -o treeline -g asterisk /dev/null "$STATE/generated/pjsip_handsets.conf"
 install -d -m 0700 -o caddy -g caddy "$STATE/caddy"
 install -d -m 0700 -o treeline -g treeline "$STATE/spool"
-install -d -m 0750 -o asterisk -g asterisk "$STATE/logs" "$STATE/logs/asterisk"
-# Asterisk's logs (addresses, account names) go to the state disk too.
-if [ ! -L /var/log/asterisk ]; then
-  [ -d /var/log/asterisk ] && cp -a /var/log/asterisk/. "$STATE/logs/asterisk/" 2>/dev/null || true
-  rm -rf /var/log/asterisk; ln -s "$STATE/logs/asterisk" /var/log/asterisk
-fi
+# Everything Asterisk writes lives on the state disk, in asterisk.conf's directories: the contact database (phones' addresses and
+# user agents), its spool and cache, and its logs (addresses, account names).
+own_asterisk_state() {
+  install -d -m 0750 -o asterisk -g asterisk "$STATE/asterisk" "$STATE/asterisk/keys" "$STATE/asterisk/cache" "$STATE/asterisk/spool" \
+    "$STATE/logs" "$STATE/logs/asterisk"
+  # a purged package may have deleted and re-made the user under another uid: what it owned is re-owned, links are not followed
+  chown -R --no-dereference asterisk:asterisk "$STATE/asterisk" "$STATE/logs/asterisk"
+  chown -h treeline:asterisk "$STATE/generated" "$STATE/generated/pjsip_handsets.conf" 2>/dev/null || true
+  install -d -m 0750 -o root -g asterisk /etc/asterisk /etc/asterisk/keys
+}
+own_asterisk_state
 
 # ---------------------------------------------------------------- swap (on the state disk)
 if [ "$CI" = 0 ]; then
@@ -216,9 +233,11 @@ install -d -m 0755 /run/treeline
 # ---------------------------------------------------------------- systemd, journald, sysctl
 say "services"
 S="$HERE/systemd"
-install -m 0644 "$S"/*.service "$S"/*.timer /etc/systemd/system/
-install -d /etc/systemd/system/asterisk.service.d /etc/systemd/system/caddy.service.d /etc/systemd/journald.conf.d
-install -m 0644 "$S/drop-ins/asterisk.conf" /etc/systemd/system/asterisk.service.d/treeline.conf
+for unit in "$S"/*.service "$S"/*.timer; do
+  [ "$(basename "$unit")" = asterisk.service ] || install -m 0644 "$unit" /etc/systemd/system/    # that one comes with the release, below
+done
+install -d /etc/systemd/system/caddy.service.d /etc/systemd/journald.conf.d
+install -m 0644 "$HERE/logrotate/treeline-asterisk" /etc/logrotate.d/treeline-asterisk
 install -m 0644 "$S/drop-ins/caddy.conf" /etc/systemd/system/caddy.service.d/treeline.conf
 install -m 0644 "$S/journald-treeline.conf" /etc/systemd/journald.conf.d/treeline.conf
 install -m 0644 "$S/tmpfiles-treeline.conf" /etc/tmpfiles.d/treeline.conf
@@ -226,10 +245,6 @@ install -m 0644 "$S/sysctl-treeline.conf" /etc/sysctl.d/60-treeline.conf
 sysctl -q --system >/dev/null 2>&1 || true
 systemctl restart systemd-journald || true
 systemctl daemon-reload
-
-# ---------------------------------------------------------------- the operator messages (sounds)
-say "sounds"
-SOUNDS_SRC="$REL/asterisk/sounds" sh "$REL/asterisk/make_sounds.sh" >/dev/null
 
 # ---------------------------------------------------------------- fail2ban
 if [ "$CI" = 0 ]; then
@@ -255,7 +270,34 @@ say "the release"
 if [ ! -d "$OPT/releases/$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "$REL/release.json")" ]; then
   "$LIB/treeline-deploy" adopt "$REL"
 fi
+# The current release's own Asterisk build: installed (or its installed copy checked, file by file) by the agent, under its lock.
+"$LIB/treeline-deploy" install-asterisk "$OPT/current"
+
+say "Ubuntu's Asterisk"
+# Only now, with the replacement in place: remove Ubuntu's package (1:20.6.0, with advisories it never fixed) and stop it coming
+# back. A failure before this point leaves the old Asterisk running; one after it is repaired by running this script again.
+mapfile -t ubuntu_ast < <(dpkg-query -W -f='${Package}\n' 'asterisk*' 2>/dev/null | sort -u)
+if [ "${#ubuntu_ast[@]}" -gt 0 ]; then
+  say "removing Ubuntu's packages: ${ubuntu_ast[*]}"
+  systemctl stop asterisk 2>/dev/null || true
+  systemctl disable asterisk 2>/dev/null || true
+  apt-get purge -y -qq "${ubuntu_ast[@]}" >/dev/null
+  apt-get autoremove -y -qq --purge >/dev/null
+  rm -f /etc/systemd/system/asterisk.service.d/treeline.conf        # the old drop-in; treeline-config writes the new one
+  rm -f /usr/share/asterisk/sounds/en                               # the package's alternatives link, left dangling
+  rm -rf /usr/share/asterisk/sounds/en_US_f_Allison
+  ensure_asterisk_user
+fi
+printf 'Package: asterisk asterisk-*\nPin: version *\nPin-Priority: -1\n' > /etc/apt/preferences.d/treeline-asterisk
+chmod 644 /etc/apt/preferences.d/treeline-asterisk
+own_asterisk_state
+install -d -m 0755 /usr/share/asterisk/sounds/en
+say "sounds"
+SOUNDS_SRC="$REL/asterisk/sounds" sh "$REL/asterisk/make_sounds.sh" >/dev/null
+
+say "configuration"
 "$LIB/treeline-config" apply --release "$OPT/current"
+systemctl daemon-reload
 systemctl enable asterisk caddy treeline-api treeline-controller treeline-certsync.timer treeline-deploy.timer treeline-backup.timer treeline-health.timer >/dev/null 2>&1
 if [ "$START" = 1 ]; then
   systemctl restart asterisk caddy

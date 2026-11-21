@@ -291,8 +291,10 @@ class Engine:
 
     def warn(self, call):
         if call.bridge and not call.finished:
-            self.ari.request("POST", f"/bridges/{call.bridge}/play", media=TONES["pips"][0])
-            self.audit(call.id, "pips")
+            started = self.ari.request("POST", f"/bridges/{call.bridge}/play", media=TONES["pips"][0])
+            # The audit says what happened: Asterisk answers a started playback with its id, and anything else (an error,
+            # or a build without the module that plays into a bridge) means nobody heard the warning.
+            self.audit(call.id, "pips" if isinstance(started, dict) and started.get("id") else "pips_failed")
 
     def cut_off(self, call):
         self.finish(call, rules.TIME_LIMIT, "call_length_limit")
@@ -321,8 +323,10 @@ class Engine:
         self.ari.request("POST", f"/bridges/{call.bridge}/addChannel", channel=chan_id)
         leg.in_bridge = True
         # Everyone hears a click and a soft tone.
-        self.ari.request("POST", f"/bridges/{call.bridge}/play", media=TONES["join"][0])
+        started = self.ari.request("POST", f"/bridges/{call.bridge}/play", media=TONES["join"][0])
         self.audit(call.id, "joined", handset["id"])
+        if not (isinstance(started, dict) and started.get("id")):
+            self.audit(call.id, "join_tone_failed", handset["id"])
 
     # ------------------------------------------------------------ ending
 

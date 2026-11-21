@@ -44,7 +44,8 @@ FORBIDDEN_PATHS = [
 ]
 
 # Not scanned for content (vendored or generated third-party code is full of false alarms).
-SKIP_CONTENT = re.compile(r"(^|/)(vendor/|node_modules/|\.venv[^/]*/)|\.min\.(js|css)$|(^|/)(package-lock\.json|yarn\.lock)$")
+# asterisk/licenses/ holds upstream's license texts, copied unchanged as the GPL requires (one names Sangoma's licensing contact).
+SKIP_CONTENT = re.compile(r"(^|/)(vendor/|node_modules/|\.venv[^/]*/)|\.min\.(js|css)$|(^|/)(package-lock\.json|yarn\.lock)$|^asterisk/licenses/")
 BINARY_EXT = re.compile(r"\.(png|jpe?g|gif|ico|webp|woff2?|ttf|otf|wav|mp3|ogg|ulaw|alaw|gsm|sln\d*|pdf|zip|gz|tar|bin)$", re.I)
 
 # Addresses that are fine to publish.
