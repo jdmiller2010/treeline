@@ -64,8 +64,39 @@ class Gate(unittest.TestCase):
         self.assertEqual(subprocess.run([sys.executable, os.path.join(HERE, "ci_gate.py")], capture_output=True).returncode, 2)
 
 
+class Renames(unittest.TestCase):
+    """R10-13: a rename out of a root-run path must not look like a change to the place it moved to."""
+
+    def git(self, d, *a):
+        env = dict(os.environ, GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@example.invalid", GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@example.invalid")
+        return subprocess.run(["git", "-C", d, *a], check=True, capture_output=True, text=True, env=env).stdout
+
+    def test_moving_the_deploy_agent_into_docs_runs_the_job(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.git(d, "init", "-q")
+            os.makedirs(os.path.join(d, "deploy/native/bin")); os.makedirs(os.path.join(d, "docs"))
+            with open(os.path.join(d, "deploy/native/bin/treeline-deploy"), "w") as f:
+                f.write("#!/bin/sh\n" + "echo root work\n" * 20)
+            self.git(d, "add", "-A"); self.git(d, "commit", "-qm", "one")
+            self.git(d, "mv", "deploy/native/bin/treeline-deploy", "docs/treeline-deploy.txt"); self.git(d, "commit", "-qm", "two")
+            plain = self.git(d, "-c", "diff.renames=true", "diff", "--name-only", "HEAD^1", "HEAD").splitlines()
+            self.assertEqual(plain, ["docs/treeline-deploy.txt"], "the premise: with rename detection the old path is not listed")
+            self.assertFalse(ci_gate.needs_vm(plain))
+            safe = self.git(d, "diff", "--name-only", "--no-renames", "HEAD^1", "HEAD").splitlines()
+            self.assertIn("deploy/native/bin/treeline-deploy", safe)
+            self.assertTrue(ci_gate.needs_vm(safe))
+
+    def test_the_workflow_asks_git_for_both_sides_of_a_rename(self):
+        self.assertIn("git diff --name-only --no-renames HEAD^1 HEAD", Workflow.text)
+
+    def test_a_longer_name_that_starts_like_a_safe_one_is_not_safe(self):
+        for path in ("README.md.sh", "LICENSE.exe", ".gitignore.d/x", "scripts/sbom.py.bak", "scripts/sbom.pyc", "THIRD_PARTY_NOTICES.md.sh", "web/", "docs/"):
+            self.assertTrue(ci_gate.needs_vm([path]), path)
+
+
 class Workflow(unittest.TestCase):
-    text = open(os.path.join(ROOT, ".github", "workflows", "vm-imitation.yml"), encoding="utf-8").read()
+    with open(os.path.join(ROOT, ".github", "workflows", "vm-imitation.yml"), encoding="utf-8") as _f:
+        text = _f.read()
 
     def vm_job(self):
         return self.text[self.text.index("  vm:\n"):]

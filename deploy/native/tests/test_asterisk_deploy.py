@@ -244,6 +244,19 @@ class DeployRules(Agent):
         self.assertTrue(any(c[:2] == ["systemctl", "restart"] and "asterisk" in c for c in self.calls))
         self.assertFalse(os.path.exists(deploy.inflight_path(self.p)))
 
+    def test_recovery_starts_the_services_a_killed_deploy_had_stopped(self):
+        """R10-1: a rollback stops treeline-api and treeline-controller before it starts them again. Killed in between, the journal is
+        left, and recovery re-rendered the configuration but never started them: the outage lasted until someone noticed."""
+        deploy.set_inflight(self.p, **{"from": "v1.0.0", "to": "v1.1.0"})
+        self.config_changes = {"app", "caddy"}
+        with self.machine():
+            deploy.recover(self.p)
+        restarts = [c for c in self.calls if c[:2] == ["systemctl", "restart"]]
+        started = {u for c in restarts for u in c[2:]}
+        self.assertTrue(set(deploy.SERVICES) <= started, restarts)
+        self.assertIn("caddy", started, "the re-rendered Caddyfile is loaded")
+        self.assertNotIn("asterisk", started, "the right build is already running and its configuration did not change: calls are not dropped")
+
     def test_with_no_journal_recovery_does_nothing(self):
         with self.machine():
             deploy.recover(self.p)
@@ -271,6 +284,23 @@ class ManualRollback(Agent):
         self.assertEqual([c for c in self.calls if c[:2] == ["systemctl", "stop"]], [])
         self.assertEqual(os.path.realpath(self.p["current"]), str(self.d / "releases" / "v1.1.0"))
 
+    def test_with_no_current_link_it_is_a_clean_refusal_not_a_traceback(self):
+        """R10-6: state.json names a previous release but the current link is gone."""
+        os.remove(self.p["current"])
+        with self.assertRaises(deploy.Refused) as cm:
+            self.rollback()
+        self.assertIn("nothing to roll back from", str(cm.exception))
+        self.assertEqual([c for c in self.calls if c[:2] == ["systemctl", "stop"]], [])
+
+    def test_a_test_build_id_in_the_running_release_is_not_accepted_as_a_real_one(self):
+        """R10-6: previous_asterisk read the release with ci=True, so a -x<n> id passed on a real install."""
+        release_json(self.d / "releases" / "v1.0.0", "v1.0.0", "24.0.0-x9")
+        with mock.patch.object(deploy.common, "host_settings", lambda *a: {}), \
+                mock.patch.object(common, "ASTERISK_OPT", str(self.d / "opt-asterisk")):
+            with self.assertRaises(deploy.Refused) as cm:
+                deploy.previous_asterisk(str(self.d / "releases" / "v1.0.0"))
+        self.assertIn("test id", str(cm.exception))
+
     def test_it_goes_back_to_the_previous_build_and_says_so(self):
         self.assertEqual(self.rollback(), 0)
         state = deploy.read_state(self.p)
@@ -286,6 +316,18 @@ class ManualRollback(Agent):
         went_back = self.calls[self.calls.index(["switch_asterisk", OLD]):]
         self.assertIn(["switch_asterisk", NEW], went_back)
         self.assertFalse(os.path.exists(deploy.inflight_path(self.p)))
+
+
+class SmokeIds(unittest.TestCase):
+    def test_the_version_asterisk_reports_is_the_build_ids_version_for_both_kinds_of_id(self):
+        for ident in ("24.0.0-t1", "24.0.0-t90", "24.0.0-x9"):
+            seen = []
+            def run(cmd, **kw):
+                seen.append(cmd)
+                return subprocess.CompletedProcess(cmd, 0, "Asterisk 24.0.0\n", "")
+            deploy.smoke_asterisk("/tree", ident, run=run)
+        with self.assertRaises(deploy.Failed):
+            deploy.smoke_asterisk("/tree", "24.0.0-t1", run=lambda cmd, **kw: subprocess.CompletedProcess(cmd, 0, "Asterisk 20.6.0\n", ""))
 
 
 class Pruning(unittest.TestCase):
@@ -402,8 +444,71 @@ class SigningAndStaging(unittest.TestCase):
         self.assertIn("signature", str(cm.exception).lower())
         self.assertFalse(self.opt.exists())
 
+    def test_a_tarball_swapped_after_the_signature_check_is_never_what_gets_unpacked(self):
+        """R10-7: the signature was checked on the path and the unpack opened the path again."""
+        mine = self.w / "operator-copy.tar.gz"
+        shutil.copy(self.tar, mine)
+        shutil.copy(str(self.tar) + ".sig", str(mine) + ".sig")
+        evil, evil_sig = self.resign(lambda f: (f / "EVIL").write_text("unsigned"), name="evil")
+        real_verify = rel.verify
+        def verify_then_swap(*a, **k):
+            real_verify(*a, **k)
+            shutil.copy(evil, mine)                              # somebody who can write the operator's folder
+        with mock.patch.object(deploy.rel, "verify", verify_then_swap):
+            dest = self.stage(mine, str(mine) + ".sig")
+        self.assertFalse(os.path.exists(os.path.join(dest, "EVIL")), "the unsigned content was unpacked")
+        self.assertEqual([n for n in os.listdir(self.p["releases"]) if n.startswith(".verified-")], [], "the private copy is removed")
+
+    def test_a_missing_signature_file_says_so(self):
+        with self.assertRaises(deploy.Refused) as cm:
+            self.stage(self.tar, str(self.w / "absent.sig"))
+        self.assertIn("no signature", str(cm.exception))
+
+    def test_a_tarball_that_is_a_link_or_not_a_plain_file_is_refused(self):
+        link = self.w / "link.tar.gz"
+        os.symlink(self.tar, link)
+        with self.assertRaises(deploy.Refused):
+            self.stage(link, str(self.tar) + ".sig")
+        with self.assertRaises(deploy.Refused):
+            self.stage(self.w, str(self.tar) + ".sig")
+        self.assertFalse(os.path.exists(self.p["releases"]) and any(n.startswith("v") for n in os.listdir(self.p["releases"])))
+
+    def stage_failing(self, **patches):
+        base = dict(build_venv=lambda d: None, seal=lambda d: None)
+        base.update({k: v for k, v in patches.items() if k != "preflight"})
+        pre = patches.get("preflight", lambda d, ci=False: None)
+        with contextlib.ExitStack() as st:
+            for k, v in base.items():
+                st.enter_context(mock.patch.object(deploy.rel, k, v))
+            st.enter_context(mock.patch.object(deploy, "preflight", pre))
+            st.enter_context(mock.patch.object(common, "ASTERISK_OPT", str(self.opt)))
+            return deploy.stage(str(self.tar), str(self.tar) + ".sig", "v0.0.7", self.p, {"TREELINE_CI": "1"}, signers=str(self.signers))
+
+    def test_any_exception_in_the_checks_leaves_nothing_behind_and_the_release_is_not_retried_by_the_timer(self):
+        """R10-2 and R10-3: a hung `asterisk -V`, a missing modules.txt or a short ELF raised something other than ReleaseError, so the
+        half-installed release stayed, the next run said "already installed", and a failing release was tried again on every tick."""
+        for exc in (subprocess.TimeoutExpired(["asterisk", "-V"], 30), FileNotFoundError("modules.txt"), ValueError("short ELF")):
+            shutil.rmtree(self.w / "releases", ignore_errors=True)
+            shutil.rmtree(self.opt, ignore_errors=True)
+            def boom(d, ci=False, exc=exc):
+                raise exc
+            with self.assertRaises(deploy.Refused, msg=repr(exc)) as cm:
+                self.stage_failing(preflight=boom)
+            self.assertIn("failed its own checks", str(cm.exception))
+            self.assertFalse((self.w / "releases" / "v0.0.7").exists(), "the half-installed release is removed")
+            self.assertFalse((self.opt / ID).exists(), "and so is the Asterisk build it created")
+            self.assertIn("v0.0.7", deploy.read_state(self.p).get("failed", []), "recorded: the timer skips it, --version retries it")
+            self.stage_failing()                                  # a retry with the problem gone is not blocked by leftovers
+
+    def test_a_failed_pip_install_is_not_recorded_so_the_next_run_may_try_again(self):
+        def pip_down(d):
+            raise rel.ReleaseError("pip could not reach the index")
+        with self.assertRaises(deploy.Refused):
+            self.stage_failing(build_venv=pip_down)
+        self.assertNotIn("v0.0.7", deploy.read_state(self.p).get("failed", []))
+
     def test_a_test_build_id_is_refused_on_a_real_install(self):
-        art = helpers.artifact(self.w / "t9", ast_id="24.0.0-t9")
+        art = helpers.artifact(self.w / "x9", ast_id="24.0.0-x9")
         tarball = helpers.build("v0.0.8", self.w / "out9", self.key, asterisk=art)
         with mock.patch.object(deploy.rel, "build_venv", lambda d: None), mock.patch.object(deploy.rel, "seal", lambda d: None), \
                 mock.patch.object(common, "ASTERISK_OPT", str(self.opt)):

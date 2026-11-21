@@ -146,6 +146,11 @@ class Parsing(unittest.TestCase):
         self.bad(SOURCES.replace("ubuntu:24.04@sha256:", "ubuntu:24.04@sha1:"))
         self.bad("\n".join(l for l in SOURCES.splitlines() if not l.startswith("PJPROJECT_MD5")))   # missing
 
+    def test_a_real_build_id_is_never_in_the_test_id_namespace(self):
+        # R10-10: the deploy agent refuses -x<n> ids outside CI, so the build must be unable to produce one
+        self.bad(SOURCES.replace("BUILD_ID=24.0.0-t1", "BUILD_ID=24.0.0-x9"))
+        ab.parse_lock(SOURCES.replace("BUILD_ID=24.0.0-t1", "BUILD_ID=24.0.0-t9"), ab.SOURCES_FIELDS)
+
     def test_comments_and_blank_lines_are_fine(self):
         ab.parse_lock("# hi\n\n" + SOURCES, ab.SOURCES_FIELDS)
 

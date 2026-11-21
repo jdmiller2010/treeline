@@ -161,8 +161,10 @@ install -d -m 0700 -o treeline -g treeline "$STATE/spool"
 # Everything Asterisk writes lives on the state disk, in asterisk.conf's directories: the contact database (phones' addresses and
 # user agents), its spool and cache, and its logs (addresses, account names).
 own_asterisk_state() {
-  install -d -m 0750 -o asterisk -g asterisk "$STATE/asterisk" "$STATE/asterisk/keys" "$STATE/asterisk/cache" "$STATE/asterisk/spool" \
-    "$STATE/logs" "$STATE/logs/asterisk"
+  # Asterisk owns these folders, so a compromised Asterisk could replace one with a link and have root re-own and re-mode the target
+  # on the next run of this script: own-dir.py never follows a link (SECURITY.md R10-5). The state disk's top is root's (above).
+  python3 -I "$HERE/own-dir.py" 0750 asterisk asterisk "$STATE/asterisk" "$STATE/logs"
+  python3 -I "$HERE/own-dir.py" 0750 asterisk asterisk "$STATE/asterisk/keys" "$STATE/asterisk/cache" "$STATE/asterisk/spool" "$STATE/logs/asterisk"
   # a purged package may have deleted and re-made the user under another uid: what it owned is re-owned, links are not followed
   chown -R --no-dereference asterisk:asterisk "$STATE/asterisk" "$STATE/logs/asterisk"
   chown -h treeline:asterisk "$STATE/generated" "$STATE/generated/pjsip_handsets.conf" 2>/dev/null || true

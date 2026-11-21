@@ -105,6 +105,12 @@ class Rules(unittest.TestCase):
         self.r.write("asterisk/licenses/ASTERISK-LICENSE.txt", line)
         code, out = self.r.scan()
         self.assertEqual(code, 0, out)
+        self.r.write("asterisk/licenses/README.md", line)          # R10-11: only the three upstream texts, not the whole folder
+        self.assertFinds("email-address")
+        self.r.write("asterisk/licenses/README.md", "nothing\n")
+        self.r.write("asterisk/licenses/NEW-FILE.txt", line)
+        self.assertFinds("email-address")
+        self.r.write("asterisk/licenses/NEW-FILE.txt", "nothing\n")
         self.r.write("asterisk/other/LICENSE.txt", line)
         self.assertFinds("email-address")
         self.r.write("asterisk/other/LICENSE.txt", "nothing\n")

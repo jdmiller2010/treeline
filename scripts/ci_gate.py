@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Does this change need the slow VM-imitation job? Standard library only.
 
-    python3 scripts/ci_gate.py FILE_LIST      one changed path per line (as `git diff --name-only` prints)
+    python3 scripts/ci_gate.py FILE_LIST      one changed path per line (from `git diff --name-only --no-renames`: a rename must list the OLD path too, or moving a root-run file into docs/ would look like a docs change)
     python3 scripts/ci_gate.py --event push   always yes
 
 Prints `run=true` or `run=false` (the form GitHub Actions reads from $GITHUB_OUTPUT).
@@ -20,16 +20,16 @@ import sys
 
 # Paths whose changes cannot affect what the VM job tests. Anything not matched here runs the job.
 SAFE = (
-    r"web/", r"design/", r"docs/", r"testphones/", r"infra/",
+    r"web/.+", r"design/.+", r"docs/.+", r"testphones/.+", r"infra/.+",
     r"[^/]+\.md",                                   # README.md, CLAUDE.md, ... at the top level
     r"LICENSE", r"THIRD_PARTY_NOTICES\.md", r"\.gitignore", r"\.vuln-ignore",
     r"\.github/dependabot\.yml",
-    r"controller/tests/",                           # the app's own unit tests (the unit-test job runs them)
+    r"controller/tests/.+",                         # the app's own unit tests (the unit-test job runs them)
     r"scripts/(sbom|vuln_check|check_repo_rules|build_licenses|build_static|build_web_assets|make_locks|os_packages)\.(py|sh)",
     r"scripts/test_(supply_chain|check_repo_rules)\.py",
     r"\.github/workflows/(codeql|dependabot-automerge|refresh-locks|repo-rules|supply-chain)\.yml",
 )
-SAFE_RE = re.compile(r"^(?:" + "|".join(SAFE) + r")")
+SAFE_RE = re.compile(r"(?:" + "|".join(SAFE) + r")")   # used with fullmatch: a prefix of a longer name is not the safe name
 
 
 def needs_vm(paths):
@@ -37,7 +37,7 @@ def needs_vm(paths):
     paths = [p.strip() for p in paths if p.strip()]
     if not paths:
         return True
-    return any(not SAFE_RE.match(p) for p in paths)
+    return any(not SAFE_RE.fullmatch(p) for p in paths)
 
 
 def main(argv):
