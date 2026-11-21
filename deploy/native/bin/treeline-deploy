@@ -667,7 +667,7 @@ def previous_asterisk(prev_dir):
         raise Refused(f"the running release ({os.path.basename(prev_dir)}) does not name an Asterisk build (an old release format), "
                       "so there would be nothing to roll back to. Nothing was changed. Install a release of this format by hand "
                       "(docs/DEPLOY_AWS.md).")
-    ci = is_ci(common.host_settings())      # R10-5: a test id (-x<n>) in the running release is accepted only in the CI job, as everywhere else
+    ci = is_ci(common.host_settings())      # R10-6: a test id (-x<n>) in the running release is accepted only in the CI job, as everywhere else
     try:
         rel.verify_asterisk_tree(os.path.join(common.ASTERISK_OPT, ast_id), prev_dir, rel.read_info(prev_dir, ci=ci), ci=ci)
     except rel.ReleaseError as err:

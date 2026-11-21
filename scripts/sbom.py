@@ -195,7 +195,7 @@ def parse_images(text, compose=False):
 
 def unresolved_images(text):
     """FROM lines whose image is a variable. Only the toolchain Dockerfile may have one (its image is pinned in sources.lock, which
-    sbom.py reads itself); anywhere else it would be an image nobody lists or checks (R10-11)."""
+    sbom.py reads itself); anywhere else it would be an image nobody lists or checks (R10-14)."""
     return [i for i in re.findall(r"^\s*FROM\s+(?:--\S+\s+)*([^\s]+)", text, re.M | re.I) if "$" in i]
 
 

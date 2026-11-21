@@ -65,7 +65,7 @@ class Gate(unittest.TestCase):
 
 
 class Renames(unittest.TestCase):
-    """R10-1: a rename out of a root-run path must not look like a change to the place it moved to."""
+    """R10-13: a rename out of a root-run path must not look like a change to the place it moved to."""
 
     def git(self, d, *a):
         env = dict(os.environ, GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@example.invalid", GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@example.invalid")
