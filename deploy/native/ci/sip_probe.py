@@ -119,8 +119,8 @@ class Phone:
         status, _ = self.authed("REGISTER", f"sip:{self.host}", "reg-" + self.tag, ["Expires: 120"], bad_password=bad_password)
         return status
 
-    def call(self, number, hold, bad_password=False):
-        """INVITE with an SDES offer, hold the call for `hold` seconds, hang up. Returns (status, seconds held)."""
+    def call(self, number, hold, bad_password=False, stop_file=None):
+        """INVITE with an SDES offer, hold the call for `hold` seconds (or until `stop_file` exists), hang up. Returns (status, seconds held)."""
         key = base64.b64encode(os.urandom(30)).decode()
         sdp = "\r\n".join(["v=0", f"o=- 1 1 IN IP4 {self.ip}", "s=-", f"c=IN IP4 {self.ip}", "t=0 0",
                            "m=audio 40000 RTP/SAVP 0 8", "a=rtpmap:0 PCMU/8000", "a=rtpmap:8 PCMA/8000",
@@ -135,7 +135,7 @@ class Phone:
         self.cseq -= 1                      # ACK reuses the INVITE's number
         started, held = time.time(), 0.0
         self.sock.settimeout(1)
-        while time.time() - started < hold:
+        while time.time() - started < hold and not (stop_file and os.path.exists(stop_file)):
             try:
                 req = self.read_message()
                 if not req["start"].startswith("SIP/2.0"):
@@ -165,6 +165,7 @@ def main(argv):
     ap.add_argument("--dial")
     ap.add_argument("--hold", type=float, default=2)
     ap.add_argument("--bad-password", action="store_true")
+    ap.add_argument("--stop-file", help="hang up as soon as this file exists (the caller decides how long the call lasts)")
     args = ap.parse_args(argv)
     out = {"registered": None, "invite": None, "held": 0.0}
     try:
@@ -172,7 +173,7 @@ def main(argv):
         out["register"] = phone.register(args.bad_password)
         out["registered"] = out["register"] == 200
         if args.dial:
-            out["invite"], out["held"] = phone.call(args.dial, args.hold, args.bad_password)
+            out["invite"], out["held"] = phone.call(args.dial, args.hold, args.bad_password, args.stop_file)
     except (OSError, ssl.SSLError, ConnectionError, KeyError) as err:
         out["error"] = f"{type(err).__name__}: {err}"
     print(json.dumps(out), flush=True)

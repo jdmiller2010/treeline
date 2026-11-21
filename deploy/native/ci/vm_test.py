@@ -873,7 +873,10 @@ class F_Deploy(VmTestCase):
         account = self.handset()
         # A real phone calls over TLS. 0001 is "join the call my line is on": with no call, the controller answers with a fast busy
         # that plays until the phone hangs up, so there is a channel for as long as the probe holds the call.
-        phone = self.probe_in_background(account, "--dial", "0001", "--hold", "30")
+        # The call lasts until the test says so, not for a guessed number of seconds: the agent stages the release (builds its virtualenv)
+        # for as long as that takes on this machine before it asks whether a call is in progress.
+        client("rm -f /tmp/probe-stop")
+        phone = self.probe_in_background(account, "--dial", "0001", "--hold", "600", "--stop-file", "/tmp/probe-stop")
         try:
             wait_for(lambda: len(json.loads(vm("curl -sS -u treeline:$(cat /etc/treeline/ari-password) http://127.0.0.1:8088/ari/channels").stdout)) > 0,
                      30, "an open channel")
@@ -884,6 +887,7 @@ class F_Deploy(VmTestCase):
             self.assertEqual(self.current(), "v0.0.6")
             self.assert_untouched(*before)
         finally:
+            client("touch /tmp/probe-stop")                      # now the phone hangs up
             phone.wait(timeout=90)
         wait_for(lambda: json.loads(vm("curl -sS -u treeline:$(cat /etc/treeline/ari-password) http://127.0.0.1:8088/ari/channels").stdout) == [], 30, "no open channels")
         rc, out = self.deploy("busy")
