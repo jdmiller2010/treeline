@@ -265,8 +265,11 @@ artifact `asterisk/build/artifact.lock` names. Ubuntu's `asterisk` package is no
 - **Replacing Ubuntu's package.** `install.sh` installs the release's build first, and only then purges Ubuntu's `asterisk*` packages,
   writes an apt pin that keeps them out, and re-owns the state directories. A failure before that point leaves the old Asterisk
   running; one after it is repaired by running `install.sh` again.
-- **Old releases.** A release that does not carry its own Asterisk (`format: 1`) is refused everywhere, including as a rollback target:
-  nothing has run on AWS, so there is nothing to upgrade in place. The error says nothing was changed.
+- **Old releases.** A release that does not carry its own Asterisk (`format: 1`: v0.1.0 and v0.1.1) is refused by the agent everywhere,
+  including as a rollback target. A machine that runs one is moved once, by `install.sh` run from the new release ("Upgrading a machine
+  that runs v0.1.x" below): `adopt` replaces the format-1 release and removes its directory, because nothing can go back to it. Only
+  format 1 is replaced this way; a format-2 release is never replaced by `install.sh`. Tested in the VM job (`J_UpgradeFromFormat1`)
+  from a copy of the current release made to look like v0.1.x, **not** from a real v0.1.1 on AWS.
 - **What has and has not run.** All of it has run in the VM-imitating job (Ubuntu 24.04 with systemd in Docker). **None of it has run on
   AWS**: not NAT and call audio on a real address, not Lightsail's CPU credits or disk, not the real IAM policies.
 
@@ -325,6 +328,17 @@ The first release is verified by hand, with a public key you already know, befor
 2. On the VM: `mkdir rel && tar -xzf treeline-vX.Y.Z.tar.gz -C rel && sudo ./rel/deploy/native/install.sh --domain app.treelinephone.com --state-device auto --release-repo OWNER/REPO` (use your GitHub owner and repository; `--public-ip` if the metadata service does not answer). It formats the attached disk **only if blank**, installs packages, and stops before starting the app because the VM key is missing.
 3. On your computer: `infra/bootstrap/bootstrap.sh install-vm-key ubuntu@app.treelinephone.com`, then on the VM `sudo systemctl start treeline-api treeline-controller`, then `curl -fsS https://app.treelinephone.com/api/health`.
 4. Later releases: tag `vX.Y.Z` on `main`; the release job (a reviewer approves) signs it; the VM's deploy agent picks it up in its window (default 09-12 UTC) when no call is in progress. `sudo treeline-deploy --version vX.Y.Z` does it now; `sudo treeline-deploy status` shows what is running.
+
+### Upgrading a machine that runs v0.1.x (one time)
+
+The VM's old agent follows GitHub's "latest" release and knows nothing of our Asterisk build, so **stop its timer before the new
+release is published**, then upgrade by hand. Data on the state disk stays; the data layer migrates what it must at start (with its
+pre-migration copies). Do this only on a machine you can afford to be down for a few minutes; there is no way back to v0.1.x.
+
+1. On the VM: `sudo systemctl stop treeline-deploy.timer`.
+2. On your computer: tag `vX.Y.Z` on `main` (it must be above v0.1.1), approve the `release` job, download `treeline-vX.Y.Z.tar.gz` and its `.sig`, verify with `ssh-keygen -Y verify` (as in "First install"), `scp` both to the VM.
+3. On the VM: `mkdir rel && tar -xzf treeline-vX.Y.Z.tar.gz -C rel && sudo ./rel/deploy/native/install.sh --domain app.treelinephone.com --state-device auto --release-repo OWNER/REPO`. It installs this release and its Asterisk, removes Ubuntu's `asterisk` package, and starts everything. The old release's directory is removed.
+4. `curl -fsS https://app.treelinephone.com/api/health`; `sudo treeline-deploy status`; the timer is started again by `install.sh`.
 
 **Rollback.** An unhealthy release rolls back by itself. If it had migrated data, the agent restores the data layer's pre-migration copies at the old version (all or nothing; refuses if one is missing). A manual `sudo treeline-deploy --rollback` is refused once the data layout moved: stop the services, restore from a backup with `infra/restore/restore.py` and the matching pre-migration copy, deploy the previous release.
 

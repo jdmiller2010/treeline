@@ -1270,7 +1270,9 @@ class J_UpgradeFromFormat1(VmTestCase):
         self.install(src="/root/newrel")
         self.wait_healthy()
         self.assertEqual(vm("basename $(readlink -f /opt/treeline/current)").stdout.strip(), ver)
-        self.assertEqual(vm("ls /opt/treeline/releases").stdout.split(), [ver], "the format-1 release is gone and the new one is the only one")
+        listing = vm("ls /opt/treeline/releases").stdout.split()      # other releases may be there from the earlier tests
+        self.assertNotIn("v0.0.9", listing, "the format-1 release is gone")
+        self.assertIn(ver, listing)
         state = json.loads(vm("cat /var/lib/treeline/deploy/state.json").stdout)
         self.assertEqual((state["current"], state["previous"], state["asterisk"]), (ver, None, ast_id()))
         for unit in ("asterisk", "caddy", "treeline-api", "treeline-controller"):
@@ -1284,4 +1286,4 @@ class J_UpgradeFromFormat1(VmTestCase):
         # a second run of install.sh from the same release leaves it as it is
         self.install(src="/opt/treeline/current")
         self.wait_healthy()
-        self.assertEqual(vm("ls /opt/treeline/releases").stdout.split(), [ver])
+        self.assertEqual(vm("ls /opt/treeline/releases").stdout.split(), listing, "nothing else changed")
