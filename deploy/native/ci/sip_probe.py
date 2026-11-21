@@ -158,7 +158,7 @@ class Phone:
         return 200, held
 
 
-def main(argv):
+def parser():
     ap = argparse.ArgumentParser()
     ap.add_argument("--host", required=True)
     ap.add_argument("--port", type=int, default=5061)
@@ -169,7 +169,11 @@ def main(argv):
     ap.add_argument("--hold", type=float, default=2)
     ap.add_argument("--bad-password", action="store_true")
     ap.add_argument("--stop-file", help="hang up as soon as this file exists (the caller decides how long the call lasts)")
-    args = ap.parse_args(argv)
+    return ap
+
+
+def main(argv):
+    args = parser().parse_args(argv)
     out = {"registered": None, "invite": None, "held": 0.0}
     try:
         phone = Phone(args.host, args.port, args.cafile, args.user, args.secret)

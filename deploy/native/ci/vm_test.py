@@ -233,7 +233,7 @@ class VmTestCase(unittest.TestCase):
     @classmethod
     def probe_command(cls, account, *args):
         return ["docker", "exec", "-i", CLIENT, "python3", "-", "--host", DOMAIN, "--cafile", "/shared/root.crt",
-                "--user", account["user"], "--secret", account["secret"], *args]
+                f"--user={account['user']}", f"--secret={account['secret']}", *args]   # `=`: a random secret can start with "-" (about 1 in 64), which argparse takes for an option
 
     @classmethod
     def probe(cls, account, *args, timeout=120):
