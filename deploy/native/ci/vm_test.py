@@ -17,6 +17,7 @@ import json
 import os
 import pathlib
 import re
+import secrets
 import shutil
 import subprocess
 import tarfile
@@ -204,6 +205,10 @@ class VmTestCase(unittest.TestCase):
         it changes). Tests that place a call must not depend on an earlier test having done that."""
         wait_for(lambda: vm("treeline-certsync 2>&1", check=False).returncode == 0, 150, "the certificate to be obtained and copied")
         wait_for(lambda: re.search(r":5061\b", vm("ss -H -ltn", check=False).stdout), 60, "Asterisk to listen for SIP over TLS")
+        # After an Asterisk restart the controller must register its Stasis application again; a call placed before that is dropped
+        # (a real phone just tries again, a test must not race it)
+        wait_for(lambda: re.search(r"(?m)^treeline\s*$", vm("asterisk -rx 'ari show apps'", check=False).stdout), 90,
+                 "the controller's Stasis application to be registered")
 
     @classmethod
     def handset(cls):
@@ -212,7 +217,9 @@ class VmTestCase(unittest.TestCase):
         cls.ensure_tls()
         if getattr(VmTestCase, "_handset_account", None):
             return VmTestCase._handset_account
-        account = json.loads(vm("runuser -u treeline -- /opt/treeline/current/venv/bin/python -I /ci/vm_handset.py").stdout.strip().splitlines()[-1])
+        secret = secrets.token_urlsafe(18)                  # a throwaway credential for a fake account, chosen here, never printed by the helper
+        account = json.loads(vm(f"runuser -u treeline -- /opt/treeline/current/venv/bin/python -I /ci/vm_handset.py {secret}").stdout.strip().splitlines()[-1])
+        account["secret"] = secret
         code = vm("curl -sS -o /dev/null -w '%{http_code}' -X PUT -u treeline:$(cat /etc/treeline/ari-password) "
                   "http://127.0.0.1:8088/ari/asterisk/modules/res_pjsip.so").stdout.strip()
         assert code == "204", f"the ARI reload call answered {code}"

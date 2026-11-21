@@ -25,6 +25,8 @@ REALM_DEFAULT = "treeline"
 
 
 def md5(text):
+    # SIP digest authentication IS MD5 (RFC 2617/3261, "algorithm=MD5"), and Treeline's handset accounts are stored as md5_cred digests:
+    # this test client cannot speak to Asterisk without it. The credential here is a throwaway one made by the CI job for a fake account.
     return hashlib.md5(text.encode()).hexdigest()
 
 
@@ -46,6 +48,7 @@ class Phone:
     def __init__(self, host, port, cafile, user, secret, server_name=None, timeout=15):
         raw = socket.create_connection((host, port), timeout=timeout)
         ctx = ssl.create_default_context(cafile=cafile)
+        ctx.minimum_version = ssl.TLSVersion.TLSv1_2          # the production transport is tlsv1_2 and up; the probe must not be able to ask for less
         self.sock = ctx.wrap_socket(raw, server_hostname=server_name or host)
         self.sock.settimeout(timeout)
         self.host, self.user, self.secret = host, user, secret
