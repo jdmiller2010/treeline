@@ -18,6 +18,7 @@ import re
 import secrets
 import sqlite3
 import threading
+import time
 
 DB_PATH = os.environ.get("TREELINE_DB", "/data/treeline.db")
 SIP_REALM = "treeline"
@@ -360,6 +361,26 @@ def migrate(conn, migrations=None):
             migrations=MIGRATIONS if migrations is None else migrations, label="central database")
 
 
+def enable_wal(conn, seconds=15, sleep=time.sleep, now=time.monotonic):
+    """`PRAGMA journal_mode=WAL`, waiting if another process is doing the same to a new file.
+
+    Switching a file to WAL needs a lock that SQLite does not wait for: busy_timeout is ignored and "database is locked" comes back
+    at once. When the api and the controller (or several workers) open a brand-new file together, one of them lost the race and
+    died at start (seen on the CI runner about one round in fifty, reproduced locally on one CPU). The retry is bounded and only
+    for that error; a file already in WAL, which is every start after the first, never waits."""
+    end = now() + seconds
+    delay = 0.01
+    while True:
+        try:
+            conn.execute("PRAGMA journal_mode=WAL")
+            return
+        except sqlite3.OperationalError as err:
+            if "locked" not in str(err) and "busy" not in str(err) or now() >= end:
+                raise
+            sleep(delay)
+            delay = min(delay * 2, 0.25)
+
+
 def connect(path=None, migrations=None):
     path = path or DB_PATH
     migrations = MIGRATIONS if migrations is None else migrations
@@ -374,7 +395,7 @@ def connect(path=None, migrations=None):
         prepare(conn, app_id=CENTRAL_APP_ID, schema=SCHEMA, migrations=migrations, label="central database",
                 backup=None if path == ":memory:" else
                 lambda v: backup_before_migration(conn, directory, "treeline", v))
-        conn.execute("PRAGMA journal_mode=WAL")
+        enable_wal(conn)
         conn.execute("PRAGMA foreign_keys=ON")
     except BaseException:
         conn.close()

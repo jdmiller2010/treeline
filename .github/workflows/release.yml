@@ -62,9 +62,13 @@ jobs:
           [ "$(sha256sum "$f" | cut -d' ' -f1)" = "$sha" ] || { echo "the published asterisk-$id is not the artifact artifact.lock names"; exit 1; }
           [ "$(stat -c %s "$f")" = "$size" ] || { echo "the published asterisk-$id is not the size artifact.lock names"; exit 1; }
           # Where it came from: built by our own workflow, on main, on a GitHub-hosted runner.
+          # Success prints nothing without --format json (found on the first real release: an "output must not be empty" check failed
+          # a good artifact). With it, stdout is the list of verified attestations: it must hold at least one, and a changed file
+          # makes gh exit non-zero (both checked by hand against the published asset).
           out="$(gh attestation verify "$f" --repo "$REPO" --signer-workflow "$REPO/.github/workflows/asterisk.yml" \
-                   --source-ref refs/heads/main --deny-self-hosted-runners)"
-          [ -n "$out" ] || { echo "the attestation check printed nothing"; exit 1; }
+                   --source-ref refs/heads/main --deny-self-hosted-runners --format json)"
+          printf '%s' "$out" | python3 -I -c 'import json,sys; d=json.load(sys.stdin); sys.exit(0 if isinstance(d, list) and d else 1)' \
+            || { echo "gh attestation verify returned no verified attestation"; exit 1; }
 
       - name: The source of what is shipped (the GPL), checked against the pins
         run: |

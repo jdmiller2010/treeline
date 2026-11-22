@@ -318,6 +318,79 @@ class ManualRollback(Agent):
         self.assertFalse(os.path.exists(deploy.inflight_path(self.p)))
 
 
+class Adopt(unittest.TestCase):
+    """install.sh's `adopt`: the first release on a machine, and the one-time replacement of a format-1 release (the kind that ran on
+    Ubuntu's Asterisk package). The machine's own effects are replaced; the VM job runs the real thing."""
+
+    def setUp(self):
+        self.d = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.d, True)
+        self.p = {"state": str(self.d / "state"), "releases": str(self.d / "releases"), "current": str(self.d / "current"),
+                  "run": str(self.d / "run" / "deploy.lock")}
+        self.src = self.d / "src"
+        release_json(self.src, "v0.2.0", NEW)
+        self.switched = []
+
+    def legacy(self, version="v0.1.1", fmt=1):
+        release_json(self.d / "releases" / version, version, None, fmt=fmt)
+        os.symlink(self.d / "releases" / version, self.p["current"])
+        deploy.record(self.p, current=version, previous=None)
+
+    def adopt(self, **patches):
+        base = dict(paths=lambda: self.p, switch_asterisk=lambda i: self.switched.append(i))
+        base.update(patches)
+        with contextlib.ExitStack() as st:
+            for k, v in base.items():
+                st.enter_context(mock.patch.object(deploy, k, v))
+            for k, v in dict(build_venv=lambda d: None, seal=lambda d: None, install_asterisk=lambda d, opt=None, ci=False: True,
+                             sweep_leftovers=lambda *a, **k: []).items():
+                st.enter_context(mock.patch.object(deploy.rel, k, v))
+            st.enter_context(mock.patch.object(deploy.common, "host_settings", lambda *a: {"TREELINE_CI": "1"}))
+            return deploy.adopt(str(self.src))
+
+    def test_a_machine_with_no_release_gets_this_one(self):
+        self.assertEqual(self.adopt(), 0)
+        self.assertEqual(os.path.realpath(self.p["current"]), str(self.d / "releases" / "v0.2.0"))
+        self.assertEqual(self.switched, [NEW])
+
+    def test_a_format_2_release_is_never_replaced_by_install_sh(self):
+        self.legacy("v0.1.5", fmt=2)
+        self.assertEqual(self.adopt(), 0)
+        self.assertEqual(os.path.realpath(self.p["current"]), str(self.d / "releases" / "v0.1.5"))
+        self.assertFalse((self.d / "releases" / "v0.2.0").exists())
+
+    def test_a_format_1_release_is_replaced_once_and_its_directory_goes(self):
+        self.legacy()
+        self.assertEqual(self.adopt(), 0)
+        self.assertEqual(os.path.realpath(self.p["current"]), str(self.d / "releases" / "v0.2.0"))
+        self.assertFalse((self.d / "releases" / "v0.1.1").exists(), "nothing can go back to it, and it would stop old builds being pruned")
+        state = deploy.read_state(self.p)
+        self.assertEqual((state["current"], state["previous"], state["asterisk"]), ("v0.2.0", None, NEW))
+        self.assertIsNone(deploy.legacy_release(self.p, "v0.2.0"), "the new release is format 2, so a second install.sh leaves it alone")
+
+    def test_a_failure_leaves_the_format_1_release_running(self):
+        self.legacy()
+        def boom(d):
+            raise rel.ReleaseError("pip is down")
+        with contextlib.ExitStack() as st:
+            st.enter_context(mock.patch.object(deploy, "paths", lambda: self.p))
+            st.enter_context(mock.patch.object(deploy.rel, "build_venv", boom))
+            st.enter_context(mock.patch.object(deploy.rel, "sweep_leftovers", lambda *a, **k: []))
+            st.enter_context(mock.patch.object(deploy.common, "host_settings", lambda *a: {"TREELINE_CI": "1"}))
+            with self.assertRaises(rel.ReleaseError):
+                deploy.adopt(str(self.src))
+        self.assertEqual(os.path.realpath(self.p["current"]), str(self.d / "releases" / "v0.1.1"))
+        self.assertTrue((self.d / "releases" / "v0.1.1").exists())
+        self.assertFalse((self.d / "releases" / "v0.2.0").exists(), "the half-made release is removed")
+
+    def test_a_release_json_that_cannot_be_read_is_not_taken_for_a_format_1_release(self):
+        (self.d / "releases" / "v0.1.1").mkdir(parents=True)
+        (self.d / "releases" / "v0.1.1" / "release.json").write_text("{not json")
+        os.symlink(self.d / "releases" / "v0.1.1", self.p["current"])
+        self.assertEqual(self.adopt(), 0)
+        self.assertEqual(os.path.realpath(self.p["current"]), str(self.d / "releases" / "v0.1.1"), "left alone")
+
+
 class SmokeIds(unittest.TestCase):
     def test_the_version_asterisk_reports_is_the_build_ids_version_for_both_kinds_of_id(self):
         for ident in ("24.0.0-t1", "24.0.0-t90", "24.0.0-x9"):

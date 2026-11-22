@@ -188,7 +188,7 @@ def _open(tid, create=False, init=None):
             raise db.DatabaseRefused(
                 f"household file {int(tid)}.db belongs to treehouse {row['treehouse_id'] if row else '(none)'}, "
                 "not this one: refusing to read it")
-        conn.execute("PRAGMA journal_mode=WAL")
+        db.enable_wal(conn)
         conn.execute("PRAGMA foreign_keys=ON")
     except BaseException:
         conn.close()
