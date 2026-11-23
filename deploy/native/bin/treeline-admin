@@ -1,0 +1,133 @@
+#!/opt/treeline/tools/bin/python -I
+"""Make, list and remove Treeline admins from the machine itself (docs/ADMIN.md). Run as root over ssh:
+
+    sudo treeline-admin add you@example.com     the first admin (or one that was removed): the address you sign in with
+    sudo treeline-admin remove you@example.com  (never the last admin)
+    sudo treeline-admin list
+
+This is the only way to make the FIRST admin: the admin page cannot make one from nothing. It opens the database as the `treeline`
+user through the running release's own code (so it follows the same rules as the app), and it records who ran it in the admin audit
+log (`ssh:<the user that ran sudo>`). It refuses while a deploy is running, which may be migrating the same file.
+"""
+
+import fcntl
+import os
+import subprocess
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+import treeline_common as common  # noqa: E402
+
+USAGE = "usage: sudo treeline-admin add EMAIL | remove EMAIL | list"
+
+CODE = r"""
+import json, sys
+sys.path.insert(0, "controller")
+from treeline import db
+op, email, who = sys.argv[1], sys.argv[2], sys.argv[3]
+c = db.connect()
+out = {}
+try:
+    if op == "list":
+        out["admins"] = db.list_admins(c)
+    elif op == "add":
+        e = db.add_admin(c, email, who)
+        db.log_admin(c, who, "admin_add", "admin", e)
+        out["email"] = e
+        out["is_grown_up"] = c.execute("SELECT 1 FROM grown_up g JOIN treehouse t ON t.id=g.treehouse_id "
+                                       "WHERE g.email=? AND t.left_at IS NULL", (e,)).fetchone() is not None
+    elif op == "remove":
+        e = db.remove_admin(c, email, who)
+        db.log_admin(c, who, "admin_remove", "admin", e)
+        out["email"] = e
+    else:
+        raise db.AdminError("unknown operation")
+except db.AdminError as err:
+    out["error"] = str(err)
+print(json.dumps(out))
+"""
+
+
+def current_release():
+    link = os.path.join(common.OPT, "current")
+    real = os.path.realpath(link)
+    if not os.path.isdir(real) or os.path.dirname(real) != os.path.realpath(os.path.join(common.OPT, "releases")):
+        raise SystemExit("treeline-admin: no release is installed (is install.sh finished?)")
+    return real
+
+
+def app_env():
+    env = {"PATH": "/usr/sbin:/usr/bin:/sbin:/bin"}
+    for f in (os.path.join(common.ETC, "app.env"), os.path.join(common.RUN, "env")):
+        if os.path.exists(f):
+            env.update({k: v.replace('\\"', '"').replace("\\\\", "\\") for k, v in common.read_env_file(f).items()})
+    return env
+
+
+def who_ran_it(environ=None):
+    environ = environ if environ is not None else os.environ
+    user = environ.get("SUDO_USER") or environ.get("LOGNAME") or "root"
+    return "ssh:" + "".join(ch for ch in user if ch.isalnum() or ch in "._-")[:40]
+
+
+def command(release_dir, op, email, who):
+    py = os.path.join(release_dir, "venv", "bin", "python")
+    return ["runuser", "-u", "treeline", "--", py, "-I", "-c", CODE, op, email or "-", who]
+
+
+def hold_deploy_lock(path=None):
+    """A shared lock on the deploy lock for the length of the run: a deploy (which takes it exclusively) cannot start under us, and
+    we do not start under a deploy that may be migrating the very file we open."""
+    path = path or os.path.join(common.RUN, "deploy.lock")
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    handle = open(path, "a")
+    try:
+        fcntl.flock(handle, fcntl.LOCK_SH | fcntl.LOCK_NB)
+    except OSError:
+        handle.close()
+        raise SystemExit("treeline-admin: a deploy is running; try again in a few minutes")
+    return handle
+
+
+def main(argv, run=subprocess.run, lock=hold_deploy_lock, release=current_release, env=app_env):
+    if not argv or argv[0] not in ("add", "remove", "list") or (argv[0] != "list" and len(argv) != 2) or (argv[0] == "list" and len(argv) != 1):
+        print(USAGE, file=sys.stderr)
+        return 2
+    if hasattr(os, "geteuid") and os.geteuid() != 0 and run is subprocess.run:
+        print("treeline-admin: run it with sudo", file=sys.stderr)
+        return 2
+    op, email = argv[0], argv[1] if len(argv) > 1 else None
+    held = lock()
+    try:
+        done = run(command(release(), op, email, who_ran_it()), capture_output=True, text=True, env=env(), cwd=release())
+    finally:
+        held.close()
+    if done.returncode != 0:
+        print("treeline-admin failed: " + (done.stderr.strip()[-400:] or "no message"), file=sys.stderr)
+        return 1
+    import json
+    try:
+        out = json.loads(done.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        print("treeline-admin: unexpected answer from the app code", file=sys.stderr)
+        return 1
+    if out.get("error"):
+        print("treeline-admin: " + out["error"], file=sys.stderr)
+        return 1
+    if op == "list":
+        for a in out["admins"]:
+            print(f"{a['email']}\tadded {a['created_at'][:10]} by {a['added_by']}")
+        if not out["admins"]:
+            print("(no admins yet)")
+    elif op == "add":
+        print(f"{out['email']} is an admin.")
+        if not out["is_grown_up"]:
+            print("Note: this address is not a grown-up in any treehouse, so it cannot sign in yet. Sign in with the address of a "
+                  "grown-up (the one you use for your own treehouse).")
+    else:
+        print(f"{out['email']} is no longer an admin.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

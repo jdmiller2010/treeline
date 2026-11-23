@@ -228,7 +228,7 @@ install -d -m 0755 "$OPT/tools"
 if [ ! -x "$OPT/tools/bin/python" ]; then python3 -m venv "$OPT/tools"; fi
 "$OPT/tools/bin/pip" install --quiet --disable-pip-version-check --no-cache-dir --require-hashes --no-deps -r "$HERE/requirements-tools.lock"
 for f in "$HERE"/bin/*; do install -m 0755 -o root -g root "$f" "$LIB/$(basename "$f")"; done
-for t in treeline-deploy treeline-config treeline-certsync treeline-backup treeline-health; do ln -sf "$LIB/$t" "/usr/local/sbin/$t"; done
+for t in treeline-deploy treeline-config treeline-certsync treeline-backup treeline-health treeline-admin; do ln -sf "$LIB/$t" "/usr/local/sbin/$t"; done
 # The tools' shebang is the tools venv's Python; the library modules sit beside the scripts.
 install -d -m 0755 /run/treeline
 

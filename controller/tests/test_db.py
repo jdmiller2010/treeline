@@ -47,12 +47,13 @@ def add_flag_table(c):
 
 
 class Markers(unittest.TestCase):
-    def test_a_new_file_gets_the_schema_the_marker_and_version_one(self):
+    def test_a_new_file_gets_the_schema_the_marker_and_the_baseline_version(self):
         path = new_path()
-        db.connect(path).close()
+        db.connect(path, migrations=[]).close()                  # the baseline alone is version 1
         self.assertEqual(pragma(path, "application_id"), db.CENTRAL_APP_ID)
         self.assertEqual(pragma(path, "user_version"), 1)
-        c = db.connect(path)
+        c = db.connect(path)                                      # the real list: one step per entry
+        self.assertEqual(c.execute("PRAGMA user_version").fetchone()[0], len(db.MIGRATIONS) + 1)
         tables = {r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         self.assertTrue({"treehouse", "handset", "string", "call", "call_event", "grown_up"} <= tables)
         self.assertEqual(c.execute("PRAGMA journal_mode").fetchone()[0], "wal")
@@ -66,7 +67,7 @@ class Markers(unittest.TestCase):
         old.close()
         before = digest(path)
         with self.assertRaises(db.OldLayoutDatabase) as cm:
-            db.connect(path)
+            db.connect(path, migrations=[])
         self.assertIn("./dev clean", str(cm.exception))
         self.assertEqual(digest(path), before)
         self.assertEqual(pragma(path, "application_id"), 0)
@@ -79,7 +80,7 @@ class Markers(unittest.TestCase):
         old.close()
         before = digest(path)
         with self.assertRaises(db.OldLayoutDatabase):
-            db.connect(path)
+            db.connect(path, migrations=[])
         self.assertEqual(digest(path), before)
 
     def test_a_household_file_is_not_a_central_database(self):
@@ -88,14 +89,14 @@ class Markers(unittest.TestCase):
         c.executescript(f"CREATE TABLE meta (id INTEGER); PRAGMA application_id={db.HOUSEHOLD_APP_ID}; PRAGMA user_version=1;")
         c.close()
         with self.assertRaises(db.WrongKindOfDatabase):
-            db.connect(path)
+            db.connect(path, migrations=[])
 
     def test_a_database_newer_than_the_code_is_refused_and_not_modified(self):
         path = new_path()
         db.connect(path, migrations=[add_note_column]).close()          # a newer release made this: version 2
         before = digest(path)
         with self.assertRaises(db.DatabaseNewerThanCode) as cm:
-            db.connect(path)                                              # this code knows version 1
+            db.connect(path, migrations=[])                                              # this code knows version 1
         self.assertIn("version 2", str(cm.exception))
         self.assertEqual(digest(path), before)
         self.assertEqual(pragma(path, "user_version"), 2)
@@ -105,16 +106,16 @@ class Markers(unittest.TestCase):
         db.connect(path, migrations=[add_note_column]).close()
         for _ in range(3):
             with self.assertRaises(db.DatabaseRefused):
-                db.connect(path)
+                db.connect(path, migrations=[])
         os.remove(path)                              # nothing holds it open: it can go (Windows would refuse otherwise)
-        db.connect(path).close()
+        db.connect(path, migrations=[]).close()
 
 
 class Migrations(unittest.TestCase):
     def test_steps_apply_in_order_the_version_moves_and_a_second_run_does_nothing(self):
         path = new_path()
-        db.connect(path).close()                                                # version 1, with a row to keep
-        c = db.connect(path)
+        db.connect(path, migrations=[]).close()                                                # version 1, with a row to keep
+        c = db.connect(path, migrations=[])
         c.execute("INSERT INTO setting(key,value) VALUES('keep','me')")
         c.close()
         c = db.connect(path, migrations=[add_note_column, add_flag_table])
@@ -137,7 +138,7 @@ class Migrations(unittest.TestCase):
 
     def test_a_step_that_raises_changes_nothing_and_the_next_start_can_retry(self):
         path = new_path()
-        db.connect(path).close()
+        db.connect(path, migrations=[]).close()
 
         def broken(c):
             c.execute("ALTER TABLE setting ADD COLUMN half_done TEXT")
@@ -156,7 +157,7 @@ class Migrations(unittest.TestCase):
 
     def test_a_second_step_failing_keeps_the_first(self):
         path = new_path()
-        db.connect(path).close()
+        db.connect(path, migrations=[]).close()
 
         def broken(c):
             raise RuntimeError("boom")
@@ -169,7 +170,7 @@ class Migrations(unittest.TestCase):
 
     def test_a_process_killed_half_way_through_a_step_leaves_the_file_as_it_was(self):
         path = new_path()
-        db.connect(path).close()
+        db.connect(path, migrations=[]).close()
         code = f"""
 import os, sys
 sys.path.insert(0, {CONTROLLER!r})
@@ -190,7 +191,7 @@ db.connect({path!r}, migrations=[step])
 
     def test_two_threads_starting_at_once_apply_a_step_once(self):
         path = new_path()
-        db.connect(path).close()
+        db.connect(path, migrations=[]).close()
         ran, errors = [], []
         gate = threading.Barrier(6)
 
@@ -232,7 +233,7 @@ db.connect({path!r}, migrations=[step])
                 results.append((p.returncode, err.decode()))
             self.assertEqual([r for r in results if r[0]], [], f"round {n}")
             self.assertEqual(pragma(path, "application_id"), db.CENTRAL_APP_ID)
-            self.assertEqual(pragma(path, "user_version"), 1)
+            self.assertEqual(pragma(path, "user_version"), len(db.MIGRATIONS) + 1)
 
 
 class EnableWal(unittest.TestCase):
@@ -267,8 +268,8 @@ class EnableWal(unittest.TestCase):
 
     def test_a_file_already_in_wal_never_waits(self):
         path = new_path()
-        db.connect(path).close()
-        c = db.connect(path)
+        db.connect(path, migrations=[]).close()
+        c = db.connect(path, migrations=[])
         slept = []
         db.enable_wal(c, sleep=slept.append)
         self.assertEqual(slept, [])
@@ -278,7 +279,7 @@ class EnableWal(unittest.TestCase):
 class PreMigrationBackup(unittest.TestCase):
     def test_a_backup_is_taken_before_a_step_and_restores_to_the_old_version(self):
         path = new_path()
-        c = db.connect(path)
+        c = db.connect(path, migrations=[])
         c.execute("INSERT INTO setting(key,value) VALUES('keep','me')")
         c.close()
         db.connect(path, migrations=[add_note_column]).close()
@@ -294,8 +295,8 @@ class PreMigrationBackup(unittest.TestCase):
 
     def test_no_backup_when_nothing_is_pending(self):
         path = new_path()
-        db.connect(path).close()
-        db.connect(path).close()
+        db.connect(path, migrations=[]).close()
+        db.connect(path, migrations=[]).close()
         self.assertFalse(os.path.exists(os.path.join(os.path.dirname(path), "pre-migrate")))
 
     def test_old_backups_are_deleted_after_seven_days_new_ones_kept(self):
