@@ -208,14 +208,17 @@ class EngineTests(unittest.TestCase):
         e, _ = self.engine()
         self.conn.execute("UPDATE call SET state='ended', logged=1 WHERE id=?", (self.call_id,))    # the line is free
         alex_number = db.get_treehouse(self.conn, self.alex)["number"]
-        for number in (alex_number, "911", "5555", "12"):                   # not strung, 911, no such number, too short
+        # A number nobody has: treehouse numbers are random, so a fixed one (it was 5555) belonged to a test family now and then.
+        taken = {r[0] for r in self.conn.execute("SELECT number FROM treehouse WHERE number IS NOT NULL")}
+        free = next(f"{n:04d}" for n in range(5555, 10000) if f"{n:04d}" not in taken)
+        for number in (alex_number, "911", free, "12"):                     # not strung, 911, no such number, too short
             rows = self.dial(e, number)
             self.assertEqual(len(rows), 1)
             self.assertEqual(rows[0]["state"], "ended")
             self.assertEqual(rows[0]["logged"], 1, number)
         got = households.conn(self.sam).execute("SELECT dialed, result, callee_treehouse FROM call_log ORDER BY id").fetchall()
         self.assertEqual([(r["dialed"], r["result"]) for r in got][-4:],
-                         [(alex_number, "not_strung"), ("911", "no_911"), ("5555", "not_in_service"), ("12", "incomplete")])
+                         [(alex_number, "not_strung"), ("911", "no_911"), (free, "not_in_service"), ("12", "incomplete")])
         self.assertIsNone(got[-4]["callee_treehouse"])                         # not whose number it was
         self.assertEqual(households.conn(self.alex).execute("SELECT count(*) FROM call_log").fetchone()[0], 0)
         notes = [n["kind"] for n in households.notices(self.sam)]
