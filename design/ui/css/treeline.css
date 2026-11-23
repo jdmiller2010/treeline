@@ -1050,3 +1050,12 @@ body {
 .tl-brandline .tl-brand { color: var(--ink); }
 .tl-brandline .tl-tagline { font-size: 13px; line-height: 18px; margin: -2px 0 0 48px; }
 /* <<< Footer */
+
+/* LogView: machine text shown as it is (the Treeline Admin page's logs). Monospace, long lines wrap, scrolls inside itself (never
+   the page sideways), selectable. A quiet sunk panel, not a card: the card around it carries the title and the controls. */
+.tl-logview { margin: 0; box-sizing: border-box; width: 100%; min-width: 0; max-height: min(70vh, 640px); overflow: auto; padding: var(--space-4);
+  border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface-sunk); color: var(--ink);
+  font: 400 13px/20px var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; tab-size: 4; user-select: text; }
+.tl-logview:focus-visible { outline: var(--border-focus) solid var(--focus); outline-offset: 2px; }
+.tl-logview__empty { color: var(--ink-muted); font-family: var(--font-sans); }
+@container (max-width: 400px) { .tl-logview { padding: var(--space-3); font-size: 12px; line-height: 18px; } }

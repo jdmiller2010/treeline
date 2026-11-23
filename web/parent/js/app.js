@@ -14,6 +14,7 @@ import { quiet } from "./quiet.js";
 import { phonebook } from "./house.js";
 import { account, privacy, about, actionLog, pairClaim, stringLink } from "./account.js";
 import { carryOverPush, forgetPushQuietly } from "./push.js";
+import { admin } from "./admin.js";
 
 const root = document.getElementById("root");
 
@@ -39,7 +40,7 @@ const NAV = [
 
 const ROUTES = {
   home, strings, calls, quiet, phonebook, account, privacy, about, actions: actionLog,
-  pair: pairClaim, string: stringLink, ladder: stringLink,   // (#/ladder/ is kept so links already sent still work)
+  pair: pairClaim, string: stringLink, ladder: stringLink, admin,   // (#/ladder/ is kept so links already sent still work)
 };
 
 function parseHash() {
@@ -57,6 +58,7 @@ function accountMenu() {
     ${[["#/phonebook", "Phone book", "phone"], ["#/settings", "Settings", "settings"],
        ["#/privacy", "Privacy and safety", "shield-check"], ["#/about", "About Treeline", "info"]].map(([href, label, ic]) =>
       html`<a role="menuitem" href="${href}" class="tl-menu__item">${icon(ic)}<span>${label}</span></a>`)}
+    ${me.admin ? html`<a role="menuitem" href="#/admin" class="tl-menu__item" data-admin-link>${icon("key")}<span>Treeline Admin</span></a>` : ""}
     <button role="menuitem" type="button" class="tl-menu__item" data-install-app ${installAvailable() ? "" : raw("hidden")}>${icon("plus")}<span>Install the app</span></button>
     <div class="tl-menu__sep" role="separator"></div>
     <button role="menuitem" type="button" class="tl-menu__item tl-menu__item--danger" data-sign-out>${icon("log-out")}<span>Sign out</span></button>
@@ -144,6 +146,7 @@ async function render() {
 
 /** The artist's layer: doodles drawn on the page, different on every load. Purely decoration: with the script missing, nothing changes. */
 function decorate(v) {
+  if (v.noDoodles) { document.querySelectorAll(".tl-doodle-layer").forEach((n) => n.remove()); return; }   // working screens (Treeline Admin)
   const draw = () => window.TLDoodles?.scatter(root.querySelector(".tl-app__main") || root.querySelector("main"), (v.title || "") + location.hash);
   draw();
   document.fonts?.ready.then(draw);

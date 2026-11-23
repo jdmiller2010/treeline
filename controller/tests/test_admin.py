@@ -5,7 +5,9 @@ The point of most of these: an admin is not a way into a family. The gate, the k
 import datetime as dt
 import os
 import re
+import json
 import sqlite3
+import subprocess
 import stat
 import tempfile
 import threading
@@ -207,7 +209,8 @@ class Gate(unittest.TestCase):
         """A new /api/admin route has to be a deliberate edit of this list (and of docs/ADMIN.md)."""
         rules = sorted((r.rule, tuple(sorted(r.methods - {"HEAD", "OPTIONS"}))) for r in api.app.url_map.iter_rules() if r.rule.startswith("/api/admin"))
         self.assertEqual(rules, [("/api/admin/admins", ("GET",)), ("/api/admin/audit", ("GET",)), ("/api/admin/logs", ("POST",)),
-                                 ("/api/admin/logs/<rid>", ("GET",)), ("/api/admin/logs/sources", ("GET",))])
+                                 ("/api/admin/logs/<rid>", ("GET",)), ("/api/admin/logs/sources", ("GET",)),
+                                 ("/api/admin/releases", ("GET",))])
 
 
 BRIDGE_CODE = os.path.join(os.path.dirname(CONTROLLER), "deploy", "native", "bin")
@@ -290,6 +293,17 @@ class Logs(unittest.TestCase):
     def test_a_result_id_must_be_an_id(self):
         for bad in ("../../etc/passwd", "x" * 32, "0" * 31):
             self.assertEqual(self.a.get(f"/api/admin/logs/{bad}").status_code, 404, bad)
+
+    def test_releases_show_what_the_helper_last_wrote_and_only_known_keys(self):
+        self.assertIsNone(self.a.get("/api/admin/releases").get_json()["report"])
+        report = {"current": "v0.2.0", "previous": None, "failed": ["v0.1.9"], "asterisk": "24.0.0-t1", "error": None,
+                  "published": [{"version": "v0.3.0", "published_at": "2026-11-24T10:00:00Z", "newer": True, "failed": False, "extra": "x"}]}
+        self.bridge.refresh_releases(out_dir=self.out, run=lambda *a, **k: subprocess.CompletedProcess(a, 0, json.dumps(report), ""))
+        r = self.a.get("/api/admin/releases").get_json()
+        self.assertEqual(r["report"]["current"], "v0.2.0")
+        self.assertEqual(r["report"]["published"], [{"version": "v0.3.0", "published_at": "2026-11-24T10:00:00Z", "newer": True, "failed": False}])
+        self.assertIn("at", r["report"])
+        self.assertEqual(Person().get("/api/admin/releases").status_code, 404)
 
     def test_a_non_admin_cannot_ask_or_read(self):
         p = Person()

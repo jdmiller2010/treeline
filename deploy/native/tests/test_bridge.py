@@ -230,7 +230,7 @@ class Installed(unittest.TestCase):
         self.assertIn('"$S"/*.path', text)
         enable = re.search(r"systemctl enable asterisk[^\n]*", text).group(0)
         start = re.search(r"systemctl start treeline-certsync[^\n]*", text).group(0)
-        for unit in ("treeline-bridge.path", "treeline-bridge-sweep.timer"):
+        for unit in ("treeline-bridge.path", "treeline-bridge-sweep.timer", "treeline-bridge-releases.timer"):
             self.assertIn(unit, enable)
             self.assertIn(unit, start)
         self.assertNotIn("treeline-bridge.service", enable, "the service is started by its path unit, never on its own")
@@ -242,6 +242,85 @@ class Installed(unittest.TestCase):
         rw = re.search(r"^ReadWritePaths=(.*)$", unit, re.M).group(1).split()
         self.assertIn("-/var/lib/treeline/bridge/req", rw)
         self.assertFalse([p for p in rw if "bridge" in p and p != "-/var/lib/treeline/bridge/req"])
+
+
+class CleaningIsFast(unittest.TestCase):
+    def test_a_whole_answer_of_hostile_shapes_is_cleaned_quickly(self):
+        """An unbounded email pattern was quadratic on a long line with no spaces (it took minutes)."""
+        for text in ("é\u2603" * 130000, ("a" * 5000 + "@" + "b" * 5000) * 25, ":" * 260000, "1." * 130000, "?=" * 130000):
+            start = time.time()
+            b.clean(text[:b.MAX_OUTPUT])
+            self.assertLess(time.time() - start, 2.0, text[:20])
+
+
+class Releases(Folders):
+    def test_the_report_from_the_agent_is_rechecked_and_written_for_the_app(self):
+        report = {"current": "v0.2.0", "previous": None, "failed": [], "asterisk": "24.0.0-t1", "error": None,
+                  "published": [{"version": "v0.3.0", "published_at": "2026-11-24T10:00:00Z", "newer": True, "failed": False}]}
+        seen = []
+        def run(cmd, **kw):
+            seen.append((cmd, kw))
+            return subprocess.CompletedProcess(cmd, 0, json.dumps(report) + "\n", "")
+        out = b.refresh_releases(out_dir=str(self.out), run=run)
+        self.assertEqual(seen[0][0], ["/usr/local/sbin/treeline-deploy", "releases"])
+        self.assertIs(seen[0][1]["stdin"], subprocess.DEVNULL)
+        written = json.loads((self.out / "releases.json").read_text())
+        self.assertEqual(written["current"], "v0.2.0")
+        self.assertEqual(written, out)
+        self.assertEqual(stat.S_IMODE(os.stat(self.out / "releases.json").st_mode), 0o640)
+
+    def test_an_agent_that_says_something_else_becomes_an_error_not_a_crash(self):
+        for stdout in ("", "not json", json.dumps({"current": "v1"}), json.dumps([1])):
+            out = b.refresh_releases(out_dir=str(self.out), run=lambda *a, **k: subprocess.CompletedProcess(a, 1, stdout, "boom 203.0.113.5"))
+            self.assertEqual(out["published"], [])
+            self.assertIn("did not answer", out["error"])
+            self.assertNotIn("203.0.113.5", out["error"], "cleaned like a log")
+
+    def test_the_sweep_keeps_the_releases_report(self):
+        (self.out / "releases.json").write_text("{}")
+        os.utime(self.out / "releases.json", (time.time() - 5000, time.time() - 5000))
+        b.sweep(str(self.out))
+        self.assertTrue((self.out / "releases.json").exists())
+
+
+class AgentReleases(unittest.TestCase):
+    """treeline-deploy's read-only `releases` report."""
+
+    deploy = helpers.load("treeline-deploy")
+
+    def test_only_published_plain_versions_newest_first(self):
+        gh = [{"tag_name": "v0.2.0", "draft": False, "prerelease": False, "published_at": "2026-11-22T02:58:38Z"},
+              {"tag_name": "asterisk-24.0.0-t1", "draft": False, "prerelease": True},
+              {"tag_name": "v0.10.0", "draft": False, "prerelease": False, "published_at": "2026-12-01T00:00:00Z"},
+              {"tag_name": "v0.3.0", "draft": True, "prerelease": False},
+              {"tag_name": "v0.1.1", "draft": False, "prerelease": False, "published_at": "<script>"},
+              "junk", {"tag_name": 5}]
+        self.assertEqual(self.deploy.published(gh), [("v0.10.0", "2026-12-01T00:00:00Z"), ("v0.2.0", "2026-11-22T02:58:38Z"), ("v0.1.1", None)])
+        with self.assertRaises(self.deploy.Failed):
+            self.deploy.published({"message": "rate limited"})
+
+    def test_the_report_marks_newer_and_failed_and_survives_github_being_down(self):
+        d = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, d, True)
+        (d / "releases" / "v0.2.0").mkdir(parents=True)
+        os.symlink(d / "releases" / "v0.2.0", d / "current")
+        p = {"state": str(d / "state"), "releases": str(d / "releases"), "current": str(d / "current"), "run": str(d / "lock")}
+        self.deploy.record(p, current="v0.2.0", previous="v0.1.1", failed=["v0.3.0"])
+        from unittest import mock
+        gh = json.dumps([{"tag_name": t, "draft": False, "prerelease": False, "published_at": None} for t in ("v0.3.0", "v0.4.0", "v0.2.0")]).encode()
+        env = {"TREELINE_RELEASE_REPO": "owner/repo"}
+        with mock.patch.object(self.deploy, "https_get", lambda *a, **k: gh), mock.patch.object(self.deploy, "running_asterisk_id", lambda *a: "24.0.0-t1"):
+            r = self.deploy.releases_report(p, env)
+        self.assertEqual((r["current"], r["previous"], r["failed"], r["asterisk"], r["error"]), ("v0.2.0", "v0.1.1", ["v0.3.0"], "24.0.0-t1", None))
+        self.assertEqual([(x["version"], x["newer"], x["failed"]) for x in r["published"]],
+                         [("v0.4.0", True, False), ("v0.3.0", True, True), ("v0.2.0", False, False)])
+        def down(*a, **k):
+            raise OSError("network is unreachable")
+        with mock.patch.object(self.deploy, "https_get", down), mock.patch.object(self.deploy, "running_asterisk_id", lambda *a: None):
+            r = self.deploy.releases_report(p, env)
+        self.assertEqual(r["published"], [])
+        self.assertIn("could not read", r["error"])
+        self.assertEqual(r["current"], "v0.2.0", "what runs is still reported")
 
 
 class MatchesTheApp(unittest.TestCase):

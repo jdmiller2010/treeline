@@ -105,7 +105,7 @@ ui_start() {
     ss -ltnp 2>/dev/null | grep ":$UI_PORT " >&2
     echo "stop it (kill its master process, not just a worker), or set UI_PORT=<other>." >&2; exit 1
   fi
-  mkdir -p "$STATE/ui" "$STATE/webroot"
+  mkdir -p "$STATE/ui" "$STATE/webroot" "$STATE/ui/bridge/req" "$STATE/ui/bridge/out"   # the admin page's helper folders (the smoke test plays the helper)
   ln -sfn "$ROOT/design/ui" "$STATE/webroot/ui"; ln -sfn "$ROOT/web" "$STATE/webroot/site"
   # gunicorn writes its own master pid: `$!` of a backgrounded `cd && ... &` list is the wrapper
   # subshell, and killing that leaves the real server (and its old database) running.
@@ -113,6 +113,7 @@ ui_start() {
   (cd "$ROOT/controller" && PYTHONPATH="$ROOT/controller" \
     TREELINE_DB="$STATE/ui/test.db" TREELINE_PJSIP_FILE="$STATE/ui/pjsip.conf" TREELINE_OUTBOX="$STATE/ui/outbox" \
     TREELINE_WEB="$STATE/webroot" TREELINE_DEV_CODES=1 ARI_URL=http://127.0.0.1:1/ari \
+    TREELINE_BRIDGE_REQ="$STATE/ui/bridge/req" TREELINE_BRIDGE_OUT="$STATE/ui/bridge/out" \
     exec "$VENV/bin/gunicorn" --daemon --pid "$STATE/ui.pid" --log-file "$STATE/ui.log" \
       --bind "127.0.0.1:$UI_PORT" --workers 1 --threads 8 treeline.api:app)
   for _ in $(seq 40); do
@@ -127,7 +128,7 @@ ui_stop() {
   if ui_alive; then kill "$(ui_pid)"; for _ in $(seq 20); do ui_alive || break; sleep 0.2; done; fi
   rm -f "$STATE/ui.pid"; echo "stopped"
 }
-ui_reset() { ui_stop; rm -f "$STATE/ui/test.db"*; rm -rf "$STATE/ui/households" "$STATE/ui/pre-migrate"; ui_start; }       # a fresh database and household files, only ever while stopped
+ui_reset() { ui_stop; rm -f "$STATE/ui/test.db"*; rm -rf "$STATE/ui/households" "$STATE/ui/pre-migrate" "$STATE/ui/bridge"; ui_start; }       # a fresh database and household files, only ever while stopped
 ui_test() {   # ui_test SCRIPT [VAR=value ...]: a throwaway local API, then a browser test against it
   local script="$1"; shift
   ui_reset
