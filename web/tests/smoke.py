@@ -233,6 +233,35 @@ def admin_pages(browser, a, s, central, tdb, ui_db):
     check(not tdb.is_admin(central, "helper@example.com"), "and removed again, without a second sign-in inside the 15 minutes")
     check(a.locator("[data-remove]").count() == 0, "the last admin has no Remove button")
     shoot(a, "admin-admins-390")
+    # Installing a release from the page (still inside the 15 minutes of the step-up above): the real root helper with the agent replaced
+    rep2 = {"current": "v0.2.0", "previous": None, "failed": [], "asterisk": "24.0.0-t1", "error": None,
+            "published": [{"version": "v0.3.0", "published_at": "2026-11-24T10:00:00Z", "newer": True, "failed": False},
+                          {"version": "v0.2.0", "published_at": None, "newer": False, "failed": False}]}
+    treeline_bridge.refresh_releases(out_dir=out, run=lambda *x, **k: _sp.CompletedProcess(x, 0, _json.dumps(rep2), ""))
+    a.goto(f"{BASE}/parent/#/admin/releases"); a.wait_for_selector("[data-install='v0.3.0']")
+    check(a.locator("[data-install]").count() == 1, "only the newer release has an Install button")
+    a.click("[data-install='v0.3.0']"); a.wait_for_selector("[data-yes]")
+    check("never cut" in a.inner_text("[data-confirm]"), "the confirmation says calls are never cut and it rolls back by itself")
+    a.click("[data-yes]")
+    dreq = os.path.join(bridge, "deploy-req")
+    deadline = _time.time() + 10
+    while not os.listdir(dreq) and _time.time() < deadline:
+        _time.sleep(0.1)
+    asked = []
+    def fake_agent(cmd, **k):
+        asked.append(cmd)
+        if cmd[1:] == ["releases"]:
+            return _sp.CompletedProcess(cmd, 0, _json.dumps(rep2), "")
+        return _sp.CompletedProcess(cmd, 0, "<b>switched</b> from 203.0.113.4\nv0.3.0 is healthy", "")
+    outcome = treeline_bridge.deploy_once(os.getuid(), req_dir=dreq, out_dir=out, run=fake_agent, audit_path=os.path.join(bridge, "audit.log"),
+                                          state_path=os.path.join(bridge, "deploy-state.json"))
+    check(outcome == "healthy" and asked[-1] == ["/usr/local/sbin/treeline-deploy", "--version", "v0.3.0", "--wait", "600"],
+          f"the page's request makes the helper run the agent with that version only ({outcome}, {asked[-1:]})")
+    a.wait_for_selector("text=v0.3.0 is installed and healthy", timeout=15000)
+    out_text = a.inner_text("[data-output]")
+    check("<b>switched</b>" in out_text and a.locator("[data-output] b").count() == 0 and "203.0.113.4" not in out_text,
+          "the machine's answer is shown as text, cleaned")
+    shoot(a, "admin-releases-installed-390")
     # An admin session older than 12 hours: one plain page, not a loop
     token = a.evaluate("() => localStorage.getItem('treeline.token').replace(/\"/g, '')")
     import hashlib

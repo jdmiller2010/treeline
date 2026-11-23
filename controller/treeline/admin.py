@@ -29,6 +29,8 @@ ADMIN_SESSION_HOURS = 12
 # The root helper on the machine (deploy/native/bin/treeline_bridge.py) reads requests from BRIDGE_REQ and answers in BRIDGE_OUT. These
 # two lists must equal its SOURCES and SINCE (a test compares them); the API and controller logs are deliberately absent.
 BRIDGE_REQ = os.environ.get("TREELINE_BRIDGE_REQ", "/var/lib/treeline/bridge/req")
+BRIDGE_DEPLOY_REQ = os.environ.get("TREELINE_BRIDGE_DEPLOY_REQ", "/var/lib/treeline/bridge/deploy-req")
+VERSION = re.compile(r"v(0|[1-9][0-9]{0,4})\.(0|[1-9][0-9]{0,4})\.(0|[1-9][0-9]{0,4})")
 BRIDGE_OUT = os.environ.get("TREELINE_BRIDGE_OUT", "/run/treeline/bridge")
 LOG_SOURCES = ("deploy", "backup", "health", "certsync", "caddy", "bridge")
 LOG_SINCE = ("15m", "1h", "6h", "24h", "boot")
@@ -163,13 +165,61 @@ def admin_releases():
     try:
         fd = os.open(os.path.join(BRIDGE_OUT, "releases.json"), os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
     except FileNotFoundError:
-        return jsonify(running=RELEASE, report=None, installed=bridge_installed())
+        return jsonify(running=RELEASE, report=None, installed=bridge_installed(), deploy=deploy_status(),
+                       can_install=os.path.isdir(BRIDGE_DEPLOY_REQ))
     with os.fdopen(fd, "rb") as f:
         r = json.loads(f.read(1024 * 1024))
     report = {"at": r.get("at"), "current": r.get("current"), "previous": r.get("previous"), "asterisk": r.get("asterisk"),
               "failed": [v for v in r.get("failed") or [] if isinstance(v, str)][:50], "error": r.get("error"),
               "published": [{k: p.get(k) for k in RELEASE_KEYS} for p in (r.get("published") or [])[:30] if isinstance(p, dict)]}
-    return jsonify(running=RELEASE, report=report, installed=bridge_installed())
+    return jsonify(running=RELEASE, report=report, installed=bridge_installed(), deploy=deploy_status(),
+                   can_install=os.path.isdir(BRIDGE_DEPLOY_REQ))
+
+
+def read_answer(name, limit=64 * 1024):
+    try:
+        fd = os.open(os.path.join(BRIDGE_OUT, name), os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    except FileNotFoundError:
+        return None
+    with os.fdopen(fd, "rb") as f:
+        try:
+            return json.loads(f.read(limit))
+        except ValueError:
+            return None
+
+
+DEPLOY_STATUS_KEYS = ("id", "state", "reason", "version", "from", "exit", "output", "at")
+
+
+def deploy_status():
+    d = read_answer("deploy-status.json")
+    return {k: d.get(k) for k in DEPLOY_STATUS_KEYS} if isinstance(d, dict) else None
+
+
+@app.post("/api/admin/releases/install")
+@admin_action
+def admin_install():
+    """Ask the machine to install a release: a request with the version only. The root helper checks it against what the deploy agent
+    lists as published and newer, then runs the agent (signature, waiting for calls to end, health check, automatic rollback)."""
+    data = request.get_json(silent=True) or {}
+    version, retry = data.get("version"), data.get("retry", False)
+    if type(version) is not str or not VERSION.fullmatch(version):
+        raise ApiError("That is not a release version.", 400, "bad_version")
+    if type(retry) is not bool:
+        raise ApiError("Retry must be true or false.", 400, "bad_retry")
+    if not os.path.isdir(BRIDGE_DEPLOY_REQ):
+        raise ApiError("The helper on the machine is not installed yet (run install.sh from this release).", 503, "bridge_missing")
+    rid = secrets.token_hex(16)
+    body = json.dumps({"v": 1, "id": rid, "op": "deploy", "version": version, "retry": retry, "by": g.email, "t": int(time.time())}).encode()
+    tmp, final = os.path.join(BRIDGE_DEPLOY_REQ, f".tmp-{rid}"), os.path.join(BRIDGE_DEPLOY_REQ, f"{rid}.json")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
+    try:
+        os.write(fd, body)
+    finally:
+        os.close(fd)
+    os.rename(tmp, final)
+    db.log_admin(conn(), g.email, "release_install", "release", version, "retry" if retry else None)
+    return jsonify(id=rid), 202
 
 
 # ---------------------------------------------------------------- the step-up (a fresh Google sign-in for actions that change things)

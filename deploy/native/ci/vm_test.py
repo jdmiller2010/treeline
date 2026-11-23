@@ -357,7 +357,7 @@ class VmTestCase(unittest.TestCase):
            " aws_secret_access_key " + key_secret + " > /etc/treeline/aws-credentials && chmod 600 /etc/treeline/aws-credentials")
         vm("systemctl restart asterisk caddy && systemctl start treeline-api treeline-controller")
         # install.sh starts these itself; with --no-start it only enabled them (as it does the other timers, which tests start when needed)
-        vm("systemctl start treeline-bridge.path treeline-bridge-sweep.timer treeline-bridge-releases.timer")
+        vm("systemctl start treeline-bridge.path treeline-bridge-sweep.timer treeline-bridge-releases.timer treeline-bridge-deploy.path")
 
     @classmethod
     def install(cls, extra="", public_ip=None, src="/root/rel"):
@@ -1479,3 +1479,62 @@ class J_UpgradeFromFormat1(VmTestCase):
         self.install(src="/opt/treeline/current")
         self.wait_healthy()
         self.assertEqual(vm("ls /opt/treeline/releases").stdout.split(), listing, "nothing else changed")
+
+
+class K_InstallFromThePage(VmTestCase):
+    """The Install button on a real machine: a newer signed release published on the local release server, the admin page asks (after a
+    step-up), the root helper checks it and runs the real deploy agent, and the machine comes back healthy on it."""
+
+    def stepped_up_admin(self):
+        token = A3_Admin.session_for("owner@example.test")
+        proof = "vm-stepup-proof"
+        code = ("import datetime as dt, hashlib, sqlite3, sys\n"
+                "c = sqlite3.connect('/var/lib/treeline/data/treeline.db')\n"
+                "now = dt.datetime.now(dt.timezone.utc).isoformat(timespec='seconds')\n"
+                "c.execute('UPDATE session SET stepped_up_at=?, stepup_hash=? WHERE token_hash=?', (now, hashlib.sha256(sys.argv[2].encode()).hexdigest(), "
+                "hashlib.sha256(sys.argv[1].encode()).hexdigest()))\n"
+                "c.commit()\n")
+        vm(f"runuser -u treeline -- python3 -c \"{code}\" {token} {proof}")
+        return token, proof
+
+    def install(self, token, proof, body):
+        r = self.https("/api/admin/releases/install", f"-X POST -H 'Content-Type: application/json' -H 'Authorization: Bearer {token}' "
+                                                      f"-b '__Host-tl_stepup={proof}' --data '{json.dumps(body)}' -w '\\n%{{http_code}}'")
+        text, _, status = r.stdout.rpartition("\n")
+        return int(status or 0), text
+
+    def test_1_an_admin_installs_a_newer_release_from_the_page(self):
+        self.wait_healthy()
+        current = vm("basename $(readlink -f /opt/treeline/current)").stdout.strip()
+        target = "v9.0.0"
+        self.variant(target, "from-page", serve=True, **H_AsteriskDeploy.same_data(self))
+        vm("systemctl start treeline-bridge-releases.service")
+        token, proof = self.stepped_up_admin()
+        self.assertEqual(self.install(token, "wrong-proof", {"version": target})[0], 403, "the step-up is tied to its browser")
+        self.assertEqual(self.install(token, proof, {"version": "v9.0.0 --force"})[0], 400)
+        status, body = self.install(token, proof, {"version": target})
+        self.assertEqual(status, 202, body)
+        def finished():
+            st = vm("cat /run/treeline/bridge/deploy-status.json 2>/dev/null || true").stdout
+            return st and json.loads(st).get("state") not in (None, "running")
+        wait_for(finished, 900, "the install from the page to finish")
+        st = json.loads(vm("cat /run/treeline/bridge/deploy-status.json").stdout)
+        self.assertEqual((st["state"], st["version"], st["from"]), ("healthy", target, current), st)
+        self.wait_healthy()
+        self.assertEqual(vm("basename $(readlink -f /opt/treeline/current)").stdout.strip(), target)
+        audit = vm("cat /var/lib/treeline/bridge/audit.log").stdout
+        self.assertIn('"op": "deploy"', audit)
+        self.assertIn('"outcome": "healthy"', audit)
+
+    def test_2_an_older_or_unpublished_version_is_refused_by_the_helper(self):
+        token, proof = self.stepped_up_admin()
+        vm("rm -f /var/lib/treeline/bridge/deploy-state.json")                 # past the cool-down
+        for version, why in (("v0.0.1", "not"), ("v8.8.8", "not a published release")):
+            status, body = self.install(token, proof, {"version": version})
+            self.assertEqual(status, 202, body)
+            wait_for(lambda: json.loads(vm("cat /run/treeline/bridge/deploy-status.json").stdout).get("state") == "refused"
+                     and json.loads(vm("cat /run/treeline/bridge/deploy-status.json").stdout).get("id") == json.loads(body)["id"], 120,
+                     f"the helper to refuse {version}")
+            self.assertIn(why, json.loads(vm("cat /run/treeline/bridge/deploy-status.json").stdout)["reason"])
+            vm("rm -f /var/lib/treeline/bridge/deploy-state.json")
+
