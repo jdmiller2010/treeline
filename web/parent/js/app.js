@@ -1,6 +1,6 @@
 // The Treeline parent app: a small hash-routed single page app.
-import { get, post, patch, token, ApiError } from "/shared/api.js";
-import { avatar, brand, footer, TAGLINE, html, icon, iconButton, button, loader, raw, str, alert, toast } from "/shared/ui.js";
+import { get, post, patch, del, token, ApiError } from "/shared/api.js";
+import { avatar, brand, footer, TAGLINE, html, icon, iconButton, button, loader, raw, str, alert, toast, textField } from "/shared/ui.js";
 import { plural } from "/shared/format.js";
 import { lockedToPhone, onInstallChange, registerApp } from "/shared/pwa.js";
 import { installAvailable, installSteps, runInstall } from "/shared/install.js";
@@ -109,6 +109,31 @@ function shell(v) {
 </div>`;
 }
 
+/** A treehouse Treeline staff paused: nothing works but signing out and deleting it (a family can always end things itself). */
+function pausedByTreeline(ctx) {
+  const th = ctx.me.treehouse;
+  const content = html`<h1 class="title-lg">${th.name} is paused</h1>${alert({ tone: "warning", title: `Treeline has paused ${th.name} for now`,
+    body: "Its phones can't call or ring while it is paused. Treeline never connects to 911: use a regular phone in an emergency. If you didn't expect this, write to the email address at the bottom of this page." })}
+  <form class="tl-card" id="paused-delete" novalidate><div class="tl-stack tl-stack--group">
+    <div class="tl-stack tl-stack--tight"><h2 class="tl-card__title">Delete your treehouse</h2>
+    <p class="tl-card__body">This erases your treehouse, phones, strings and call records now, for good. Type its name to confirm.</p></div>
+    ${textField({ id: "paused-name", name: "confirm", label: "Treehouse name", placeholder: th.name })}
+    <div data-error></div>
+    <div class="tl-actions">${button({ label: "Sign out", attrs: "data-paused-signout" })}${button({ label: "Delete everything", variant: "danger", type: "submit" })}</div>
+  </div></form>`;
+  return {
+    bare: true, title: "Paused", noDoodles: true, content,
+    mount(root) {
+      root.querySelector("[data-paused-signout]").addEventListener("click", () => ctx.signOut());
+      root.querySelector("#paused-delete").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        try { await del("/api/treehouse", { confirm: root.querySelector("#paused-name").value }); toast("Everything was deleted", "success"); ctx.signOut(); }
+        catch (err) { root.querySelector("[data-error]").innerHTML = String(alert({ tone: "danger", title: err.message })); }
+      });
+    },
+  };
+}
+
 /** Pages with no shell: sign-in and setup. */
 function barePage(v) {
   return html`<main class="tl-page tl-page--narrow tl-page--bare" id="main"><div class="tl-stack tl-stack--sections">${v.content}${footer()}</div></main>${v.sheets || ""}<div class="tl-toasts" aria-live="polite"></div>`;
@@ -129,7 +154,10 @@ async function render() {
     if (!ctx.me) {
       root.innerHTML = str(loader("Opening Treeline"));
       await ctx.refreshMe();
+    } else if (ctx.me.archived) {
+      await ctx.refreshMe();                    // paused by Treeline: ask again on every move, so a restore shows at once
     }
+    if (ctx.me.archived) return show(pausedByTreeline(ctx), mine);
     if (!ctx.me.treehouse) return show(await setup(ctx), mine);
     if (name === "setup") return ctx.go("#/home");
     const route = ROUTES[name === "settings" ? "account" : name];

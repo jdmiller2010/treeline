@@ -55,11 +55,17 @@ async function stepUp(ctx, root) {
 }
 
 const ACTION_NAMES = {
-  admin_add: (a) => `Made ${a.target_id} an admin`, admin_remove: (a) => `Removed ${a.target_id} as an admin`,
+  admin_add: (a) => `Made ${a.target_id} an admin`,
+  treehouses_viewed: (a) => `Looked at the ${a.target_id} treehouses (${a.detail || ""})`, treehouse_viewed: (a) => `Opened treehouse ${a.target_id}`,
+  treehouse_archived: (a) => `Paused treehouse ${a.target_id} (${(a.detail || "").replace("reason=", "")})`,
+  treehouse_restored: (a) => `Brought treehouse ${a.target_id} back`, treehouse_erased: (a) => `Treehouse ${a.target_id} was erased (${a.detail || ""})`,
+  grown_up_removed: (a) => `Removed a grown-up from treehouse ${a.target_id}`, handset_removed: (a) => `Removed a phone from treehouse ${a.target_id}`,
+  release_install: (a) => `Asked to install ${a.target_id}`, admin_remove: (a) => `Removed ${a.target_id} as an admin`,
   logs_view: (a) => `Read the ${SOURCE_NAMES[a.target_id] || a.target_id} log (${a.detail || ""})`,
 };
 
 const PAGES = [
+  ["treehouses", "Treehouses", "Find a family by name, number or a grown-up's email; pause one, bring it back, remove a person or a phone.", "home"],
   ["logs", "Logs", "The machine's logs: deploys, backups, the health ping, the web server.", "info"],
   ["releases", "Releases", "What is running, what has been published, and what failed.", "trend-up"],
   ["admins", "Admins", "Who can open this page.", "key"],
@@ -238,6 +244,105 @@ function pollDeploy(ctx, root) {
   setTimeout(tick, 4000);
 }
 
+const REASON_NAMES = [["family_asked", "The family asked"], ["safety", "A safety report"], ["security", "A security problem"], ["cleanup", "Clean-up or a test"]];
+
+async function treehousesPage(ctx, state = "active") {
+  const q = (() => { try { return sessionStorage.getItem("tl-admin-q") || ""; } catch { return ""; } })();
+  const r = await get(`/api/admin/treehouses?state=${state}` + (q ? `&q=${encodeURIComponent(q)}` : ""));
+  const tz = ctx.me.treehouse?.timezone;
+  const rows = r.treehouses.length ? html`<div class="tl-card tl-card--list">${r.treehouses.map((t) => html`<div class="tl-row is-clickable" role="link" tabindex="0"
+      ${raw(`data-href="#/admin/treehouse/${Number(t.id)}"`)}>
+    <div class="tl-row__main"><div class="tl-row__title">${t.name} <span class="tl-num">${t.number}</span></div>
+      <div class="tl-row__meta"><span>${t.grown_ups.map((g) => g.email).join(", ")}</span>
+        <span>${t.handset_count} phone${t.handset_count === 1 ? "" : "s"}${t.last_checkin ? html`, last seen ${when(t.last_checkin, tz)}` : ""}</span>
+        ${t.erase_after ? html`<span>erased after ${when(t.erase_after, tz)}</span>` : ""}</div></div>
+    ${t.yours ? tag("canopy", "Yours") : t.archived_at ? tag("sunbeam", "Paused") : ""}${icon("chevron-right")}</div>`)}</div>`
+    : emptyState({ title: q ? "Nothing matches" : state === "archived" ? "No paused treehouses" : "No treehouses yet", body: q ? "Try a name, a four-digit number or a grown-up's full email." : "" });
+  const content = html`<h2 class="title-lg">Treehouses</h2>
+  ${card({ children: html`<form class="tl-stack tl-stack--group" id="th-search" novalidate>
+    ${textField({ id: "th-q", name: "q", label: "Find", value: q, placeholder: "Name, number or a grown-up's email" })}
+    <div class="tl-actions">${button({ label: "Find", variant: "primary", type: "submit" })}${button({ label: state === "active" ? "Paused ones" : "Active ones", attrs: { "data-href": state === "active" ? "#/admin/treehouses/archived" : "#/admin/treehouses" } })}</div></form>` })}
+  <h2 class="title-md">${state === "archived" ? "Paused" : "Active"}</h2>
+  ${rows}
+  ${r.capped ? html`<p class="body-sm" style="color:var(--ink-muted)">Only the newest 200 are listed: search to find others.</p>` : ""}
+  <p class="body-sm" style="color:var(--ink-muted)">Each look at a family is written in the audit log. Admins never see calls, strings, notes, settings or phone names.</p>`;
+  return {
+    title: "Treehouses", back: "#/admin", nav: null, template: "settings", noDoodles: true, content,
+    mount(root) {
+      root.querySelector("#th-search").addEventListener("submit", (e) => {
+        e.preventDefault();
+        try { sessionStorage.setItem("tl-admin-q", root.querySelector("#th-q").value.trim()); } catch { /* fine */ }
+        ctx.render();
+      });
+    },
+  };
+}
+
+async function treehousePage(ctx, tid) {
+  const t = await get(`/api/admin/treehouses/${tid}`);
+  const tz = ctx.me.treehouse?.timezone;
+  const facts = html`<dl class="tl-dl">
+    <div class="tl-dl__row"><dt>Number</dt><dd class="tl-num">${t.number}</dd></div>
+    <div class="tl-dl__row"><dt>Made</dt><dd>${when(t.created_at, tz)}</dd></div>
+    <div class="tl-dl__row"><dt>Phones</dt><dd>${t.handset_count}${t.last_checkin ? html`, last seen ${when(t.last_checkin, tz)}` : ""}</dd></div>
+    ${t.archived_at ? html`<div class="tl-dl__row"><dt>Paused</dt><dd>${when(t.archived_at, tz)}; erased after ${when(t.erase_after, tz)}</dd></div>` : ""}
+  </dl>`;
+  const people = html`<div class="tl-card tl-card--list">${t.grown_ups.map((g) => html`<div class="tl-row"><div class="tl-row__main">
+    <div class="tl-row__title">${g.email}</div><div class="tl-row__meta"><span>${g.role}</span></div></div>
+    ${t.yours ? "" : button({ label: "Remove", size: "sm", attrs: { "data-remove-gu": String(g.id), "data-label": g.email } })}</div>`)}</div>`;
+  const phones = t.handsets.length ? html`<div class="tl-card tl-card--list">${t.handsets.map((h) => html`<div class="tl-row"><div class="tl-row__main">
+    <div class="tl-row__title">Phone ${h.position}</div><div class="tl-row__meta"><span>${h.kind}</span>${h.last_seen ? html`<span>last seen ${when(h.last_seen, tz)}</span>` : ""}</div></div>
+    ${t.yours ? "" : button({ label: "Remove", size: "sm", attrs: { "data-remove-phone": String(h.id), "data-label": `Phone ${h.position}` } })}</div>`)}</div>`
+    : emptyState({ title: "No phones", body: "" });
+  const pause = t.yours ? alert({ tone: "info", title: "This is your own treehouse", body: "An admin cannot pause or change their own family here." })
+    : t.archived_at ? card({ title: "Bring it back",
+      children: html`<p class="tl-card__body">Its phones, grown-ups and strings come back as they were. Its phones work again within a minute.</p><div class="tl-actions">${button({ label: "Bring it back", variant: "primary", attrs: "data-restore" })}</div>` })
+    : card({ title: "Pause this treehouse",
+      children: html`<form class="tl-stack tl-stack--group" id="archive-form" novalidate>
+        <p class="tl-card__body">Its phones stop at once (a call in progress ends). Its grown-ups see a "paused" page and can still delete it themselves. Other families see a number nobody has. After 14 days it is erased. The family is not emailed.</p>
+        ${selectField({ id: "archive-reason", name: "reason", label: "Why", options: REASON_NAMES, value: "family_asked" })}
+        ${textField({ id: "archive-confirm", name: "confirm", label: `Type ${t.name} to confirm` })}
+        <div class="tl-actions">${button({ label: "Pause treehouse", variant: "danger", type: "submit" })}</div></form>` });
+  const content = html`<h2 class="title-lg">${t.name}</h2>
+  ${card({ children: facts })}
+  <div data-confirm hidden></div>
+  <div data-stepup hidden></div>
+  <h2 class="title-md">Grown-ups</h2>${people}
+  <h2 class="title-md">Phones</h2>${phones}
+  ${pause}`;
+  const refresh = () => ctx.render();
+  return {
+    title: t.name, back: t.archived_at ? "#/admin/treehouses/archived" : "#/admin/treehouses", nav: null, template: "settings", noDoodles: true, content,
+    mount(root) {
+      const run = async (fn, done) => {
+        try { const r = await act(ctx, root, fn); if (r) { toast(done, "success"); refresh(); } } catch (err) { toast(err.message, "warning"); }
+      };
+      root.querySelector("#archive-form")?.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const f = e.currentTarget;
+        run(() => post(`/api/admin/treehouses/${t.id}/archive`, { reason: f.querySelector("#archive-reason").value, confirm: f.querySelector("#archive-confirm").value }),
+          `${t.name} is paused`);
+      });
+      root.querySelector("[data-restore]")?.addEventListener("click", () => run(() => post(`/api/admin/treehouses/${t.id}/restore`), `${t.name} is back`));
+      const confirmRemove = (what, path, note) => {
+        const box = root.querySelector("[data-confirm]");
+        fill(box, card({ title: `Remove ${what}?`, body: note,
+          children: html`<div class="tl-stack tl-stack--group">${selectField({ id: "remove-reason", name: "reason", label: "Why", options: REASON_NAMES, value: "family_asked" })}
+          <div class="tl-actions">${button({ label: "Keep", size: "sm", attrs: "data-keep" })}${button({ label: "Remove", variant: "danger", size: "sm", attrs: "data-yes" })}</div></div>` }));
+        box.querySelector("[data-keep]").addEventListener("click", () => fill(box, ""));
+        box.querySelector("[data-yes]").addEventListener("click", () => run(() => post(path, { reason: box.querySelector("#remove-reason").value }), `${what} was removed`));
+        box.scrollIntoView({ block: "nearest" });
+      };
+      root.querySelectorAll("[data-remove-gu]").forEach((b) => b.addEventListener("click", () =>
+        confirmRemove(b.dataset.label, `/api/admin/treehouses/${t.id}/grown-ups/${Number(b.dataset.removeGu)}/remove`,
+          "Their sign-ins end at once. The last parent cannot be removed (pause the treehouse instead). The family is not emailed.")));
+      root.querySelectorAll("[data-remove-phone]").forEach((b) => b.addEventListener("click", () =>
+        confirmRemove(b.dataset.label, `/api/admin/treehouses/${t.id}/handsets/${Number(b.dataset.removePhone)}/remove`,
+          "It stops at once (a call in progress ends) and has to be added again by a parent to come back. The family is not emailed.")));
+    },
+  };
+}
+
 async function adminsPage(ctx) {
   const { admins } = await get("/api/admin/admins");
   const content = html`<h2 class="title-lg">Admins</h2>
@@ -302,6 +407,8 @@ export async function admin(ctx, params) {
   return guarded(ctx, () => {
     if (!page) return overview();
     if (page === "logs") return logsPage();
+    if (page === "treehouses") return treehousesPage(ctx, arg === "archived" ? "archived" : "active");
+    if (page === "treehouse" && /^\d+$/.test(arg || "")) return treehousePage(ctx, Number(arg));
     if (page === "releases") return releasesPage(ctx);
     if (page === "admins") return adminsPage(ctx);
     if (page === "audit") return auditPage(ctx, /^\d+$/.test(arg || "") ? arg : null);

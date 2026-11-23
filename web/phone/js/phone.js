@@ -190,7 +190,7 @@ function showStatus() {
   if (S.phase === "ringing") tone = "ringing";
   else if (S.phase === "talking" || S.phase === "calling") tone = "on-call";
   else if (S.phase === "sleep" || (S.phase === "idle" && S.line === "quiet")) tone = "quiet";
-  else if (S.phase === "off" || (S.phase === "idle" && S.line === "disconnected")) tone = "paused";
+  else if (S.phase === "off" || (S.phase === "idle" && (S.line === "disconnected" || S.line === "archived"))) tone = "paused";
   else if (S.phase === "busy" || (S.phase === "idle" && S.lineLight !== "on")) tone = "offline";
   if (!word) word = tone === "offline" ? (S.lineLight === "off" ? "Can’t connect. Ask a grown-up." : "Connecting…") : S.phase === "dialing" ? "Dialing" : S.hook === "off" ? "Ready to dial" : "Ready to call";
   let line = sub;
@@ -204,6 +204,7 @@ function showStatus() {
 /** The words for a hung-up, idle phone: they follow the line's state. */
 function idleWords() {
   if (S.line === "disconnected") return ["This phone is switched off"];
+  if (S.line === "archived") return ["This phone is paused for now", "It can't call anyone right now, and it never calls 911: use a regular phone in an emergency."];
   if (S.line === "quiet") return ["The phone is sleeping"];
   return [""];
 }
@@ -293,6 +294,7 @@ async function refreshLine() {
     fillPage(r);
   } catch (e) {
     if (e.code === "removed") return removed();
+    if (e.code === "archived") { S.line = "archived"; render(); return; }      // paused by Treeline: keep the account, it comes back
     // Offline: keep what we knew.
   }
   render();
@@ -363,6 +365,7 @@ function decideLift(state) {
   if (S.insecure) { S.phase = "busy"; tones.play("fastbusy"); say("This device can't use its microphone", "Open the phone from a secure (https) address."); render(); return; }
   if (!S.registered) { S.phase = "busy"; tones.play("fastbusy"); say("Can't connect right now"); render(); return; }
   if (state === "disconnected") { S.phase = "off"; tones.play("fastbusy"); say("This phone is switched off"); render(); return; }
+  if (state === "archived") { S.phase = "off"; tones.play("fastbusy"); say("This phone is paused for now"); render(); return; }
   if (state === "quiet") { S.phase = "sleep"; tones.play("fastbusy"); say("The phone is sleeping"); render(); return; }
   if (state === "in_call" && Date.now() >= S.noJoinUntil) { joinCall(); return; }
   S.phase = "dialtone"; tones.play("dial"); hush(); render();

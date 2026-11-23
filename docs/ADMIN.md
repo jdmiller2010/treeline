@@ -17,7 +17,7 @@ says what is **built** and what is not yet (the "Status" table); do not read a d
   advised a notice and a fixed reason list; the owner chose silent for now. Revisit before archive ships.*
 - **Restore from backup:** the page generates the commands (`restore.py` on the owner's computer, `scp`, then a root tool on the VM
   that puts the verified file back). **No upload through the web app.** The VM holds no backup key and cannot read the bucket, by design.
-- **An admin sees** a treehouse's name and number, created date, handset count, last check-in and the grown-ups' emails. Never calls,
+- **An admin sees** a treehouse's name and number, created date, handset count, last check-in and the grown-ups' emails (on the detail page also each grown-up's role, parent or sitter, and each phone by position with its kind and last check-in: removing the right one needs them, and none is a name). Never calls,
   notes, strings, quiet hours, handset names, or anything in a family's file. No impersonation. An admin cannot add a person or a phone.
 - **The admin is the owner's own parent email.** So every admin action needs a young session (12 hours at most), and destructive
   actions will need a **fresh Google sign-in** (`prompt=login` and an `auth_time` check), built before any destructive action ships.
@@ -43,9 +43,16 @@ says what is **built** and what is not yet (the "Status" table); do not read a d
 | 3 | The admin shell, menu item, Logs, Releases (read-only), Admins and Audit pages | built |
 | 4 | Step-up sign-in (`prompt=login`, `auth_time`) and the destructive-action tier; adding and removing admins from the page | built |
 | 5 | Release install from the page: the bridge `deploy` op (no change to the agent) and the Install button | built |
-| 6 | Treehouse management: archive awareness through every code path, archive, restore, remove grown-up or handset, add or remove admins | not started |
+| 6 | Treehouse management: archive through every code path, archive, restore, the 14-day erase, remove a grown-up or a phone | built |
 | 7 | Logging cleanup, then the API and controller log sources | not started |
 | 8 | Restore commands and the VM-side restore tool | not started |
+
+## Archive and rollbacks
+
+The review worried that rolling back to a release that does not know `archived_at` would bring archived families back online. The data
+layer's rule already prevents it: the column arrives with central step 3, and older code refuses a newer database (DATA_LAYER.md rule 3),
+so the agent can only go back to such a release by restoring the pre-migration copy, which was taken before any archive existed. The one
+loss: an archive made during the few minutes a just-migrated release is being health-checked is undone if that release is rolled back.
 
 ## Requirements the review added (not yet built; do not ship the PR they belong to without them)
 

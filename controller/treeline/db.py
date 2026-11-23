@@ -233,7 +233,14 @@ def add_session_stepup(conn):
     conn.execute("ALTER TABLE session ADD COLUMN stepup_hash TEXT")
 
 
-MIGRATIONS = [add_admin_tables, add_session_stepup]
+def add_treehouse_archive(conn):
+    """Step 3 (version 3 to 4): Treeline staff can pause a treehouse for ARCHIVE_DAYS, then it is erased (docs/ADMIN.md). A new state of
+    its own: never left_at (which frees the number and ends strings) or deleted_at. Expand only."""
+    conn.execute("ALTER TABLE treehouse ADD COLUMN archived_at TEXT")
+    conn.execute("ALTER TABLE treehouse ADD COLUMN archived_by TEXT")
+
+
+MIGRATIONS = [add_admin_tables, add_session_stepup, add_treehouse_archive]
 
 
 class DatabaseRefused(RuntimeError):
@@ -513,13 +520,44 @@ def create_treehouse(conn, name, number=None, timezone="America/Los_Angeles", sy
     return cur.lastrowid
 
 
+# A treehouse that can call, be called, sign in and be seen: not left, and not archived by Treeline staff. Every lookup that decides
+# any of those uses this, so an archived treehouse is, to everyone else, exactly a number nobody has.
+ACTIVE = "left_at IS NULL AND archived_at IS NULL"
+ARCHIVE_DAYS = 14
+
+
 def get_treehouse(conn, tid):
-    return conn.execute("SELECT * FROM treehouse WHERE id=? AND left_at IS NULL", (tid,)).fetchone()
+    return conn.execute(f"SELECT * FROM treehouse WHERE id=? AND {ACTIVE}", (tid,)).fetchone()
 
 
 def treehouse_by_number(conn, number):
-    return conn.execute("SELECT * FROM treehouse WHERE number=? AND left_at IS NULL",
+    return conn.execute(f"SELECT * FROM treehouse WHERE number=? AND {ACTIVE}",
                         (number,)).fetchone()
+
+
+def archived_treehouse(conn, tid):
+    """The row of a treehouse Treeline staff paused (and that has not been erased yet), else None."""
+    return conn.execute("SELECT * FROM treehouse WHERE id=? AND archived_at IS NOT NULL AND left_at IS NULL AND deleted_at IS NULL",
+                        (tid,)).fetchone()
+
+
+def archive_treehouse(conn, tid, by):
+    """Pause a treehouse: one compare-and-set. Nothing else changes (its number is held, its grown-ups, phones, strings and file stay),
+    so a restore needs no new secrets and no re-pairing. Returns True if this call archived it."""
+    cur = conn.execute("UPDATE treehouse SET archived_at=?, archived_by=? WHERE id=? AND system=0 AND archived_at IS NULL "
+                       "AND left_at IS NULL AND deleted_at IS NULL", (iso(), str(by)[:200], tid))
+    return cur.rowcount == 1
+
+
+def restore_treehouse(conn, tid):
+    """Undo an archive within ARCHIVE_DAYS. The phones' last check-in is set to now, so the check-in job does not write an "offline"
+    note for every phone at once. Returns True if this call restored it."""
+    cur = conn.execute("UPDATE treehouse SET archived_at=NULL, archived_by=NULL WHERE id=? AND archived_at IS NOT NULL AND archived_at>=? "
+                       "AND left_at IS NULL AND deleted_at IS NULL", (tid, iso(utcnow() - dt.timedelta(days=ARCHIVE_DAYS))))
+    if cur.rowcount != 1:
+        return False
+    conn.execute("UPDATE handset SET last_seen=? WHERE treehouse_id=? AND removed_at IS NULL", (iso(), tid))
+    return True
 
 
 def leave_treehouse(conn, tid):

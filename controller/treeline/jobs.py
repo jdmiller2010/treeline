@@ -6,7 +6,7 @@ import logging
 import os
 import time
 
-from . import db, households, mail
+from . import db, households, mail, pjsip, removal
 
 log = logging.getLogger("treeline")
 
@@ -28,7 +28,7 @@ def check_handsets(conn, ari, now=None):
         return  # Asterisk unreachable; learn nothing
     wait = dt.timedelta(minutes=int(db.get_setting(conn, "offline_alert_minutes")))
     rows = conn.execute("SELECT h.*, t.name AS house FROM handset h JOIN treehouse t "
-                        "ON t.id=h.treehouse_id WHERE h.removed_at IS NULL AND t.left_at IS NULL")
+                        "ON t.id=h.treehouse_id WHERE h.removed_at IS NULL AND t.left_at IS NULL AND t.archived_at IS NULL")
     for h in rows.fetchall():
         key = f"offline:{h['id']}"
         if h["disabled"]:                    # switched off on purpose: nothing to worry about
@@ -88,7 +88,7 @@ def send_alert_emails(conn, push=push_to):
     or push service can't make a parent get the same alert every 20 seconds. (The note stays on
     Home either way.) The notes are in each household's own file, so this visits each in turn."""
     since = db.iso(db.utcnow() - dt.timedelta(days=1))
-    for tid in [r["id"] for r in conn.execute("SELECT id FROM treehouse WHERE left_at IS NULL")]:
+    for tid in [r["id"] for r in conn.execute("SELECT id FROM treehouse WHERE left_at IS NULL AND archived_at IS NULL")]:
         try:
             hc = households.conn(tid)
         except households.HouseholdGone:
@@ -109,6 +109,38 @@ def send_alert_emails(conn, push=push_to):
                 push(conn, p["email"], n["title"], n["body"])
 
 
+def purge_archived(conn, now=None):
+    """A treehouse Treeline staff archived more than ARCHIVE_DAYS ago is erased, as a family's own "Delete everything" would: one central
+    transaction (re-checked inside it, so a restore that just happened wins), then the other families' notes, then its file."""
+    now = now or db.utcnow()
+    cutoff = db.iso(now - dt.timedelta(days=db.ARCHIVE_DAYS))
+    old = ("SELECT id, name FROM treehouse WHERE archived_at IS NOT NULL AND archived_at < ? AND left_at IS NULL AND deleted_at IS NULL")
+    erased = []
+    for r in conn.execute(old, (cutoff,)).fetchall():
+        tid = r["id"]
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            if conn.execute(old + " AND id=?", (cutoff, tid)).fetchone() is None:
+                conn.execute("ROLLBACK")
+                continue
+            tell = removal.erase_central(conn, tid)
+            db.log_admin(conn, "treeline", "treehouse_erased", "treehouse", tid, f"archived over {db.ARCHIVE_DAYS} days")
+            conn.execute("COMMIT")
+        except BaseException:
+            if conn.in_transaction:
+                conn.execute("ROLLBACK")
+            raise
+        removal.tell_ended(tell, f"{r['name']} left the Treeline")
+        households.remove(tid)
+        erased.append(tid)
+    if erased:
+        try:
+            pjsip.write(conn)
+        except Exception:                                      # Asterisk may be down: the accounts were already off (archived)
+            log.exception("could not rewrite the handset accounts after erasing %s", erased)
+    return erased
+
+
 def purge(conn, now=None):
     """Forget old records. Each family's retention trims only its own file: nobody's setting touches anyone else's
     copy of a call. Notes and the action log age out inside each file too. The central ledger keeps only the last
@@ -121,6 +153,11 @@ def purge(conn, now=None):
         except Exception:                                       # one damaged file must not stop the rest
             log.exception("household %s: could not trim", tid)
     households.purge_left(conn, now)
+    try:
+        purge_archived(conn, now)
+    except Exception:
+        log.exception("could not erase old archived treehouses")
+    db.trim_admin_audit(conn)
     db.prune_ledger(conn, now)
     for table in ("session", "login_code", "pairing"):
         conn.execute(f"DELETE FROM {table} WHERE expires_at < ?", (db.iso(now),))
