@@ -1,0 +1,15 @@
+# The admin page's Install button (docs/ADMIN.md): one request from the app, checked against what the deploy agent itself lists as
+# published and newer, then `treeline-deploy --version vX.Y.Z --wait 600`: the same verified, health-checked, rolled-back deploy as by
+# hand. Not sandboxed beyond this: the agent it runs needs all of root. The only thing from the app that reaches it is a checked version.
+[Unit]
+Description=Treeline admin helper: install a release the admin page asked for
+RequiresMountsFor=/var/lib/treeline
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/treeline/treeline-bridge deploy
+TimeoutStartSec=55min
+NoNewPrivileges=yes

@@ -212,7 +212,8 @@ class Gate(unittest.TestCase):
         self.assertEqual(rules, [("/api/admin/admins", ("GET",)), ("/api/admin/admins", ("POST",)), ("/api/admin/admins/remove", ("POST",)),
                                  ("/api/admin/audit", ("GET",)), ("/api/admin/logs", ("POST",)),
                                  ("/api/admin/logs/<rid>", ("GET",)), ("/api/admin/logs/sources", ("GET",)),
-                                 ("/api/admin/releases", ("GET",)), ("/api/admin/stepup", ("GET",)), ("/api/admin/stepup", ("POST",)),
+                                 ("/api/admin/releases", ("GET",)), ("/api/admin/releases/install", ("POST",)),
+                                 ("/api/admin/stepup", ("GET",)), ("/api/admin/stepup", ("POST",)),
                                  ("/api/admin/stepup/code", ("POST",))])
 
 
@@ -314,6 +315,66 @@ class Logs(unittest.TestCase):
         self.assertEqual(p.get("/api/admin/logs/" + "0" * 32).status_code, 404)
         self.assertEqual(p.get("/api/admin/logs/sources").status_code, 404)
         self.assertEqual(os.listdir(self.req), [])
+
+
+class InstallFromThePage(Logs):
+    """The Install button's app half, against the real root half (treeline_bridge.deploy_once) with the agent replaced."""
+
+    def setUp(self):
+        super().setUp()
+        from unittest import mock
+        from treeline import admin
+        self.dreq = os.path.join(os.path.dirname(self.req), "deploy-req")
+        os.mkdir(self.dreq)
+        patcher = mock.patch.object(admin, "BRIDGE_DEPLOY_REQ", self.dreq)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def step_up(self, person):
+        code = client.post("/api/auth/request", json={"email": person.email}).get_json()["dev_code"]
+        self.assertEqual(person.post("/api/admin/stepup/code", {"code": code}).status_code, 200)
+
+    def agent(self, cmd, **kw):
+        if cmd[1:] == ["releases"]:
+            return subprocess.CompletedProcess(cmd, 0, json.dumps({"current": "v0.3.0", "previous": None, "failed": [], "asterisk": "24.0.0-t1",
+                "error": None, "published": [{"version": "v0.4.0", "published_at": None, "newer": True, "failed": False}]}), "")
+        self.ran = cmd
+        return subprocess.CompletedProcess(cmd, 0, "ok", "")
+
+    def test_install_needs_the_step_up_then_goes_through_the_root_helper(self):
+        r = self.a.post("/api/admin/releases/install", {"version": "v0.4.0"})
+        self.assertEqual((r.status_code, r.get_json()["code"]), (403, "needs_stepup"))
+        self.assertEqual(os.listdir(self.dreq), [])
+        self.step_up(self.a)
+        r = self.a.post("/api/admin/releases/install", {"version": "v0.4.0"})
+        self.assertEqual(r.status_code, 202, r.get_json())
+        state = os.path.join(os.path.dirname(self.req), "deploy-state.json")
+        outcome = self.bridge.deploy_once(os.getuid(), req_dir=self.dreq, out_dir=self.out, run=self.agent, audit_path=self.audit_path, state_path=state)
+        self.assertEqual(outcome, "healthy")
+        self.assertEqual(self.ran, ["/usr/local/sbin/treeline-deploy", "--version", "v0.4.0", "--wait", "600"])
+        rel = self.a.get("/api/admin/releases").get_json()
+        self.assertEqual((rel["deploy"]["state"], rel["deploy"]["version"]), ("healthy", "v0.4.0"))
+        self.assertTrue(rel["can_install"])
+        self.assertEqual(db.list_audit(central(), 1)[0]["action"], "release_install")
+
+    def test_only_a_plain_version_is_accepted(self):
+        self.step_up(self.a)
+        for bad in ("v0.4.0-rc1", "0.4.0", "v0.4", "asterisk-24.0.0-t1", "v0.4.0 --force", "--tarball=/x", "", 5, None):
+            self.assertEqual(self.a.post("/api/admin/releases/install", {"version": bad}).status_code, 400, bad)
+        self.assertEqual(self.a.post("/api/admin/releases/install", {"version": "v0.4.0", "retry": "yes"}).status_code, 400)
+        self.assertEqual(os.listdir(self.dreq), [])
+
+    def test_without_the_helper_the_page_says_so(self):
+        os.rmdir(self.dreq)
+        self.step_up(self.a)
+        r = self.a.post("/api/admin/releases/install", {"version": "v0.4.0"})
+        self.assertEqual((r.status_code, r.get_json()["code"]), (503, "bridge_missing"))
+        self.assertFalse(self.a.get("/api/admin/releases").get_json()["can_install"])
+
+    def test_a_non_admin_cannot_install(self):
+        p = Person()
+        self.assertEqual(p.post("/api/admin/releases/install", {"version": "v0.4.0"}).status_code, 404)
+        self.assertEqual(os.listdir(self.dreq), [])
 
 
 class StepUp(unittest.TestCase):

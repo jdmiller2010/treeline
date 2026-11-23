@@ -230,7 +230,7 @@ class Installed(unittest.TestCase):
         self.assertIn('"$S"/*.path', text)
         enable = re.search(r"systemctl enable asterisk[^\n]*", text).group(0)
         start = re.search(r"systemctl start treeline-certsync[^\n]*", text).group(0)
-        for unit in ("treeline-bridge.path", "treeline-bridge-sweep.timer", "treeline-bridge-releases.timer"):
+        for unit in ("treeline-bridge.path", "treeline-bridge-sweep.timer", "treeline-bridge-releases.timer", "treeline-bridge-deploy.path"):
             self.assertIn(unit, enable)
             self.assertIn(unit, start)
         self.assertNotIn("treeline-bridge.service", enable, "the service is started by its path unit, never on its own")
@@ -241,7 +241,8 @@ class Installed(unittest.TestCase):
         unit = (helpers.ROOT / "deploy" / "native" / "systemd" / "treeline-api.service").read_text()
         rw = re.search(r"^ReadWritePaths=(.*)$", unit, re.M).group(1).split()
         self.assertIn("-/var/lib/treeline/bridge/req", rw)
-        self.assertFalse([p for p in rw if "bridge" in p and p != "-/var/lib/treeline/bridge/req"])
+        self.assertIn("-/var/lib/treeline/bridge/deploy-req", rw)
+        self.assertFalse([p for p in rw if "bridge" in p and p not in ("-/var/lib/treeline/bridge/req", "-/var/lib/treeline/bridge/deploy-req")])
 
 
 class CleaningIsFast(unittest.TestCase):
@@ -321,6 +322,109 @@ class AgentReleases(unittest.TestCase):
         self.assertEqual(r["published"], [])
         self.assertIn("could not read", r["error"])
         self.assertEqual(r["current"], "v0.2.0", "what runs is still reported")
+
+
+def deploy_request(**over):
+    req = {"v": 1, "id": RID, "op": "deploy", "version": "v0.4.0", "retry": False, "by": "owner@example.com", "t": int(time.time())}
+    req.update(over)
+    return req
+
+
+class DeployOp(Folders):
+    """The Install button's root half. The agent itself is replaced by a recorder; the VM job runs the real one."""
+
+    def setUp(self):
+        super().setUp()
+        self.state = self.d / "deploy-state.json"
+        self.report = {"current": "v0.3.0", "previous": "v0.2.0", "failed": ["v0.3.5"], "asterisk": "24.0.0-t1", "error": None,
+                       "published": [{"version": v, "published_at": None, "newer": True, "failed": False} for v in ("v0.4.0", "v0.3.5", "v0.3.0", "v0.2.0")]}
+        self.agent_calls, self.agent_exit = [], 0
+
+    def fake_agent(self, cmd, **kw):
+        self.agent_calls.append((cmd, kw))
+        if cmd[1:] == ["releases"]:
+            return subprocess.CompletedProcess(cmd, 0, json.dumps(self.report) + "\n", "")
+        return subprocess.CompletedProcess(cmd, self.agent_exit, "v0.4.0 is healthy from 203.0.113.9", "")
+
+    def deploy(self, **kw):
+        return b.deploy_once(ME, req_dir=str(self.req), out_dir=str(self.out), run=self.fake_agent, audit_path=str(self.audit), state_path=str(self.state), **kw)
+
+    def status(self):
+        return json.loads((self.out / "deploy-status.json").read_text())
+
+    def test_a_good_request_runs_exactly_the_agent_with_the_version_and_reports_healthy(self):
+        self.put(RID + ".json", deploy_request())
+        self.assertEqual(self.deploy(), "healthy")
+        cmd, kw = self.agent_calls[-1]
+        self.assertEqual(cmd, ["/usr/local/sbin/treeline-deploy", "--version", "v0.4.0", "--wait", "600"])
+        self.assertEqual(kw["env"], {"PATH": "/usr/sbin:/usr/bin:/sbin:/bin"})
+        self.assertIs(kw["stdin"], subprocess.DEVNULL)
+        st = self.status()
+        self.assertEqual((st["state"], st["version"], st["from"], st["exit"]), ("healthy", "v0.4.0", "v0.3.0", 0))
+        self.assertNotIn("203.0.113.9", st["output"], "the agent's output is cleaned like a log")
+        self.assertEqual(os.listdir(self.req), [])
+        self.assertIn('"outcome": "healthy"', self.audit.read_text())
+
+    def test_each_exit_code_has_its_own_state(self):
+        for code, state in ((1, "rolled_back"), (3, "refused"), (4, "busy"), (5, "needs_operator"), (9, "needs_operator")):
+            self.state.unlink(missing_ok=True)
+            self.agent_exit = code
+            self.put(RID + ".json", deploy_request())
+            self.assertEqual(self.deploy(), state, code)
+            self.assertEqual(self.status()["state"], state)
+
+    def test_what_the_agent_does_not_list_or_that_is_not_newer_is_never_asked_for(self):
+        for over, why in (({"version": "v9.9.9"}, "not a published release"), ({"version": "v0.3.0"}, "not newer"),
+                          ({"version": "v0.2.0"}, "not newer"), ({"version": "v0.3.5"}, "failed before")):
+            with self.subTest(over=over):
+                self.state.unlink(missing_ok=True)
+                self.agent_calls.clear()
+                self.put(RID + ".json", deploy_request(**over))
+                self.assertEqual(self.deploy(), "refused")
+                self.assertIn(why, self.status()["reason"])
+                self.assertEqual([c for c, _ in self.agent_calls if "--version" in c], [], "the agent was not asked to install")
+
+    def test_a_release_that_failed_before_needs_an_explicit_retry(self):
+        self.put(RID + ".json", deploy_request(version="v0.3.5", retry=True))
+        self.report["current"] = "v0.3.0"
+        self.assertEqual(self.deploy(), "healthy")
+
+    def test_bad_requests_are_refused_before_the_agent_is_even_asked(self):
+        for bad in (deploy_request(version="v0.4.0-rc1"), deploy_request(version="v04.0.0"), deploy_request(version="asterisk-24.0.0-t1"),
+                    deploy_request(version="v0.4.0 --force"), deploy_request(version="--tarball=/tmp/x"), deploy_request(retry="yes"),
+                    deploy_request(op="logs"), dict(deploy_request(), extra=1), deploy_request(t=0)):
+            with self.subTest(bad=bad):
+                self.agent_calls.clear()
+                self.put(RID + ".json", bad)
+                self.assertEqual(self.deploy(), "refused")
+                self.assertEqual(self.agent_calls, [], "not even the read-only report")
+
+    def test_one_install_at_a_time_and_a_cooldown_between_them(self):
+        for i in range(3):
+            rid = f"{i:032x}"
+            self.put(rid + ".json", deploy_request(id=rid))
+        self.assertEqual(self.deploy(), "healthy")
+        self.assertEqual(sum(1 for c, _ in self.agent_calls if "--version" in c), 1)
+        self.assertEqual(os.listdir(self.req), [], "the others were dropped, not queued")
+        self.put(RID + ".json", deploy_request(version="v0.4.0"))
+        self.report["current"] = "v0.3.0"
+        self.assertEqual(self.deploy(), "refused")
+        self.assertIn("a few minutes ago", self.status()["reason"])
+
+    def test_hostile_folder_contents_are_removed_and_never_followed(self):
+        (self.req / (RID + ".json")).mkdir()
+        os.symlink(self.victim / "secret", self.req / ("a" * 32 + ".json"))
+        os.mkfifo(self.req / ("c" * 32 + ".json"))
+        self.assertIsNone(self.deploy())
+        self.assertEqual(os.listdir(self.req), [])
+        self.assertEqual((self.victim / "secret").read_text(), "root only")
+        self.assertEqual(self.agent_calls, [])
+
+    def test_the_sweep_keeps_the_install_status(self):
+        (self.out / "deploy-status.json").write_text("{}")
+        os.utime(self.out / "deploy-status.json", (time.time() - 9000, time.time() - 9000))
+        b.sweep(str(self.out))
+        self.assertTrue((self.out / "deploy-status.json").exists())
 
 
 class MatchesTheApp(unittest.TestCase):

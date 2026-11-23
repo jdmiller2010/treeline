@@ -23,6 +23,9 @@ import subprocess
 import time
 
 REQ_DIR = os.environ.get("TREELINE_BRIDGE_REQ", "/var/lib/treeline/bridge/req")
+DEPLOY_REQ_DIR = os.environ.get("TREELINE_BRIDGE_DEPLOY_REQ", "/var/lib/treeline/bridge/deploy-req")
+DEPLOY_STATE = os.environ.get("TREELINE_BRIDGE_DEPLOY_STATE", "/var/lib/treeline/bridge/deploy-state.json")
+DEPLOY_AGENT = "/usr/local/sbin/treeline-deploy"
 OUT_DIR = os.environ.get("TREELINE_BRIDGE_OUT", "/run/treeline/bridge")
 AUDIT = os.environ.get("TREELINE_BRIDGE_AUDIT", "/var/lib/treeline/bridge/audit.log")
 JOURNALCTL = "/usr/bin/journalctl"
@@ -287,7 +290,7 @@ def sweep(out_dir=None, now=None, ttl=RESULT_TTL):
                 st = os.stat(name, dir_fd=dfd, follow_symlinks=False)
             except FileNotFoundError:
                 continue
-            if not stat.S_ISREG(st.st_mode) or (now - st.st_mtime > ttl and name != "releases.json"):
+            if not stat.S_ISREG(st.st_mode) or (now - st.st_mtime > ttl and name not in ("releases.json", "deploy-status.json")):
                 remove_entry(dfd, name)
                 removed.append(name)
     finally:
@@ -319,8 +322,173 @@ def refresh_releases(out_dir=None, run=subprocess.run, now=None):
     return report
 
 
+# ---------------------------------------------------------------- installing a release (the admin page's Install button)
+DEPLOY_KEYS = {"v", "id", "op", "version", "retry", "by", "t"}
+# Stricter than the agent's own pattern: plain vX.Y.Z, no leading zeros, no suffix (the asterisk-* prereleases share the repository).
+STRICT_VERSION = re.compile(r"v(0|[1-9][0-9]{0,4})\.(0|[1-9][0-9]{0,4})\.(0|[1-9][0-9]{0,4})")
+DEPLOY_COOLDOWN = 300          # seconds between two installs started from the page
+DEPLOY_WAIT = 600              # how long the agent waits for calls to end before it gives up (it never cuts a call)
+EXIT_STATES = {0: "healthy", 1: "rolled_back", 3: "refused", 4: "busy", 5: "needs_operator"}
+
+
+def vkey(v):
+    return tuple(int(x) for x in STRICT_VERSION.fullmatch(v).groups())
+
+
+def parse_deploy_request(data, name, now=None):
+    now = int(time.time()) if now is None else now
+    try:
+        req = json.loads(data.decode("utf-8"), object_pairs_hook=_no_duplicates, parse_constant=_no_constants)
+    except (UnicodeDecodeError, ValueError) as err:
+        if isinstance(err, Refused):
+            raise
+        raise Refused("not JSON") from None
+    if not isinstance(req, dict) or set(req) != DEPLOY_KEYS:
+        raise Refused("wrong keys")
+    if type(req["v"]) is not int or req["v"] != 1:
+        raise Refused("unknown version (the tools on the machine may be older than the app: re-run install.sh)")
+    if type(req["id"]) is not str or not ID_RE.fullmatch(req["id"]) or name != req["id"] + ".json":
+        raise Refused("id does not match the file")
+    if req["op"] != "deploy":
+        raise Refused("unknown operation")
+    if type(req["version"]) is not str or not STRICT_VERSION.fullmatch(req["version"]):
+        raise Refused("not a release version")
+    if type(req["retry"]) is not bool:
+        raise Refused("bad retry")
+    if type(req["by"]) is not str or not BY_RE.fullmatch(req["by"]):
+        raise Refused("bad requester")
+    if type(req["t"]) is not int or not now - CLOCK_PAST <= req["t"] <= now + CLOCK_FUTURE:
+        raise Refused("too old or from the future")
+    return req
+
+
+def read_state(path=None):
+    try:
+        with open(path or DEPLOY_STATE, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def write_state(state, path=None):
+    path = path or DEPLOY_STATE
+    tmp = path + ".tmp"
+    try:
+        os.unlink(tmp)
+    except FileNotFoundError:
+        pass
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
+    try:
+        os.write(fd, json.dumps(state).encode())
+    finally:
+        os.close(fd)
+    os.replace(tmp, path)
+
+
+def check_deploy(req, report, state, now=None):
+    """Refused unless `req` names a release the agent itself lists as published, newer than what runs, not one that failed before
+    (unless the admin said retry), and no install was started from the page in the last DEPLOY_COOLDOWN seconds. The agent checks the
+    signature, the version again, the calls, the health and the rollback: this only decides whether to ask it."""
+    now = time.time() if now is None else now
+    if report.get("error") or not isinstance(report.get("published"), list):
+        raise Refused("the published releases could not be read just now: " + str(report.get("error") or "no list")[:120])
+    published = {p.get("version") for p in report["published"] if isinstance(p, dict)}
+    v = req["version"]
+    if v not in published:
+        raise Refused(f"{v} is not a published release")
+    cur = report.get("current")
+    if isinstance(cur, str) and STRICT_VERSION.fullmatch(cur) and vkey(v) <= vkey(cur):
+        raise Refused(f"{v} is not newer than the running {cur}")
+    if v in (report.get("failed") or []) and not req["retry"]:
+        raise Refused(f"{v} failed before: confirm a retry to try it again")
+    last = state.get("started_at")
+    if isinstance(last, (int, float)) and now - last < DEPLOY_COOLDOWN:
+        raise Refused("an install was started from the page a few minutes ago: wait, then try again")
+
+
+def agent_report(run=subprocess.run):
+    done = run([DEPLOY_AGENT, "releases"], stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=120, cwd="/")
+    try:
+        report = json.loads(done.stdout.strip().splitlines()[-1])
+        if isinstance(report, dict):
+            return report
+    except (ValueError, IndexError):
+        pass
+    return {"error": "the deploy agent did not answer"}
+
+
+def publish_status(out_dfd, status):
+    write_result(out_dfd, "deploy-status", json.loads(clean(json.dumps(status))))
+
+
+def deploy_once(owner_uid, req_dir=None, out_dir=None, run=subprocess.run, now=None, audit_path=None, state_path=None):
+    """Take at most one install request from the folder (empty it whatever else is there), check it, run the agent, report."""
+    dfd = open_dir(req_dir or DEPLOY_REQ_DIR)
+    out_dfd = open_dir(out_dir or OUT_DIR)
+    try:
+        chosen = None
+        for _ in range(MAX_PASSES):
+            with os.scandir(dfd) as it:
+                names = sorted(e.name for _, e in zip(range(MAX_SCAN), it))
+            if not names:
+                break
+            for name in names:
+                if chosen is None and NAME_RE.fullmatch(name):
+                    try:
+                        chosen = (name, read_request(dfd, name, owner_uid))
+                    except Refused as err:
+                        audit({"name": name, "op": "deploy", "outcome": f"refused: {err}"}, audit_path)
+                elif NAME_RE.fullmatch(name):
+                    audit({"name": name, "op": "deploy", "outcome": "dropped: one install at a time"}, audit_path)
+                remove_entry(dfd, name)                     # before acting, whatever it was
+        if chosen is None:
+            return None
+        name, data = chosen
+        rid = name[:-5]
+        state = read_state(state_path)
+        try:
+            req = parse_deploy_request(data, name, now)
+            report = agent_report(run)
+            check_deploy(req, report, state, now)
+        except Refused as err:
+            publish_status(out_dfd, {"id": rid, "state": "refused", "reason": str(err), "at": _stamp(now)})
+            audit({"id": rid, "op": "deploy", "outcome": f"refused: {err}"}, audit_path)
+            return "refused"
+        write_state(dict(state, started_at=time.time() if now is None else now, version=req["version"], by=req["by"]), state_path)
+        publish_status(out_dfd, {"id": rid, "state": "running", "version": req["version"], "from": report.get("current"), "at": _stamp(now)})
+        audit({"id": rid, "by": req["by"], "op": "deploy", "version": req["version"], "outcome": "started"}, audit_path)
+        # The agent does the rest: signature, staging, waiting for calls to end (never cutting one), the switch, the health check and
+        # the automatic rollback. Nothing from the request but the checked version reaches it.
+        try:
+            done = run([DEPLOY_AGENT, "--version", req["version"], "--wait", str(DEPLOY_WAIT)], stdin=subprocess.DEVNULL,
+                       capture_output=True, text=True, timeout=50 * 60, cwd="/", env={"PATH": "/usr/sbin:/usr/bin:/sbin:/bin"})
+            code, tail = done.returncode, ((done.stdout or "") + (done.stderr or ""))[-8000:]
+        except subprocess.TimeoutExpired:
+            code, tail = 5, "the deploy agent took longer than 50 minutes"
+        outcome = EXIT_STATES.get(code, "needs_operator")
+        publish_status(out_dfd, {"id": rid, "state": outcome, "version": req["version"], "from": report.get("current"), "exit": code,
+                                 "output": tail, "at": _stamp(None)})
+        audit({"id": rid, "by": req["by"], "op": "deploy", "version": req["version"], "outcome": outcome, "exit": code}, audit_path)
+        return outcome
+    finally:
+        os.close(dfd)
+        os.close(out_dfd)
+
+
+def _stamp(now):
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now))
+
+
 def main(argv):
     import pwd
+    if argv == ["deploy"]:
+        outcome = deploy_once(pwd.getpwnam("treeline").pw_uid)
+        print(outcome or "nothing to do")
+        try:
+            refresh_releases()                             # the page shows the new state at once
+        except Exception as err:  # noqa: BLE001
+            print(f"could not refresh the releases report: {err}")
+        return 0
     if argv == ["releases"]:
         refresh_releases()
         return 0
@@ -332,5 +500,5 @@ def main(argv):
     if argv == ["sweep"]:
         sweep()
         return 0
-    print("usage: treeline-bridge run | sweep | releases")
+    print("usage: treeline-bridge run | sweep | releases | deploy")
     return 2

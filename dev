@@ -105,7 +105,7 @@ ui_start() {
     ss -ltnp 2>/dev/null | grep ":$UI_PORT " >&2
     echo "stop it (kill its master process, not just a worker), or set UI_PORT=<other>." >&2; exit 1
   fi
-  mkdir -p "$STATE/ui" "$STATE/webroot" "$STATE/ui/bridge/req" "$STATE/ui/bridge/out"   # the admin page's helper folders (the smoke test plays the helper)
+  mkdir -p "$STATE/ui" "$STATE/webroot" "$STATE/ui/bridge/req" "$STATE/ui/bridge/out" "$STATE/ui/bridge/deploy-req"   # the admin page's helper folders (the smoke test plays the helper)
   ln -sfn "$ROOT/design/ui" "$STATE/webroot/ui"; ln -sfn "$ROOT/web" "$STATE/webroot/site"
   # gunicorn writes its own master pid: `$!` of a backgrounded `cd && ... &` list is the wrapper
   # subshell, and killing that leaves the real server (and its old database) running.
@@ -113,7 +113,7 @@ ui_start() {
   (cd "$ROOT/controller" && PYTHONPATH="$ROOT/controller" \
     TREELINE_DB="$STATE/ui/test.db" TREELINE_PJSIP_FILE="$STATE/ui/pjsip.conf" TREELINE_OUTBOX="$STATE/ui/outbox" \
     TREELINE_WEB="$STATE/webroot" TREELINE_DEV_CODES=1 ARI_URL=http://127.0.0.1:1/ari \
-    TREELINE_BRIDGE_REQ="$STATE/ui/bridge/req" TREELINE_BRIDGE_OUT="$STATE/ui/bridge/out" \
+    TREELINE_BRIDGE_REQ="$STATE/ui/bridge/req" TREELINE_BRIDGE_OUT="$STATE/ui/bridge/out" TREELINE_BRIDGE_DEPLOY_REQ="$STATE/ui/bridge/deploy-req" \
     exec "$VENV/bin/gunicorn" --daemon --pid "$STATE/ui.pid" --log-file "$STATE/ui.log" \
       --bind "127.0.0.1:$UI_PORT" --workers 1 --threads 8 treeline.api:app)
   for _ in $(seq 40); do
