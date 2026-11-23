@@ -3,6 +3,7 @@
 import hashlib
 import io
 import json
+import re
 import os
 import pathlib
 import shutil
@@ -315,7 +316,7 @@ class Releases(unittest.TestCase):
         for dev in ("docker-compose", "Caddyfile.dev", "env.example", "testphones", "/web/site/tests/", "LOCAL_HTTPS", ".override."):
             self.assertFalse([n for n in names if dev in n], dev)
         self.assertEqual(info["version"], "v0.0.1")
-        self.assertEqual(info["schema"], {"central": 2, "household": 1})      # central: the baseline plus one step (the admin tables)
+        self.assertEqual(info["schema"], {"central": 3, "household": 1})      # central: the baseline plus two steps (admin tables, step-up)
         self.assertFalse([n for n in names if n.startswith("./deploy/native/ci") or n.startswith("./deploy/native/tests")])
 
     def test_the_build_is_reproducible(self):
@@ -562,6 +563,20 @@ class DeployAgentLogic(unittest.TestCase):
     def test_expected_versions_come_from_the_old_releases_own_schema(self):
         self.assertEqual(deploy.expected_versions(["treeline.db", "households/3.db"], {"central": 4, "household": 2}),
                          {"treeline.db": 4, "households/3.db": 2})
+
+
+class VmTestKnowsTheRealSchema(unittest.TestCase):
+    def test_the_vm_tests_central_version_and_migration_patch_match_the_code(self):
+        """The VM test patches db.py's MIGRATIONS line to add a probe step and expects REAL_CENTRAL; both drift with every new step."""
+        import ast
+        root = pathlib.Path(__file__).resolve().parents[3]
+        dbsrc = (root / "controller" / "treeline" / "db.py").read_text()
+        steps = next(n for n in ast.parse(dbsrc).body if isinstance(n, ast.Assign) and getattr(n.targets[0], "id", "") == "MIGRATIONS")
+        vm = (root / "deploy" / "native" / "ci" / "vm_test.py").read_text()
+        real = int(re.search(r"^REAL_CENTRAL = (\d+)", vm, re.M).group(1))
+        self.assertEqual(real, len(steps.value.elts) + 1)
+        old = re.search(r'MIGRATE = \[\("controller/treeline/db.py", "([^"]+)"', vm).group(1)
+        self.assertIn(old, dbsrc, "the text the VM test replaces must be in db.py")
 
 
 if __name__ == "__main__":

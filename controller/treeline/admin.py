@@ -20,7 +20,9 @@ from functools import wraps
 from flask import g, jsonify, request
 
 from . import db
-from .api import ApiError, app, bearer, conn, now, rate_limit
+from . import google
+from .api import (ApiError, app, bearer, client_ip, conn, emailed_codes_allowed, now, rate_limit, set_signin_cookie,
+                  set_stepup_cookie, signin_origin, stepup_cookie, use_login_code)
 
 ADMIN_SESSION_HOURS = 12
 
@@ -37,7 +39,7 @@ def admin_required(fn):
     @wraps(fn)
     def wrapper(*a, **kw):
         token = bearer()
-        row = token and conn().execute("SELECT email, created_at FROM session WHERE token_hash=? AND expires_at>?",
+        row = token and conn().execute("SELECT email, created_at, stepped_up_at, stepup_hash FROM session WHERE token_hash=? AND expires_at>?",
                                        (db.hash_token(token), db.iso())).fetchone()
         if not row:
             raise ApiError("Please sign in again.", 401, "signed_out")
@@ -48,6 +50,32 @@ def admin_required(fn):
             raise ApiError("Please sign in again to use the admin page.", 401, "needs_fresh_signin")
         rate_limit("admin:" + row["email"], 120, 600)
         g.email, g.admin = row["email"], True
+        g.session_hash, g.stepped_up_at, g.stepup_hash = db.hash_token(token), row["stepped_up_at"], row["stepup_hash"]
+        return fn(*a, **kw)
+    return wrapper
+
+
+STEPUP_MINUTES = 15
+
+
+def stepped_up():
+    """Confirmed in the last STEPUP_MINUTES, by THIS browser: the step-up cookie it was given must match (a copy of the bearer token
+    elsewhere has no such cookie)."""
+    at = db.parse(g.stepped_up_at) if g.stepped_up_at else None
+    proof = stepup_cookie()
+    return (at is not None and at >= now() - dt.timedelta(minutes=STEPUP_MINUTES) and bool(proof) and bool(g.stepup_hash)
+            and secrets.compare_digest(db.hash_token(proof), g.stepup_hash))
+
+
+def admin_action(fn):
+    """An admin route that CHANGES something: an admin session (admin_required) that has also proved, with a fresh Google sign-in
+    in the last STEPUP_MINUTES, that the person is still there. A token taken from a browser is not enough on its own."""
+    @admin_required
+    @wraps(fn)
+    def wrapper(*a, **kw):
+        if not stepped_up():
+            raise ApiError("Confirm it's you to do that: sign in with Google again.", 403, "needs_stepup")
+        rate_limit("adminact:" + g.email, 30, 600)
         return fn(*a, **kw)
     return wrapper
 
@@ -142,3 +170,61 @@ def admin_releases():
               "failed": [v for v in r.get("failed") or [] if isinstance(v, str)][:50], "error": r.get("error"),
               "published": [{k: p.get(k) for k in RELEASE_KEYS} for p in (r.get("published") or [])[:30] if isinstance(p, dict)]}
     return jsonify(running=RELEASE, report=report, installed=bridge_installed())
+
+
+# ---------------------------------------------------------------- the step-up (a fresh Google sign-in for actions that change things)
+@app.get("/api/admin/stepup")
+@admin_required
+def admin_stepup_status():
+    until = (db.parse(g.stepped_up_at) + dt.timedelta(minutes=STEPUP_MINUTES)) if stepped_up() else None
+    return jsonify(confirmed=until is not None, until=db.iso(until) if until else None, google=google.configured())
+
+
+@app.post("/api/admin/stepup")
+@admin_required
+def admin_stepup_start():
+    """Where to send the browser to confirm. Google asks for the password again (prompt=login) and the callback marks THIS session
+    only. The binding cookie ties the callback to this browser, as for a sign-in (R6-1)."""
+    if not google.configured():
+        raise ApiError("Sign in with Google isn't set up here: use the emailed code (development only).", 404, "no_google")
+    binding = secrets.token_urlsafe(32)
+    url = google.start(f"{signin_origin()}/api/auth/google/callback", None, google.binding_hash(binding),
+                       stepup={"token_hash": g.session_hash, "email": g.email})
+    return set_signin_cookie(jsonify(url=url), binding, google.STATE_TTL)
+
+
+@app.post("/api/admin/stepup/code")
+@admin_required
+def admin_stepup_code():
+    """The development and test-suite stand-in for Google: the emailed code of the same person. A 404 in production."""
+    emailed_codes_allowed()
+    rate_limit(f"verify-ip:{client_ip()}", 30, 3600)
+    use_login_code(g.email, "".join(c for c in str((request.get_json(silent=True) or {}).get("code", "")) if c.isdigit()))
+    proof = secrets.token_urlsafe(32)
+    conn().execute("UPDATE session SET stepped_up_at=?, stepup_hash=? WHERE token_hash=?", (db.iso(now()), db.hash_token(proof), g.session_hash))
+    return set_stepup_cookie(jsonify(confirmed=True), proof)
+
+
+# ---------------------------------------------------------------- admins, from the page
+@app.post("/api/admin/admins")
+@admin_action
+def admin_add():
+    email = (request.get_json(silent=True) or {}).get("email")
+    try:
+        e = db.add_admin(conn(), email, g.email)
+    except db.AdminError as err:
+        raise ApiError(str(err).capitalize() + ".", 400, "bad_email")
+    db.log_admin(conn(), g.email, "admin_add", "admin", e)
+    return jsonify(admins=db.list_admins(conn()))
+
+
+@app.post("/api/admin/admins/remove")
+@admin_action
+def admin_remove():
+    email = (request.get_json(silent=True) or {}).get("email")
+    try:
+        e = db.remove_admin(conn(), email, g.email)
+    except db.AdminError as err:
+        raise ApiError(str(err).capitalize() + ".", 409 if "last admin" in str(err) else 400, "admin_refused")
+    db.log_admin(conn(), g.email, "admin_remove", "admin", e)
+    return jsonify(admins=db.list_admins(conn()))

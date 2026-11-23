@@ -58,8 +58,20 @@ Everything not yet fixed, from every review. Move a row to its review's "Remedia
 | R11-2 | The admin feature's design review: requirements for the later PRs (root bridge, install, archive, step-up sign-in) | n/a | 2026-11-23 | **Open by design**: listed in [ADMIN.md](ADMIN.md), "Requirements the review added"; each PR must meet its list before it ships |
 | R12-1 | Below the bar, acted on: Caddy may log a failed request's full URI, and the phone's pairing poll carries a live token in its query string | Low | 2026-11-23 | **Fixed** on `admin-bridge-logs`: every answer has query strings and token-like parameters redacted. Test: `test_bridge.Cleaning.test_addresses_accounts_and_control_characters` |
 | R12-2 | Below the bar, acted on: a large answer full of non-ASCII text grew past the app's 512 KiB read and gave a 500 | Low (availability) | 2026-11-23 | **Fixed**: read limit 4 MiB. Test: `test_admin.Logs.test_a_large_answer_full_of_non_ascii_text_is_still_read` |
+| R14-1 | The step-up was recorded on the session row, so a stolen copy of an admin's bearer token counted as confirmed during the 15 minutes after the real admin confirmed | Medium (needs a stolen token, and the owner to step up) | 2026-11-23 | **Fixed** on `admin-stepup` before merge: the confirmation is also tied to the browser that did it (an HttpOnly, SameSite=Strict, `__Host-` cookie whose hash is on the session). Test: `test_admin.StepUp.test_a_copy_of_the_token_in_another_browser_is_not_confirmed_by_this_one` |
+| R14-2 | Whether Google sends `auth_time` and asks for the password again with `prompt=login`/`max_age=0` is **not verified against the real Google** | n/a (fails closed: without it no step-up succeeds) | 2026-11-23 | **Open**: the owner tries a step-up on the real VM once this is released |
 | R8-2 | The development containers and the `controller unit tests` CI job install `controller/requirements.txt` unpinned, so tests can run on newer versions than the hash-pinned lock production installs | Informational | 2026-11-20 | Open |
 | R8-3 | `main` has no branch protection, and Dependabot alerts and security updates are off (GitHub settings, not repo files) | Low | 2026-11-20 | Open: the owner's checklist in [SUPPLY_CHAIN.md](SUPPLY_CHAIN.md) |
+
+## Review 14: 2026-11-23, security review of the step-up sign-in (branch `admin-stepup`)
+
+**In plain words.** Admin actions that change something now need a fresh Google sign-in from the last 15 minutes, on top of a young admin session. Three reviewers (the step-up flow as a token thief, OIDC correctness, the endpoints and page), two skeptics per finding. One finding split the skeptics (6 and 7 of 10): the confirmation sat on the session row, so a stolen copy of the token rode along on the owner's own step-up. It is the very thing the step-up exists to stop, so it was fixed before merge (R14-1). Not verified against the real component: what Google does with `prompt=login` and `max_age=0` (R14-2; it fails closed).
+
+**Scope.** `google.py` (`start(stepup=)`, `finish()` checking `auth_time` and the email), `api.py` (the callback's step-up branch, `use_login_code` factored out, the step-up cookie), `admin.py` (`/api/admin/stepup`, the development stand-in, `admin_action`, adding and removing admins), `db.py` (step 2: `stepped_up_at`, `stepup_hash`), `web/parent/js/admin.js`.
+
+**Checked and clean.** The step-up data lives in server-side state; state is single use and taken before the binding check; the binding cookie is checked before the code exchange (a phished step-up link finished in the victim's browser fails); `auth_time` comes from the exchanged ID token; a normal sign-in carries no step-up and cannot mark a session; the update is limited to the asking session, the same email, unexpired; the development stand-in is a 404 in production; the return hash is pattern-checked; the existing sign-in is unchanged by the refactor.
+
+**Remediation.** R14-1 fixed with a test. R14-2 open until tried on the real VM.
 
 ## Review 13: 2026-11-23, security review of the Treeline Admin page (branch `admin-page`)
 

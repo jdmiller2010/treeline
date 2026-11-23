@@ -49,14 +49,14 @@ class Migration(unittest.TestCase):
         c.execute("INSERT INTO setting(key,value) VALUES('keep','me')")
         c.close()
         c = db.connect(path)                                        # the real list
-        self.assertEqual(c.execute("PRAGMA user_version").fetchone()[0], 2)
+        self.assertEqual(c.execute("PRAGMA user_version").fetchone()[0], len(db.MIGRATIONS) + 1)
         self.assertEqual(c.execute("SELECT email, created_at FROM session").fetchone()[:], ("keep@example.com", None))
         self.assertEqual(c.execute("SELECT value FROM setting WHERE key='keep'").fetchone()[0], "me")
         tables = {r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         self.assertTrue({"app_admin", "admin_audit"} <= tables)
         c.close()
         c = db.connect(path)                                        # running it again changes nothing
-        self.assertEqual(c.execute("PRAGMA user_version").fetchone()[0], 2)
+        self.assertEqual(c.execute("PRAGMA user_version").fetchone()[0], len(db.MIGRATIONS) + 1)
         c.close()
 
     def test_a_pre_migration_copy_is_taken_and_is_the_old_version(self):
@@ -207,10 +207,13 @@ class Gate(unittest.TestCase):
 
     def test_the_admin_routes_are_exactly_these(self):
         """A new /api/admin route has to be a deliberate edit of this list (and of docs/ADMIN.md)."""
-        rules = sorted((r.rule, tuple(sorted(r.methods - {"HEAD", "OPTIONS"}))) for r in api.app.url_map.iter_rules() if r.rule.startswith("/api/admin"))
-        self.assertEqual(rules, [("/api/admin/admins", ("GET",)), ("/api/admin/audit", ("GET",)), ("/api/admin/logs", ("POST",)),
+        rules = sorted((r.rule, m) for r in api.app.url_map.iter_rules() if r.rule.startswith("/api/admin")
+                       for m in [tuple(sorted(r.methods - {"HEAD", "OPTIONS"}))])
+        self.assertEqual(rules, [("/api/admin/admins", ("GET",)), ("/api/admin/admins", ("POST",)), ("/api/admin/admins/remove", ("POST",)),
+                                 ("/api/admin/audit", ("GET",)), ("/api/admin/logs", ("POST",)),
                                  ("/api/admin/logs/<rid>", ("GET",)), ("/api/admin/logs/sources", ("GET",)),
-                                 ("/api/admin/releases", ("GET",))])
+                                 ("/api/admin/releases", ("GET",)), ("/api/admin/stepup", ("GET",)), ("/api/admin/stepup", ("POST",)),
+                                 ("/api/admin/stepup/code", ("POST",))])
 
 
 BRIDGE_CODE = os.path.join(os.path.dirname(CONTROLLER), "deploy", "native", "bin")
@@ -311,6 +314,138 @@ class Logs(unittest.TestCase):
         self.assertEqual(p.get("/api/admin/logs/" + "0" * 32).status_code, 404)
         self.assertEqual(p.get("/api/admin/logs/sources").status_code, 404)
         self.assertEqual(os.listdir(self.req), [])
+
+
+class StepUp(unittest.TestCase):
+    """Actions that change something need a fresh Google sign-in from the last 15 minutes, on top of a young admin session."""
+
+    def setUp(self):
+        import base64
+        import time
+        import urllib.parse
+        from unittest import mock
+        from treeline import google
+        self.google, self.mock, self.b64, self.time, self.up = google, mock, base64, time, urllib.parse
+        google.reset()
+        patch = mock.patch.dict(os.environ, {"TREELINE_GOOGLE_CLIENT_ID": "cid-test", "TREELINE_GOOGLE_CLIENT_SECRET": "x" * 32})
+        patch.start()
+        self.addCleanup(patch.stop)
+        self.a = make_admin()
+
+    def start(self, person=None):
+        r = (person or self.a).post("/api/admin/stepup")
+        self.assertEqual(r.status_code, 200, r.get_json())
+        q = self.up.parse_qs(self.up.urlparse(r.get_json()["url"]).query)
+        return q
+
+    def callback(self, q, cookie_jar=client, **claims):
+        token_claims = {"iss": "https://accounts.google.com", "aud": "cid-test", "exp": self.time.time() + 600, "email": self.a.email,
+                        "email_verified": True, "nonce": q["nonce"][0], "auth_time": int(self.time.time())}
+        token_claims.update(claims)
+        token_claims = {k: v for k, v in token_claims.items() if v is not None}
+        jwt = "e30." + self.b64.urlsafe_b64encode(json.dumps(token_claims).encode()).rstrip(b"=").decode() + ".sig"
+        with self.mock.patch.object(self.google, "post_form", lambda url, fields, timeout=10: {"id_token": jwt}):
+            r = cookie_jar.get(f"/api/auth/google/callback?code=c&state={q['state'][0]}")
+        return r.headers.get("Location", "")
+
+    def stepped(self, person=None):
+        return central().execute("SELECT stepped_up_at FROM session WHERE token_hash=?",
+                                 (db.hash_token((person or self.a).token),)).fetchone()[0]
+
+    def test_an_action_without_a_step_up_is_refused_and_says_why(self):
+        target = new_email()
+        r = self.a.post("/api/admin/admins", {"email": target})
+        self.assertEqual((r.status_code, r.get_json()["code"]), (403, "needs_stepup"))
+        self.assertFalse(db.is_admin(central(), target))
+
+    def test_google_is_asked_to_ask_for_the_password_again(self):
+        q = self.start()
+        self.assertEqual((q["prompt"][0], q["max_age"][0], q["login_hint"][0]), ("login", "0", self.a.email))
+
+    def test_a_fresh_google_sign_in_confirms_this_session_only_and_makes_no_new_one(self):
+        other = make_admin()
+        before = central().execute("SELECT count(*) FROM session").fetchone()[0]
+        self.assertTrue(self.callback(self.start()).endswith("/parent/#/admin/stepup.ok"))
+        self.assertIsNotNone(self.stepped())
+        self.assertIsNone(self.stepped(other), "another admin's session is untouched")
+        self.assertEqual(central().execute("SELECT count(*) FROM session").fetchone()[0], before, "no session was made")
+        r = self.a.post("/api/admin/admins", {"email": "New@Example.com"})
+        self.assertEqual(r.status_code, 200, r.get_json())
+        self.assertTrue(db.is_admin(central(), "new@example.com"))
+        self.assertEqual(db.list_audit(central(), 1)[0]["action"], "admin_add")
+
+    def test_what_does_not_prove_a_fresh_sign_in_is_refused(self):
+        start_t = int(self.time.time())
+        for claims in ({"auth_time": None}, {"auth_time": start_t - 3600}, {"auth_time": "now"}, {"auth_time": start_t + 3600},
+                       {"email": "someone-else@example.com"}):
+            with self.subTest(claims=claims):
+                self.assertTrue(self.callback(self.start(), **claims).endswith("/parent/#/admin/stepup.failed"))
+                self.assertIsNone(self.stepped())
+
+    def test_the_callback_in_another_browser_confirms_nothing(self):
+        q = self.start()
+        other_browser = api.app.test_client()
+        loc = self.callback(q, cookie_jar=other_browser)
+        self.assertNotIn("stepup.ok", loc)
+        self.assertIsNone(self.stepped())
+
+    def test_a_copy_of_the_token_in_another_browser_is_not_confirmed_by_this_one(self):
+        """Review 14: the confirmation was on the session row, so a stolen copy of the bearer token rode along on the owner's step-up."""
+        self.callback(self.start())
+        thief = api.app.test_client()                      # no step-up cookie, same bearer token
+        r = thief.post("/api/admin/admins", headers=self.a.h(), json={"email": new_email()})
+        self.assertEqual((r.status_code, r.get_json()["code"]), (403, "needs_stepup"))
+        self.assertEqual(self.a.post("/api/admin/admins", {"email": new_email()}).status_code, 200, "the browser that confirmed can")
+        forged = api.app.test_client()
+        forged.set_cookie("tl_stepup", "made-up")
+        self.assertEqual(forged.post("/api/admin/admins", headers=self.a.h(), json={"email": new_email()}).status_code, 403)
+
+    def test_the_step_up_cookie_is_http_only_and_strict(self):
+        q = self.start()
+        import time as _t
+        claims = {"iss": "https://accounts.google.com", "aud": "cid-test", "exp": _t.time() + 600, "email": self.a.email,
+                  "email_verified": True, "nonce": q["nonce"][0], "auth_time": int(_t.time())}
+        jwt = "e30." + self.b64.urlsafe_b64encode(json.dumps(claims).encode()).rstrip(b"=").decode() + ".sig"
+        with self.mock.patch.object(self.google, "post_form", lambda url, fields, timeout=10: {"id_token": jwt}):
+            r = client.get(f"/api/auth/google/callback?code=c&state={q['state'][0]}")
+        cookie = [h for h in r.headers.getlist("Set-Cookie") if h.startswith("tl_stepup=")]
+        self.assertEqual(len(cookie), 1, r.headers.getlist("Set-Cookie"))
+        self.assertIn("HttpOnly", cookie[0])
+        self.assertIn("SameSite=Strict", cookie[0])
+        self.assertIn("Max-Age=900", cookie[0])
+
+    def test_a_step_up_lasts_fifteen_minutes(self):
+        self.callback(self.start())
+        self.assertEqual(self.a.post("/api/admin/admins", {"email": "x1@example.com"}).status_code, 200)
+        central().execute("UPDATE session SET stepped_up_at=? WHERE token_hash=?",
+                          (db.iso(db.utcnow() - dt.timedelta(minutes=16)), db.hash_token(self.a.token)))
+        self.assertEqual(self.a.post("/api/admin/admins", {"email": "x2@example.com"}).get_json()["code"], "needs_stepup")
+        self.assertFalse(self.a.get("/api/admin/stepup").get_json()["confirmed"])
+
+    def test_the_emailed_code_stands_in_for_google_outside_production_only(self):
+        code = client.post("/api/auth/request", json={"email": self.a.email}).get_json()["dev_code"]
+        r = self.a.post("/api/admin/stepup/code", {"code": code})
+        self.assertEqual(r.status_code, 200, r.get_json())
+        self.assertTrue(self.a.get("/api/admin/stepup").get_json()["confirmed"])
+        from treeline import prod
+        with self.mock.patch.object(prod, "is_production", lambda: True):
+            self.assertEqual(self.a.post("/api/admin/stepup/code", {"code": "123456"}).status_code, 404)
+
+    def test_removing_admins_needs_the_step_up_and_never_removes_the_last(self):
+        code = client.post("/api/auth/request", json={"email": self.a.email}).get_json()["dev_code"]
+        self.a.post("/api/admin/stepup/code", {"code": code})
+        for e in [x["email"] for x in db.list_admins(central()) if x["email"] != self.a.email]:
+            db.remove_admin(central(), e, "test")
+        r = self.a.post("/api/admin/admins/remove", {"email": self.a.email})
+        self.assertEqual((r.status_code, r.get_json()["code"]), (409, "admin_refused"))
+        self.a.post("/api/admin/admins", {"email": "second@example.com"})
+        self.assertEqual(self.a.post("/api/admin/admins/remove", {"email": "second@example.com"}).status_code, 200)
+        self.assertEqual(self.a.post("/api/admin/admins", {"email": "not an address"}).status_code, 400)
+
+    def test_a_non_admin_cannot_start_a_step_up_or_act(self):
+        p = Person()
+        self.assertEqual(p.post("/api/admin/stepup").status_code, 404)
+        self.assertEqual(p.post("/api/admin/admins", {"email": "me@example.com"}).status_code, 404)
 
 
 class AnAdminIsNotAWayIntoAFamily(unittest.TestCase):

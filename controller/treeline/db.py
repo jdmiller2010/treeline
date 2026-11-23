@@ -225,7 +225,15 @@ def add_admin_tables(conn):
     conn.execute("ALTER TABLE session ADD COLUMN created_at TEXT")
 
 
-MIGRATIONS = [add_admin_tables]
+def add_session_stepup(conn):
+    """Step 2 (version 2 to 3): when this session last proved, with a fresh Google sign-in, that the person is still there, and the
+    hash of a cookie given to the browser that did it. Admin actions that change something need both (docs/ADMIN.md): a copy of the
+    bearer token in another browser is not confirmed by someone else's sign-in. Expand only."""
+    conn.execute("ALTER TABLE session ADD COLUMN stepped_up_at TEXT")
+    conn.execute("ALTER TABLE session ADD COLUMN stepup_hash TEXT")
+
+
+MIGRATIONS = [add_admin_tables, add_session_stepup]
 
 
 class DatabaseRefused(RuntimeError):
