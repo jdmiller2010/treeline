@@ -23,7 +23,7 @@ from zoneinfo import ZoneInfo, available_timezones
 from flask import Flask, Response, g, jsonify, redirect, request, send_from_directory
 
 from . import ari as ari_mod
-from . import db, google, households, mail, pjsip, prod, rules
+from . import db, google, households, mail, pjsip, prod, removal, rules
 
 prod.enforce()          # TREELINE_ENV=production: refuse to start with any development setting
 log = logging.getLogger("treeline")
@@ -145,9 +145,14 @@ def bearer():
     return h[7:] if h.startswith("Bearer ") else None
 
 
-def auth(parent=False, house=True):
-    """Require a signed-in grown-up. `house=False` allows someone who hasn't
-    made a treehouse yet; `parent=True` rules out sitters."""
+ARCHIVED_MESSAGE = ("Treeline has paused this treehouse for now, so its phones can't call or ring. Treeline never connects to 911: "
+                    "use a regular phone in an emergency. You can still sign out, or delete your treehouse.")
+
+
+def auth(parent=False, house=True, allow_archived=False):
+    """Require a signed-in grown-up. `house=False` allows someone who hasn't made a treehouse yet; `parent=True` rules out sitters.
+    A member of a treehouse Treeline staff archived gets 403 `archived` everywhere except where `allow_archived` (sign out, leave,
+    delete: a family can always end things itself), and there g.th is the archived row."""
     def deco(fn):
         @wraps(fn)
         def wrapper(*a, **kw):
@@ -162,6 +167,12 @@ def auth(parent=False, house=True):
                 "SELECT g.* FROM grown_up g JOIN treehouse t ON t.id=g.treehouse_id "
                 "WHERE g.email=? AND t.left_at IS NULL", (g.email,)).fetchone()
             g.th = db.get_treehouse(conn(), g.gu["treehouse_id"]) if g.gu else None
+            if g.gu and g.th is None:
+                archived = db.archived_treehouse(conn(), g.gu["treehouse_id"])
+                if archived is not None:
+                    if not allow_archived:
+                        raise ApiError(ARCHIVED_MESSAGE, 403, "archived")
+                    g.th = archived
             if house and g.th is None:
                 raise ApiError("Set up your treehouse first.", 403, "no_treehouse")
             if parent and g.gu["role"] != "parent":
@@ -224,8 +235,12 @@ def string_json(s, tid):
 
 
 def my_strings(tid, include_cut=False):
-    sql = "SELECT * FROM string WHERE (a_id=? OR b_id=?)" + ("" if include_cut else " AND state!='cut'")
-    return conn().execute(sql + " ORDER BY updated_at DESC", (tid, tid)).fetchall()
+    """This treehouse's strings. One whose other side Treeline staff archived is left out (it would ring nowhere) and comes back, as it
+    was, after a restore."""
+    sql = ("SELECT * FROM string WHERE (a_id=? OR b_id=?)" + ("" if include_cut else " AND state!='cut'") +
+           " AND NOT EXISTS (SELECT 1 FROM treehouse o WHERE o.id = CASE WHEN string.a_id=? THEN string.b_id ELSE string.a_id END"
+           " AND o.archived_at IS NOT NULL)")
+    return conn().execute(sql + " ORDER BY updated_at DESC", (tid, tid, tid)).fetchall()
 
 
 def parse_ts(s):
@@ -553,7 +568,7 @@ def use_login_code(email, code):
 
 
 @app.post("/api/auth/signout")
-@auth(house=False)
+@auth(house=False, allow_archived=True)
 def auth_signout():
     conn().execute("DELETE FROM session WHERE token_hash=?", (db.hash_token(bearer()),))
     return jsonify(ok=True)
@@ -563,12 +578,13 @@ def me_json():
     return {"email": g.email,
             "grown_up": {"id": g.gu["id"], "name": g.gu["name"], "role": g.gu["role"]} if g.gu else None,
             "treehouse": th_json(g.th) if g.th else None,
+            "archived": bool(g.th and g.th["archived_at"]),
             "admin": db.is_admin(conn(), g.email),         # only decides whether a menu link is drawn; /api/admin/* checks again
             "dev": DEV_CODES}
 
 
 @app.get("/api/me")
-@auth(house=False)
+@auth(house=False, allow_archived=True)
 def me():
     return jsonify(me_json())
 
@@ -740,21 +756,10 @@ def treehouse_number():
 
 
 def end_all_strings(tid):
-    """Cut every string of this treehouse (central, inside the caller's transaction). Returns the other
-    families that had a live or paused one, to be told afterwards."""
-    tell = []
-    for st in my_strings(tid):
-        conn().execute("UPDATE string SET state='cut', updated_at=? WHERE id=?", (db.iso(), st["id"]))
-        if st["state"] in ("live", "paused"):
-            tell.append(st["b_id"] if side_of(st, tid) == "a" else st["a_id"])
-    return tell
+    return removal.end_all_strings(conn(), tid)
 
 
-def tell_ended(others, title):
-    """The notes to the other families come after the central change has committed: a crash in between loses a
-    note (harmless), where the other order could announce a string that was never cut."""
-    for other in others:
-        households.add_notice(other, "string_ended", title, "The string between your treehouses has ended.")
+tell_ended = removal.tell_ended
 
 
 def central_transaction(work):
@@ -772,7 +777,7 @@ def central_transaction(work):
 
 
 @app.post("/api/treehouse/leave")
-@auth(parent=True)
+@auth(parent=True, allow_archived=True)
 def treehouse_leave():
     """Leave the Treeline but keep the records until the family's own retention is up (then the purge job
     removes the file). Order: the action-log entry (household), then one central change, then the other families' notes."""
@@ -793,7 +798,7 @@ def treehouse_leave():
 
 
 @app.delete("/api/treehouse")
-@auth(parent=True)
+@auth(parent=True, allow_archived=True)
 def treehouse_delete():
     """Leave the Treeline and delete every record for this treehouse. Order: one central transaction (so a crash
     leaves either everything as it was or the treehouse deleted), then the other families' notes, then the household's
@@ -803,28 +808,7 @@ def treehouse_delete():
         raise ApiError("Type your treehouse name to confirm.", 400, "confirm")
     tid = th["id"]
 
-    def work(c):
-        tell = end_all_strings(tid)
-        db.leave_treehouse(c, tid)
-        # The ledger keeps rows other families' copies may still be waiting for: only this family's side is scrubbed.
-        c.execute("DELETE FROM call_event WHERE call_id IN (SELECT id FROM call WHERE "
-                  "caller_treehouse=? AND callee_treehouse IS NULL)", (tid,))
-        c.execute("DELETE FROM call WHERE (caller_treehouse=? AND callee_treehouse IS NULL) OR "
-                  "(callee_treehouse=? AND caller_treehouse IS NULL)", (tid, tid))
-        c.execute("UPDATE call SET caller_treehouse=NULL, caller_handset=NULL WHERE caller_treehouse=?", (tid,))
-        c.execute("UPDATE call SET callee_treehouse=NULL, answered_handset=NULL WHERE callee_treehouse=?", (tid,))
-        c.execute("DELETE FROM call_event WHERE call_id IN (SELECT id FROM call WHERE "
-                  "caller_treehouse IS NULL AND callee_treehouse IS NULL)")
-        c.execute("DELETE FROM call WHERE caller_treehouse IS NULL AND callee_treehouse IS NULL")
-        for e in [r["email"] for r in c.execute("SELECT email FROM grown_up WHERE treehouse_id=?", (tid,))]:
-            c.execute("DELETE FROM session WHERE email=?", (e,))
-            c.execute("DELETE FROM push_subscription WHERE email=?", (e,))
-        for sql in ("DELETE FROM grown_up WHERE treehouse_id=?", "DELETE FROM ladder_code WHERE treehouse_id=?",
-                    "DELETE FROM handset WHERE treehouse_id=?", "DELETE FROM string WHERE a_id=? OR b_id=?"):
-            c.execute(sql, (tid,) * sql.count("?"))
-        c.execute("UPDATE treehouse SET name='(deleted)', deleted_at=? WHERE id=?", (db.iso(), tid))
-        return tell
-    tell_ended(central_transaction(work), f"{th['name']} left the Treeline")
+    tell_ended(central_transaction(lambda c: removal.erase_central(c, tid)), f"{th['name']} left the Treeline")
     households.remove(tid)
     pjsip.write(conn())
     return jsonify(ok=True)
@@ -1289,7 +1273,7 @@ def provision_file(token):
     rate_limit(f"prov:{client_ip()}", 60, 600)
     h = conn().execute("SELECT * FROM handset WHERE provision_token=? AND removed_at IS NULL",
                        (token,)).fetchone()
-    if not h:
+    if not h or db.get_treehouse(conn(), h["treehouse_id"]) is None:
         raise ApiError("That settings link isn't valid.", 404)
     return Response(provision_xml(h), mimetype="text/xml")
 
@@ -1400,6 +1384,9 @@ def handset_auth():
     row = user and db.handset_by_user(conn(), user)
     if not row or not secrets.compare_digest(row["sip_md5"], db.sip_digest(user, secret or "")):
         raise ApiError("This phone was removed from its treehouse.", 401, "removed")
+    if db.archived_treehouse(conn(), row["treehouse_id"]) is not None:
+        # Not "removed" (that makes a softphone forget its account): it keeps it, and works again after a restore.
+        raise ApiError("This treehouse is paused for now, so this phone can't call. Treeline never connects to 911.", 403, "archived")
     return row
 
 

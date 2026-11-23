@@ -168,7 +168,7 @@ def admin_pages(browser, a, s, central, tdb, ui_db):
     a.click(".tl-avatar-btn")
     check(a.locator("[data-admin-link]").is_visible(), "an admin's account menu has Treeline Admin")
     a.click("[data-admin-link]"); a.wait_for_selector("text=For running Treeline")
-    check(a.locator(".tl-row[data-href]").count() == 4, "the overview lists Logs, Releases, Admins and the audit log")
+    check(a.locator(".tl-row[data-href]").count() == 5, "the overview lists Treehouses, Logs, Releases, Admins and the audit log")
     a.wait_for_timeout(600)
     check(a.locator(".tl-doodle-layer svg").count() == 0, "no doodles on the admin pages (working screens)")
     check(a.locator("h1").count() == 1, "one h1 on the admin overview")
@@ -233,6 +233,35 @@ def admin_pages(browser, a, s, central, tdb, ui_db):
     check(not tdb.is_admin(central, "helper@example.com"), "and removed again, without a second sign-in inside the 15 minutes")
     check(a.locator("[data-remove]").count() == 0, "the last admin has no Remove button")
     shoot(a, "admin-admins-390")
+    # Treehouses: find Sam's, pause it, see what Sam sees, bring it back (inside the step-up's 15 minutes)
+    try:
+        a.evaluate("() => sessionStorage.removeItem('tl-admin-q')")
+    except Exception:
+        pass
+    a.goto(f"{BASE}/parent/#/admin/treehouses"); a.wait_for_selector("#th-search")
+    a.fill("#th-q", "sam@example.com"); a.click("#th-search button[type=submit]")
+    a.wait_for_selector("text=Sam's house")
+    check(a.locator(".tl-btn--primary").count() == 1, "one main button on Treehouses")
+    a.click("text=Sam's house"); a.wait_for_selector("#archive-form")
+    detail = a.inner_text("main")
+    check("sam@example.com" in detail and "Phone 1" in detail or "No phones" in detail, "the detail lists the grown-ups and the phones by position")
+    for w in WIDTHS:
+        a.set_viewport_size({"width": w, "height": 900}); a.wait_for_timeout(120)
+        no_sideways_scroll(a, f"admin treehouse {w}")
+    a.set_viewport_size({"width": 390, "height": 844}); shoot(a, "admin-treehouse-390")
+    a.fill("#archive-confirm", "Sam's house"); a.select_option("#archive-reason", "cleanup")
+    a.click("#archive-form button[type=submit]"); a.wait_for_selector("text=Sam's house is paused")
+    sam_tid = central.execute("SELECT id FROM treehouse WHERE name=?", ("Sam's house",)).fetchone()[0]
+    check(tdb.archived_treehouse(central, sam_tid) is not None, "the treehouse is archived")
+    s.goto(f"{BASE}/parent/"); s.wait_for_selector("text=Treeline has paused Sam's house for now")
+    check("911" in s.inner_text("main") and s.locator("[data-paused-signout]").count() == 1 and s.locator("#paused-delete").count() == 1,
+          "Sam sees a plain paused page that says Treeline never connects to 911, and can still sign out or delete")
+    s.wait_for_timeout(500)
+    check(s.locator(".tl-doodle-layer svg").count() == 0 and s.locator("h1").count() == 1, "the paused page has one h1 and no doodles")
+    shoot(s, "paused-family-390")
+    a.wait_for_selector("[data-restore]"); a.click("[data-restore]"); a.wait_for_selector("text=Sam's house is back")
+    s.goto(f"{BASE}/parent/#/home"); s.wait_for_selector("[data-pause]")
+    check(tdb.archived_treehouse(central, sam_tid) is None, "brought back: Sam's home works again")
     # Installing a release from the page (still inside the 15 minutes of the step-up above): the real root helper with the agent replaced
     rep2 = {"current": "v0.2.0", "previous": None, "failed": [], "asterisk": "24.0.0-t1", "error": None,
             "published": [{"version": "v0.3.0", "published_at": "2026-11-24T10:00:00Z", "newer": True, "failed": False},

@@ -958,10 +958,10 @@ class E_Production(VmTestCase):
         self.assertEqual(wrong.strip(), "400")
 
 
-# The real list (REAL_CENTRAL steps: the admin tables, the step-up column) and a probe step on top of it.
-MIGRATE = [("controller/treeline/db.py", "MIGRATIONS = [add_admin_tables, add_session_stepup]",
-            'MIGRATIONS = [add_admin_tables, add_session_stepup, lambda conn: conn.execute("CREATE TABLE ci_probe(x)")]')]
-REAL_CENTRAL = 3                                    # the central version a fresh machine is at with this code
+# The real list (the admin tables, the step-up columns, the archive columns) and a probe step on top of it.
+MIGRATE = [("controller/treeline/db.py", "MIGRATIONS = [add_admin_tables, add_session_stepup, add_treehouse_archive]",
+            'MIGRATIONS = [add_admin_tables, add_session_stepup, add_treehouse_archive, lambda conn: conn.execute("CREATE TABLE ci_probe(x)")]')]
+REAL_CENTRAL = 4                                    # the central version a fresh machine is at with this code
 UNHEALTHY = [("controller/treeline/api.py", "ok = asterisk and behind == 0", "ok = False")]
 SCHEMA2 = {"central": REAL_CENTRAL + 1, "household": 1}      # the real central version plus the probe step
 
@@ -1537,4 +1537,34 @@ class K_InstallFromThePage(VmTestCase):
                      f"the helper to refuse {version}")
             self.assertIn(why, json.loads(vm("cat /run/treeline/bridge/deploy-status.json").stdout)["reason"])
             vm("rm -f /var/lib/treeline/bridge/deploy-state.json")
+
+
+class L_ArchiveOnTheRealAsterisk(VmTestCase):
+    """Pausing a treehouse from the admin API takes its phones off the real Asterisk (they can no longer register), and bringing it back
+    puts them on again, with the same account (no re-pairing)."""
+
+    def test_1_an_archived_familys_phone_cannot_register_and_comes_back_after_a_restore(self):
+        self.wait_healthy()
+        account = self.handset()
+        self.assertTrue(self.probe(account)[1].get("registered"), "the phone registers before")
+        token, proof = K_InstallFromThePage.stepped_up_admin(self)
+        tid = account["treehouse"]
+        name = vm(f"runuser -u treeline -- python3 -c \"import sqlite3; print(sqlite3.connect('/var/lib/treeline/data/treeline.db')"
+                  f".execute('SELECT name FROM treehouse WHERE id={int(tid)}').fetchone()[0])\"").stdout.strip()
+        def post(path, body):
+            r = self.https(path, f"-X POST -H 'Content-Type: application/json' -H 'Authorization: Bearer {token}' "
+                                 f"-b '__Host-tl_stepup={proof}' --data '{json.dumps(body)}' -w '\\n%{{http_code}}'")
+            text, _, status = r.stdout.rpartition("\n")
+            return int(status or 0), text
+        status, body = post(f"/api/admin/treehouses/{tid}/archive", {"confirm": name, "reason": "cleanup"})
+        self.assertEqual(status, 200, body)
+        wait_for(lambda: account["user"] not in vm("asterisk -rx 'pjsip show endpoints'", check=False).stdout, 30,
+                 "Asterisk to forget the archived family's phone")
+        self.assertFalse(self.probe(account)[1].get("registered"), "an archived family's phone is refused")
+        status, body = post(f"/api/admin/treehouses/{tid}/restore", {})
+        self.assertEqual(status, 200, body)
+        wait_for(lambda: account["user"] in vm("asterisk -rx 'pjsip show endpoints'", check=False).stdout, 30, "the phone to come back")
+        wait_for(lambda: "md5_cred" in vm(f"asterisk -rx 'pjsip show auth {account['user']}'", check=False).stdout, 30, "its credential")
+        time.sleep(1)
+        self.assertTrue(self.probe(account)[1].get("registered"), "and registers again with the account it kept")
 

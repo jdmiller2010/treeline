@@ -14,7 +14,7 @@ import threading
 import unittest
 
 from tests import helpers  # noqa: F401
-from tests.test_api import Person, client, make_house, new_email
+from tests.test_api import PIN, Person, client, make_house, new_email, string_up
 from treeline import api, db
 
 CONTROLLER = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -214,7 +214,12 @@ class Gate(unittest.TestCase):
                                  ("/api/admin/logs/<rid>", ("GET",)), ("/api/admin/logs/sources", ("GET",)),
                                  ("/api/admin/releases", ("GET",)), ("/api/admin/releases/install", ("POST",)),
                                  ("/api/admin/stepup", ("GET",)), ("/api/admin/stepup", ("POST",)),
-                                 ("/api/admin/stepup/code", ("POST",))])
+                                 ("/api/admin/stepup/code", ("POST",)),
+                                 ("/api/admin/treehouses", ("GET",)), ("/api/admin/treehouses/<int:tid>", ("GET",)),
+                                 ("/api/admin/treehouses/<int:tid>/archive", ("POST",)),
+                                 ("/api/admin/treehouses/<int:tid>/grown-ups/<int:gid>/remove", ("POST",)),
+                                 ("/api/admin/treehouses/<int:tid>/handsets/<int:hid>/remove", ("POST",)),
+                                 ("/api/admin/treehouses/<int:tid>/restore", ("POST",))])
 
 
 BRIDGE_CODE = os.path.join(os.path.dirname(CONTROLLER), "deploy", "native", "bin")
@@ -507,6 +512,189 @@ class StepUp(unittest.TestCase):
         p = Person()
         self.assertEqual(p.post("/api/admin/stepup").status_code, 404)
         self.assertEqual(p.post("/api/admin/admins", {"email": "me@example.com"}).status_code, 404)
+
+
+def stepped_up_admin(email=None):
+    a = make_admin(email)
+    code = client.post("/api/auth/request", json={"email": a.email}).get_json()["dev_code"]
+    assert a.post("/api/admin/stepup/code", {"code": code}).status_code == 200
+    return a
+
+
+class Archive(unittest.TestCase):
+    """An archived treehouse, through every path: its grown-ups, its phones, the other families, the call rules, the SIP accounts, the
+    jobs, the 14-day erase and a restore."""
+
+    def setUp(self):
+        from treeline import pjsip
+        self.pjsip = pjsip
+        self.admin = stepped_up_admin()
+        self.x = make_house("Family X", email=new_email())
+        self.y = make_house("Family Y", email=new_email())
+        self.sid = string_up(self.x, self.y)
+        self.tid = self.x.house["id"]
+        r = self.x.post("/api/handsets", {"kind": "rotary", "name": "Mia's room"})
+        self.assertEqual(r.status_code, 201, r.get_json())
+        self.rotary, self.rotary_creds = r.get_json()["handset"], r.get_json()["credentials"]
+        r = self.x.post("/api/handsets", {"kind": "softphone", "name": "Kitchen"})
+        self.soft = r.get_json()["credentials"]
+        self.provision = self.x.get(f"/api/handsets/{self.rotary['id']}/provision").get_json()["url"]
+
+    def archive(self, **over):
+        body = {"confirm": "Family X", "reason": "safety"}
+        body.update(over)
+        return self.admin.post(f"/api/admin/treehouses/{self.tid}/archive", body)
+
+    def line(self, creds):
+        import base64
+        return client.get("/api/line", headers={"Authorization": "Basic " + base64.b64encode(f"{creds['sip_user']}:{creds['secret']}".encode()).decode()})
+
+    def test_archive_needs_a_reason_the_name_and_the_step_up(self):
+        self.assertEqual(self.archive(reason="because").status_code, 400)
+        self.assertEqual(self.archive(confirm="Family Q").get_json()["code"], "confirm")
+        not_confirmed = make_admin()
+        r = not_confirmed.post(f"/api/admin/treehouses/{self.tid}/archive", {"confirm": "Family X", "reason": "safety"})
+        self.assertEqual(r.get_json()["code"], "needs_stepup")
+        self.assertIsNone(db.archived_treehouse(central(), self.tid))
+
+    def test_everything_about_an_archived_treehouse(self):
+        x_number = self.x.house["number"]
+        self.assertEqual(self.archive().status_code, 200)
+        # its grown-ups: a plain "paused" page, and they can still sign out, leave or delete
+        me = self.x.get("/api/me").get_json()
+        self.assertTrue(me["archived"])
+        r = self.x.get("/api/home")
+        self.assertEqual((r.status_code, r.get_json()["code"]), (403, "archived"))
+        self.assertIn("911", r.get_json()["error"], "the paused message says Treeline never connects to 911")
+        self.assertEqual(self.x.patch("/api/treehouse", {"paused": True}).status_code, 403)
+        self.assertEqual(self.x.post("/api/ladder-codes").status_code, 403)
+        # its phones: "paused", never "removed" (a softphone would forget its account), and no settings file
+        r = self.line(self.soft)
+        self.assertEqual((r.status_code, r.get_json()["code"]), (403, "archived"))
+        self.assertEqual(client.get(self.provision.split("localhost", 1)[-1]).status_code, 404)
+        self.assertNotIn(self.rotary_creds["sip_user"], self.pjsip.render(central()), "its SIP accounts are gone from Asterisk")
+        # everyone else: a number nobody has, and the string out of sight
+        self.assertIsNone(db.treehouse_by_number(central(), x_number))
+        self.assertEqual(self.y.get("/api/strings").get_json().get("strings", self.y.get("/api/strings").get_json()) and
+                         [s for s in self.y.get("/api/strings").get_json()["strings"] if s["id"] == self.sid], [])
+        # restore: all of it back, the string as it was, the phone with the account it kept
+        self.assertEqual(self.admin.post(f"/api/admin/treehouses/{self.tid}/restore").status_code, 200)
+        self.assertFalse(self.x.get("/api/me").get_json()["archived"])
+        self.assertEqual(self.line(self.soft).status_code, 200)
+        self.assertIn(self.rotary_creds["sip_user"], self.pjsip.render(central()))
+        self.assertEqual([s["state"] for s in self.y.get("/api/strings").get_json()["strings"] if s["id"] == self.sid], ["live"])
+        self.assertEqual(db.treehouse_by_number(central(), x_number)["id"], self.tid)
+
+    def test_an_archived_family_can_still_delete_itself_at_once(self):
+        self.archive()
+        r = self.x.delete("/api/treehouse", {"confirm": "Family X"})
+        self.assertEqual(r.status_code, 200, r.get_json())
+        self.assertIsNotNone(central().execute("SELECT deleted_at FROM treehouse WHERE id=?", (self.tid,)).fetchone()[0])
+
+    def test_a_string_code_from_an_archived_family_reads_like_an_unknown_one(self):
+        code = self.x.post("/api/ladder-codes").get_json()["code"]
+        z = make_house("Family Z", email=new_email())
+        self.archive()
+        mine = z.post("/api/strings/redeem", {"code": code}).get_json()
+        made_up = z.post("/api/strings/redeem", {"code": "ZZZZZZZZ"}).get_json()
+        self.assertEqual((mine["code"], mine["error"].split(".")[0]), (made_up["code"], made_up["error"].split(".")[0]))
+
+    def test_no_route_gives_an_archived_member_anything(self):
+        """Every family GET route without parameters, as a member of an archived treehouse: a refusal, never data and never a 500."""
+        self.archive()
+        allowed = {"/api/me", "/api/health", "/api/auth/config", "/api/push/key", "/api/timezones", "/api/phone/config",
+                   "/api/pair/status"}   # public, no family data (the last is a new phone polling its own pairing token)
+        for rule in api.app.url_map.iter_rules():
+            if "GET" not in rule.methods or rule.arguments or not rule.rule.startswith("/api/") or rule.rule.startswith("/api/admin"):
+                continue
+            if rule.rule in allowed or rule.rule.startswith("/api/auth/google"):
+                continue
+            r = self.x.get(rule.rule)
+            self.assertIn(r.status_code, (400, 401, 403, 404), (rule.rule, r.status_code, r.get_data(as_text=True)[:120]))
+
+    def test_restore_only_within_fourteen_days_and_the_erase_after(self):
+        from treeline import households, jobs
+        self.archive()
+        central().execute("UPDATE treehouse SET archived_at=? WHERE id=?", (db.iso(db.utcnow() - dt.timedelta(days=15)), self.tid))
+        self.assertEqual(self.admin.post(f"/api/admin/treehouses/{self.tid}/restore").get_json()["code"], "not_restorable")
+        self.assertEqual(jobs.purge_archived(central()), [self.tid])
+        self.assertIsNotNone(central().execute("SELECT deleted_at FROM treehouse WHERE id=?", (self.tid,)).fetchone()[0])
+        self.assertNotIn(self.tid, households.ids(), "the family's file is gone")
+        self.assertEqual(central().execute("SELECT count(*) FROM grown_up WHERE treehouse_id=?", (self.tid,)).fetchone()[0], 0)
+        self.assertIn("left the Treeline", " ".join(n["title"] for n in households.notices(self.y.house["id"])))
+        self.assertEqual(jobs.purge_archived(central()), [], "once")
+
+    def test_a_young_archive_survives_the_purge(self):
+        from treeline import jobs
+        self.archive()
+        central().execute("UPDATE treehouse SET archived_at=? WHERE id=?", (db.iso(db.utcnow() - dt.timedelta(days=13)), self.tid))
+        self.assertEqual(jobs.purge_archived(central()), [])
+        self.assertIsNotNone(db.archived_treehouse(central(), self.tid))
+
+    def test_an_admin_cannot_archive_their_own_treehouse(self):
+        mine = make_house("Mine", email=new_email())
+        db.add_admin(central(), mine.email, "test")
+        code = client.post("/api/auth/request", json={"email": mine.email}).get_json()["dev_code"]
+        mine.post("/api/admin/stepup/code", {"code": code})
+        r = mine.post(f"/api/admin/treehouses/{mine.house['id']}/archive", {"confirm": "Mine", "reason": "cleanup"})
+        self.assertEqual((r.status_code, r.get_json()["code"]), (409, "own_treehouse"))
+
+
+class TreehousesForAdmins(unittest.TestCase):
+    def setUp(self):
+        self.admin = stepped_up_admin()
+        self.x = make_house("Family X", email=new_email())
+        self.tid = self.x.house["id"]
+        self.x.post("/api/handsets", {"kind": "rotary", "name": "Mia's room"})
+
+    def test_the_list_and_the_detail_show_only_what_an_admin_may_see(self):
+        r = self.admin.get(f"/api/admin/treehouses?q={self.x.email}").get_json()
+        card = r["treehouses"][0]
+        self.assertEqual(set(card), {"id", "name", "number", "created_at", "handset_count", "last_checkin", "grown_ups", "archived_at",
+                                     "erase_after", "yours"})
+        self.assertEqual(card["grown_ups"][0]["email"], self.x.email)
+        d = self.admin.get(f"/api/admin/treehouses/{self.tid}").get_json()
+        self.assertEqual(set(d["handsets"][0]), {"id", "position", "kind", "last_seen"})
+        body = self.admin.get(f"/api/admin/treehouses/{self.tid}").get_data(as_text=True)
+        self.assertNotIn("Mia", body, "a phone's name (often a child's) is never shown")
+        self.assertNotIn("quiet", body)
+        self.assertEqual([a["action"] for a in db.list_audit(central(), 3)], ["treehouse_viewed", "treehouse_viewed", "treehouses_viewed"],
+                         "every look at a family is in the audit log")
+
+    def test_removing_a_grown_up_never_the_last_parent_never_yourself_never_across_families(self):
+        other = make_house("Family W", email=new_email())
+        x_parent = central().execute("SELECT id FROM grown_up WHERE treehouse_id=?", (self.tid,)).fetchone()[0]
+        r = self.admin.post(f"/api/admin/treehouses/{self.tid}/grown-ups/{x_parent}/remove", {"reason": "family_asked"})
+        self.assertEqual((r.status_code, r.get_json()["code"]), (409, "last_parent"))
+        w_parent = central().execute("SELECT id FROM grown_up WHERE treehouse_id=?", (other.house["id"],)).fetchone()[0]
+        self.assertEqual(self.admin.post(f"/api/admin/treehouses/{self.tid}/grown-ups/{w_parent}/remove", {"reason": "family_asked"}).status_code, 404)
+        second = self.x.post("/api/grown-ups", {"email": new_email(), "name": "Sam", "role": "parent"})
+        sid = second.get_json().get("id") if second.status_code in (200, 201) else None
+        if sid:
+            r = self.admin.post(f"/api/admin/treehouses/{self.tid}/grown-ups/{sid}/remove", {"reason": "family_asked"})
+            self.assertEqual(r.status_code, 200, r.get_json())
+        self.assertEqual(self.admin.post(f"/api/admin/treehouses/{self.tid}/grown-ups/{x_parent}/remove", {}).get_json()["code"], "bad_reason")
+
+    def test_removing_a_phone_and_never_another_familys(self):
+        other = make_house("Family V", email=new_email())
+        hid = other.post("/api/handsets", {"kind": "rotary", "name": "Den"}).get_json()["handset"]["id"]
+        self.assertEqual(self.admin.post(f"/api/admin/treehouses/{self.tid}/handsets/{hid}/remove", {"reason": "security"}).status_code, 404)
+        mine = central().execute("SELECT id FROM handset WHERE treehouse_id=? AND removed_at IS NULL", (self.tid,)).fetchone()[0]
+        r = self.admin.post(f"/api/admin/treehouses/{self.tid}/handsets/{mine}/remove", {"reason": "security"})
+        self.assertEqual((r.status_code, r.get_json()["handset_count"]), (200, 0))
+
+    def test_nothing_here_adds_a_person_or_a_phone(self):
+        before = [central().execute(f"SELECT count(*) FROM {t}").fetchone()[0] for t in ("grown_up", "handset", "pairing", "ladder_code")]
+        for path in ("/api/admin/treehouses", f"/api/admin/treehouses/{self.tid}"):
+            self.admin.get(path)
+        after = [central().execute(f"SELECT count(*) FROM {t}").fetchone()[0] for t in ("grown_up", "handset", "pairing", "ladder_code")]
+        self.assertEqual(before, after)
+
+    def test_a_non_admin_gets_nothing(self):
+        p = Person()
+        for path in ("/api/admin/treehouses", f"/api/admin/treehouses/{self.tid}"):
+            self.assertEqual(p.get(path).status_code, 404)
+        self.assertEqual(p.post(f"/api/admin/treehouses/{self.tid}/archive", {"confirm": "Family X", "reason": "safety"}).status_code, 404)
 
 
 class AnAdminIsNotAWayIntoAFamily(unittest.TestCase):
