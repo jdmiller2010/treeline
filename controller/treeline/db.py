@@ -581,7 +581,7 @@ class AdminError(ValueError):
 
 def admin_email(email):
     e = str(email or "").strip().lower()
-    if not e or len(e) > 200 or " " in e or e.count("@") != 1 or e.startswith("@") or e.endswith("@") or "." not in e.split("@")[1]:
+    if not e or len(e) > 200 or any(not ch.isprintable() or ch.isspace() for ch in e) or e.count("@") != 1 or e.startswith("@") or e.endswith("@") or "." not in e.split("@")[1]:
         raise AdminError("that is not an email address")
     return e
 

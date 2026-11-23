@@ -598,7 +598,10 @@ class A3_Admin(VmTestCase):
         listing = vm("treeline-admin list").stdout
         self.assertIn("owner@example.test", listing)
         self.assertIn("ssh:owner", listing)
-        self.assertEqual(vm("stat -c %U:%a /var/lib/treeline/data/treeline.db").stdout.strip(), "treeline:600", "the tool must not leave a root-owned file")
+        owner, mode = vm("stat -c '%U %a' /var/lib/treeline/data/treeline.db").stdout.split()
+        self.assertEqual(owner, "treeline", "the tool runs as the app user: it must not leave a root-owned database")
+        self.assertEqual(int(mode, 8) & 0o007, 0, "and nobody else can read it (the services' umask is 027: 640 or 600)")
+        self.assertEqual(vm("find /var/lib/treeline/data -maxdepth 1 -user root | wc -l").stdout.strip(), "0", "no root-owned WAL or shm either")
         self.assertEqual(int(vm("runuser -u treeline -- python3 -c \"import sqlite3; print(sqlite3.connect('/var/lib/treeline/data/treeline.db').execute('PRAGMA user_version').fetchone()[0])\"").stdout.strip()), 2)
 
     def test_2_the_last_admin_cannot_be_removed_and_bad_input_is_refused(self):
