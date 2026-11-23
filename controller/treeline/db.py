@@ -203,7 +203,29 @@ def parse(s):
 # uses `conn.execute` (never `executescript`, which commits). Never edit, reorder or delete a shipped
 # step; a column is added in one release, the code stops using the old one in the next, and the old one
 # is dropped in the one after (docs/DATA_LAYER.md, "Schema changes after go-live").
-MIGRATIONS = []
+def add_admin_tables(conn):
+    """Step 1 (version 1 to 2): the app's operators (docs/ADMIN.md). Admin is an email in its own table, not a role in a family, so
+    removing a grown-up or a treehouse can never remove (or grant) it. The audit table holds ids and actions, never a family's names
+    or a log's text. `session.created_at` says when a session began (the older sessions are NULL: an admin route treats that as
+    "sign in again"). Expand only: nothing existing changes meaning."""
+    conn.execute("""CREATE TABLE app_admin (
+        email TEXT PRIMARY KEY,
+        added_by TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        removed_at TEXT)""")
+    conn.execute("""CREATE TABLE admin_audit (
+        id INTEGER PRIMARY KEY,
+        at TEXT NOT NULL,
+        email TEXT NOT NULL,
+        action TEXT NOT NULL,
+        target_kind TEXT,
+        target_id TEXT,
+        detail TEXT)""")
+    conn.execute("CREATE INDEX admin_audit_at ON admin_audit(at)")
+    conn.execute("ALTER TABLE session ADD COLUMN created_at TEXT")
+
+
+MIGRATIONS = [add_admin_tables]
 
 
 class DatabaseRefused(RuntimeError):
@@ -549,3 +571,66 @@ def prune_ledger(conn, now=None):
     one still waiting for reconcile is kept."""
     cutoff = iso((now or utcnow()) - dt.timedelta(days=LEDGER_DAYS))
     conn.execute("DELETE FROM call WHERE state='ended' AND logged=1 AND started_at < ?", (cutoff,))
+
+
+# ------------------------------------------------------------- the app's admins (docs/ADMIN.md)
+
+class AdminError(ValueError):
+    pass
+
+
+def admin_email(email):
+    e = str(email or "").strip().lower()
+    if not e or len(e) > 200 or " " in e or e.count("@") != 1 or e.startswith("@") or e.endswith("@") or "." not in e.split("@")[1]:
+        raise AdminError("that is not an email address")
+    return e
+
+
+def is_admin(conn, email):
+    return conn.execute("SELECT 1 FROM app_admin WHERE email=? AND removed_at IS NULL", (str(email or "").strip().lower(),)).fetchone() is not None
+
+
+def list_admins(conn):
+    return [dict(r) for r in conn.execute(
+        "SELECT email, added_by, created_at FROM app_admin WHERE removed_at IS NULL ORDER BY created_at, email")]
+
+
+def add_admin(conn, email, by):
+    """Add an admin, or bring back one that was removed (the row is kept so the history is). `by` is who did it: an admin's email,
+    or 'ssh:<user>' from the command on the machine."""
+    e = admin_email(email)
+    conn.execute("INSERT INTO app_admin(email, added_by, created_at, removed_at) VALUES(?,?,?,NULL) "
+                 "ON CONFLICT(email) DO UPDATE SET removed_at=NULL, added_by=excluded.added_by, created_at=excluded.created_at "
+                 "WHERE app_admin.removed_at IS NOT NULL", (e, str(by)[:200], iso()))
+    return e
+
+
+def remove_admin(conn, email, by):
+    """Remove an admin, unless that would leave none. One statement, so two admins removing each other at once cannot both pass the check."""
+    e = admin_email(email)
+    cur = conn.execute("UPDATE app_admin SET removed_at=? WHERE email=? AND removed_at IS NULL "
+                       "AND EXISTS (SELECT 1 FROM app_admin WHERE removed_at IS NULL AND email<>?)", (iso(), e, e))
+    if cur.rowcount == 0:
+        if not is_admin(conn, e):
+            raise AdminError("that person is not an admin")
+        raise AdminError("that is the last admin: add another first")
+    return e
+
+
+def log_admin(conn, email, action, target_kind=None, target_id=None, detail=None):
+    """One audit row: who, what, which id. Never a family's name, an email of a grown-up, or any log text."""
+    conn.execute("INSERT INTO admin_audit(at, email, action, target_kind, target_id, detail) VALUES(?,?,?,?,?,?)",
+                 (iso(), str(email)[:200], str(action)[:60], target_kind and str(target_kind)[:40], target_id and str(target_id)[:80],
+                  detail and str(detail)[:300]))
+
+
+def list_audit(conn, limit=100, before=None):
+    limit = max(1, min(int(limit), 200))
+    rows = conn.execute("SELECT id, at, email, action, target_kind, target_id, detail FROM admin_audit "
+                        + ("WHERE id<? " if before else "") + "ORDER BY id DESC LIMIT ?",
+                        ((int(before), limit) if before else (limit,))).fetchall()
+    return [dict(r) for r in rows]
+
+
+def trim_admin_audit(conn, days=365):
+    conn.execute("DELETE FROM admin_audit WHERE at<?", (iso(utcnow() - dt.timedelta(days=days)),))
