@@ -2,7 +2,12 @@
 // pages (every /api/admin call is checked there); the menu link only appears for an admin. Log text is set with textContent.
 import { get, post, ApiError } from "/shared/api.js";
 import { html, card, button, alert, emptyState, selectField, tag, icon, setBusy } from "/shared/ui.js";
-import { when } from "/shared/format.js";
+import { when as whenRaw } from "/shared/format.js";
+
+/** A date from the machine, shown as a time; anything that is not a date shows as it is (it never breaks the page). */
+function when(iso, tz) {
+  try { return whenRaw(iso, tz); } catch { return String(iso || ""); }
+}
 
 const SOURCE_NAMES = {
   deploy: "Deploys", backup: "Backups", health: "Health ping", certsync: "Certificate copy", caddy: "Web server (Caddy)", bridge: "This helper",

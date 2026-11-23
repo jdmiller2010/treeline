@@ -40,7 +40,7 @@ says what is **built** and what is not yet (the "Status" table); do not read a d
 |---|---|---|
 | 1 | Central migration (admin tables), the gate on `/api/admin`, `treeline-admin` (first admin over ssh) | built |
 | 2 | The root bridge, safe logs, `install.sh` units (needs one `install.sh` run on the VM: the tools and units are not updated by a deploy) | built |
-| 3 | The admin shell, menu item, Releases and Logs pages | not started |
+| 3 | The admin shell, menu item, Logs, Releases (read-only), Admins and Audit pages | built |
 | 4 | Step-up sign-in (`prompt=login`, `auth_time`) and the destructive-action tier | not started |
 | 5 | Release install: agent `releases` subcommand and the bridge `deploy` op | not started |
 | 6 | Treehouse management: archive awareness through every code path, archive, restore, remove grown-up or handset, add or remove admins | not started |
