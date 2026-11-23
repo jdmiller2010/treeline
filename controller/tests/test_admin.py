@@ -597,7 +597,23 @@ class Archive(unittest.TestCase):
         self.archive()
         mine = z.post("/api/strings/redeem", {"code": code}).get_json()
         made_up = z.post("/api/strings/redeem", {"code": "ZZZZZZZZ"}).get_json()
-        self.assertEqual((mine["code"], mine["error"].split(".")[0]), (made_up["code"], made_up["error"].split(".")[0]))
+        self.assertEqual(mine, made_up, "word for word the same answer")
+
+    def test_string_actions_on_a_hidden_string_are_not_found_and_change_nothing(self):
+        """Review 16: approve, cut, pause and resume reached a string whose other side was archived and failed half way (a 500)."""
+        self.archive()
+        before = central().execute("SELECT state, updated_at FROM string WHERE id=?", (self.sid,)).fetchone()[:]
+        for action in ("approve", "pause", "resume", "cut"):
+            self.assertEqual(self.y.post(f"/api/strings/{self.sid}/{action}").status_code, 404, action)
+        self.assertEqual(central().execute("SELECT state, updated_at FROM string WHERE id=?", (self.sid,)).fetchone()[:], before)
+
+    def test_an_archived_familys_softphone_can_still_leave_phone_mode(self):
+        """A family can always end things itself: phone mode is left with the parent code, or the browser is signed out."""
+        import base64
+        self.archive()
+        basic = {"Authorization": "Basic " + base64.b64encode(f"{self.soft['sip_user']}:{self.soft['secret']}".encode()).decode()}
+        r = client.post("/api/phone/leave", headers=basic, json={"code": PIN})
+        self.assertEqual(r.status_code, 200, r.get_json())
 
     def test_no_route_gives_an_archived_member_anything(self):
         """Every family GET route without parameters, as a member of an archived treehouse: a refusal, never data and never a 500."""
@@ -638,6 +654,21 @@ class Archive(unittest.TestCase):
         mine.post("/api/admin/stepup/code", {"code": code})
         r = mine.post(f"/api/admin/treehouses/{mine.house['id']}/archive", {"confirm": "Mine", "reason": "cleanup"})
         self.assertEqual((r.status_code, r.get_json()["code"]), (409, "own_treehouse"))
+
+
+class OwnFamily(unittest.TestCase):
+    def test_an_admin_changes_nothing_in_their_own_family_here(self):
+        mine = make_house("Mine", email=new_email())
+        hid = mine.post("/api/handsets", {"kind": "rotary", "name": "Den"}).get_json()["handset"]["id"]
+        db.add_admin(central(), mine.email, "test")
+        code = client.post("/api/auth/request", json={"email": mine.email}).get_json()["dev_code"]
+        mine.post("/api/admin/stepup/code", {"code": code})
+        tid = mine.house["id"]
+        gid = central().execute("SELECT id FROM grown_up WHERE treehouse_id=?", (tid,)).fetchone()[0]
+        for path, body in ((f"/api/admin/treehouses/{tid}/restore", {}), (f"/api/admin/treehouses/{tid}/handsets/{hid}/remove", {"reason": "cleanup"}),
+                           (f"/api/admin/treehouses/{tid}/grown-ups/{gid}/remove", {"reason": "cleanup"})):
+            r = mine.post(path, body)
+            self.assertEqual((r.status_code, r.get_json()["code"]), (409, "own_treehouse"), path)
 
 
 class TreehousesForAdmins(unittest.TestCase):
@@ -682,6 +713,17 @@ class TreehousesForAdmins(unittest.TestCase):
         mine = central().execute("SELECT id FROM handset WHERE treehouse_id=? AND removed_at IS NULL", (self.tid,)).fetchone()[0]
         r = self.admin.post(f"/api/admin/treehouses/{self.tid}/handsets/{mine}/remove", {"reason": "security"})
         self.assertEqual((r.status_code, r.get_json()["handset_count"]), (200, 0))
+
+    def test_removing_a_phone_while_asterisk_is_unreachable_still_removes_it(self):
+        from unittest import mock
+        from treeline import api as api_mod
+        mine = central().execute("SELECT id FROM handset WHERE treehouse_id=? AND removed_at IS NULL", (self.tid,)).fetchone()[0]
+        def down(*a, **k):
+            raise OSError("ARI unreachable")
+        with mock.patch.object(api_mod, "drop_registration", down):
+            r = self.admin.post(f"/api/admin/treehouses/{self.tid}/handsets/{mine}/remove", {"reason": "security"})
+        self.assertEqual(r.status_code, 200, r.get_json())
+        self.assertIsNotNone(central().execute("SELECT removed_at FROM handset WHERE id=?", (mine,)).fetchone()[0])
 
     def test_nothing_here_adds_a_person_or_a_phone(self):
         before = [central().execute(f"SELECT count(*) FROM {t}").fetchone()[0] for t in ("grown_up", "handset", "pairing", "ladder_code")]

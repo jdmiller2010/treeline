@@ -358,8 +358,7 @@ def admin_archive(tid):
     reason = _reason()
     if str(data.get("confirm", "")).strip().lower() != str(r["name"]).strip().lower():
         raise ApiError("Type the treehouse's name to confirm.", 400, "confirm")
-    if any(x["email"] == g.email for x in _grown_ups(tid)):
-        raise ApiError("That is your own treehouse: an admin cannot archive it.", 409, "own_treehouse")
+    _not_yours(tid)
     if not db.archive_treehouse(conn(), tid, g.email):
         raise ApiError("That treehouse is already archived.", 409, "already_archived")
     db.log_admin(conn(), g.email, "treehouse_archived", "treehouse", tid, f"reason={reason}")
@@ -372,10 +371,16 @@ def admin_archive(tid):
     return jsonify(_treehouse_card(_treehouse_row(tid)))
 
 
+def _not_yours(tid):
+    if any(x["email"] == g.email for x in _grown_ups(tid)):
+        raise ApiError("That is your own treehouse: an admin cannot change it here.", 409, "own_treehouse")
+
+
 @app.post("/api/admin/treehouses/<int:tid>/restore")
 @admin_action
 def admin_restore(tid):
     _treehouse_row(tid)
+    _not_yours(tid)
     if not db.restore_treehouse(conn(), tid):
         raise ApiError(f"Only a treehouse archived in the last {db.ARCHIVE_DAYS} days can be brought back.", 409, "not_restorable")
     db.log_admin(conn(), g.email, "treehouse_restored", "treehouse", tid)
@@ -386,8 +391,9 @@ def admin_restore(tid):
 @app.post("/api/admin/treehouses/<int:tid>/grown-ups/<int:gid>/remove")
 @admin_action
 def admin_remove_grown_up(tid, gid):
-    """Remove a grown-up from a family (never the last parent, never your own row). Their sessions and push subscriptions go with it."""
+    """Remove a grown-up from a family (never the last parent, never your own family). Their sessions and push subscriptions go with it."""
     _treehouse_row(tid)
+    _not_yours(tid)
     reason = _reason()
     row = conn().execute("SELECT id, email FROM grown_up WHERE id=? AND treehouse_id=?", (gid, tid)).fetchone()
     if row is None:
@@ -409,10 +415,14 @@ def admin_remove_grown_up(tid, gid):
 @admin_action
 def admin_remove_handset(tid, hid):
     _treehouse_row(tid)
+    _not_yours(tid)
     reason = _reason()
     h = conn().execute("SELECT * FROM handset WHERE id=? AND treehouse_id=? AND removed_at IS NULL", (hid, tid)).fetchone()
     if h is None:
         raise ApiError("That phone isn't in this treehouse.", 404)
-    drop_handset(h)
+    try:
+        drop_handset(h)
+    except Exception:                       # removed and gone from Asterisk's accounts; only kicking a live call failed
+        log.warning("could not drop a removed handset of treehouse %s from Asterisk", tid)
     db.log_admin(conn(), g.email, "handset_removed", "treehouse", tid, f"handset={hid} reason={reason}")
     return jsonify(_treehouse_card(_treehouse_row(tid)))

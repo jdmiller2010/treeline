@@ -909,7 +909,9 @@ def string_redeem():
     them = db.get_treehouse(conn(), row["treehouse_id"])
     me = g.th
     if them is None or them["id"] == me["id"]:
-        raise ApiError("That string code didn't work. Ask for a new one.", 400, "bad_ladder")
+        # word for word the unknown-code answer: a paused family's code must not read differently (docs/ADMIN.md)
+        raise ApiError("That string code didn't work. It may have been used or expired. "
+                       "Ask for a new one.", 400, "bad_ladder")
     if db.get_string(conn(), me["id"], them["id"]):
         raise ApiError(f"You and {them['name']} already have a string.", 409)
     a, b = db.ordered(me["id"], them["id"])
@@ -929,7 +931,8 @@ def string_redeem():
 def string_for(sid):
     s = conn().execute("SELECT * FROM string WHERE id=? AND (a_id=? OR b_id=?)",
                        (sid, g.th["id"], g.th["id"])).fetchone()
-    if not s or s["state"] == "cut":
+    if not s or s["state"] == "cut" or db.get_treehouse(conn(), s["b_id"] if s["a_id"] == g.th["id"] else s["a_id"]) is None:
+        # gone, cut, or the other family is paused by Treeline (hidden from the list too, and back after a restore)
         raise ApiError("That string isn't there anymore.", 404)
     return s
 
@@ -1054,7 +1057,7 @@ def check_parent_code(th_id, code):
     c.execute("BEGIN IMMEDIATE")
     failure = None
     try:
-        th = db.get_treehouse(c, th_id)
+        th = db.get_treehouse(c, th_id) or db.archived_treehouse(c, th_id)     # a paused family can still leave phone mode
         if not th or not th["parent_pin_hash"]:
             failure = ApiError("A parent needs to set a parent code in Settings first.", 409, "no_pin")
         elif th["pin_locked_until"] and th["pin_locked_until"] > db.iso():
@@ -1125,7 +1128,7 @@ def phone_sign_out():
 
 
 def softphone_auth():
-    h = handset_auth()
+    h = handset_auth(allow_archived=True)        # leaving phone mode and signing out: a family can always end things itself
     if h["kind"] != "softphone":
         raise ApiError("Only a softphone can leave phone mode.", 400)
     return h
@@ -1374,7 +1377,7 @@ def pair_claim():
     return jsonify(handset=handset_json(conn().execute("SELECT * FROM handset WHERE id=?", (hid,)).fetchone())), 201
 
 
-def handset_auth():
+def handset_auth(allow_archived=False):
     """HTTP Basic with the handset's own SIP account."""
     h = request.headers.get("Authorization", "")
     try:
@@ -1384,7 +1387,7 @@ def handset_auth():
     row = user and db.handset_by_user(conn(), user)
     if not row or not secrets.compare_digest(row["sip_md5"], db.sip_digest(user, secret or "")):
         raise ApiError("This phone was removed from its treehouse.", 401, "removed")
-    if db.archived_treehouse(conn(), row["treehouse_id"]) is not None:
+    if not allow_archived and db.archived_treehouse(conn(), row["treehouse_id"]) is not None:
         # Not "removed" (that makes a softphone forget its account): it keeps it, and works again after a restore.
         raise ApiError("This treehouse is paused for now, so this phone can't call. Treeline never connects to 911.", 403, "archived")
     return row
