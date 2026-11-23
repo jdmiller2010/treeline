@@ -61,6 +61,18 @@ Everything not yet fixed, from every review. Move a row to its review's "Remedia
 | R8-2 | The development containers and the `controller unit tests` CI job install `controller/requirements.txt` unpinned, so tests can run on newer versions than the hash-pinned lock production installs | Informational | 2026-11-20 | Open |
 | R8-3 | `main` has no branch protection, and Dependabot alerts and security updates are off (GitHub settings, not repo files) | Low | 2026-11-20 | Open: the owner's checklist in [SUPPLY_CHAIN.md](SUPPLY_CHAIN.md) |
 
+## Review 13: 2026-11-23, security review of the Treeline Admin page (branch `admin-page`)
+
+**In plain words.** The admin page itself (menu item, overview, Logs, Releases, Admins, Audit) and the read-only releases report the deploy agent now gives. Three reviewers (the browser: can any shown value run script; root: can GitHub data or uid treeline reach a root effect; the API: authz and leaks), two skeptics ready per finding. **Nothing reached the bar.** Two notes below it were acted on: a date that is not a date no longer breaks the page (it is shown as it is), and the releases unit now also hides the ARI password, the signer file, Asterisk's config, the generated handset file and the bridge folder it never needs.
+
+**Scope.** `web/parent/js/admin.js` (new), `web/parent/js/app.js` (menu item, route, no doodles), `controller/treeline/admin.py` (`/api/admin/releases`), `treeline-deploy` (`releases`, `published()`), `treeline_bridge.py` (`refresh_releases`, a bounded email pattern), `treeline-bridge-releases.{service,timer}`, `install.sh`, the design tokens and LogView, `./dev`, the smoke test.
+
+**Method and its limits.** Code reading; nothing run by the reviewers. The author's tests: the browser smoke test (356 checks; the admin pages at six widths and both themes, a log line of markup shown as text, an old session's single sign-in-again page, the menu link only for an admin) run in the project's `app-webtests` image because this machine has no Playwright browser; native tests of the releases report and of `published()`; controller tests of the endpoint; `vm_test.A4_Bridge` test 7 (the report from the real agent through the real unit to the API).
+
+**Checked and clean.** Every rendered value goes through the `html` tag's escaping (the one data-derived attribute is passed as an object); log text is set with `textContent`; GitHub data is filtered to `vX.Y.Z` tags and date-shaped strings and is never acted on; `/run/treeline/bridge` cannot be written by the app; nothing root runs reads `releases.json` back; the endpoint is behind the admin gate and returns explicit keys.
+
+**Remediation.** The two below-bar notes, in the same branch. Nothing open.
+
 ## Review 12: 2026-11-23, security review of the admin log bridge (branch `admin-bridge-logs`)
 
 **In plain words.** The first root path the admin page has: the web app asks for a log, a sandboxed root helper answers. Three reviewers attacked it (as the app user wanting root or root-only files; through the request's values into `journalctl` or the answer; the endpoints and the sandbox), with two skeptics ready per finding. **Nothing reached the reporting bar.** Two notes below it were acted on (R12-1, R12-2).

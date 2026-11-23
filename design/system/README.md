@@ -85,6 +85,7 @@ Two families, both under the SIL Open Font License. The HTML kit self-hosts them
 
 - **Fraunces** (`--font-display`) for display, titles and clock times. A soft, old-style serif: the hand-lettered sign on the treehouse door. Always set `font-variation-settings: "SOFT" 100` for its rounded, ink-on-paper feel, at light weights (420–500).
 - **Figtree** (`--font-sans`) for everything else, including avatar initials. Clean, round and very readable at small sizes.
+- **The system monospace** (`--font-mono`, no web font), only for machine text a person reads as it is: the admin page's logs (`LogView`). Never for interface text.
 - **Caveat**, only for handwriting drawn into a picture: the card file's cards (and the old softphone room's notes and drawing). Never for interface text.
 
 | Style | Use for |

@@ -147,6 +147,88 @@ def make_family(browser, email, name, tz="America/Los_Angeles"):
     return ctx, page
 
 
+def admin_pages(browser, a, s, central, tdb, ui_db):
+    """Treeline Admin (docs/ADMIN.md): the menu link only for an admin, the pages, the sign-in-again page for an old session, and a log
+    read through the REAL helper code (this script plays root, in the folders ./dev gave the local API) with a hostile line in it."""
+    import json as _json
+    import time as _time
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "deploy", "native", "bin"))
+    import treeline_bridge
+    bridge = os.path.join(os.path.dirname(ui_db), "bridge")
+    req, out = os.path.join(bridge, "req"), os.path.join(bridge, "out")
+    # Sam is not an admin: no link, and the page is not there for them
+    s.goto(f"{BASE}/parent/#/home"); s.wait_for_selector(".tl-avatar-btn"); s.click(".tl-avatar-btn")
+    check(s.locator("[data-admin-link]").count() == 0, "the account menu has no Treeline Admin link for someone who is not an admin")
+    s.keyboard.press("Escape")
+    s.goto(f"{BASE}/parent/#/admin"); s.wait_for_timeout(800)
+    check("#/home" in s.url, "and #/admin sends them home")
+    check(api_get(s, "/api/admin/admins").get("error") == "That page isn't here.", "the API gives them what an unknown address gets")
+    tdb.add_admin(central, "alex@example.com", "ssh:smoke")
+    a.goto(f"{BASE}/parent/"); a.wait_for_selector(".tl-avatar-btn")             # a full load, so /api/me is asked again
+    a.click(".tl-avatar-btn")
+    check(a.locator("[data-admin-link]").is_visible(), "an admin's account menu has Treeline Admin")
+    a.click("[data-admin-link]"); a.wait_for_selector("text=For running Treeline")
+    check(a.locator(".tl-row[data-href]").count() == 4, "the overview lists Logs, Releases, Admins and the audit log")
+    a.wait_for_timeout(600)
+    check(a.locator(".tl-doodle-layer svg").count() == 0, "no doodles on the admin pages (working screens)")
+    check(a.locator("h1").count() == 1, "one h1 on the admin overview")
+    for w in WIDTHS:
+        a.set_viewport_size({"width": w, "height": 900}); a.wait_for_timeout(150)
+        no_sideways_scroll(a, f"admin overview {w}")
+    a.set_viewport_size({"width": 390, "height": 844})
+    shoot(a, "admin-overview-390")
+    # Logs, through the real helper, with a line that would be markup if it were ever set as HTML
+    a.goto(f"{BASE}/parent/#/admin/logs"); a.wait_for_selector("#log-form")
+    check(a.locator(".tl-alert--warning").count() == 0, "with the helper's folders present the page does not say it is missing")
+    a.select_option("#log-since", "6h")
+    a.click("[data-show]")
+    deadline = _time.time() + 10
+    while not os.listdir(req) and _time.time() < deadline:
+        _time.sleep(0.1)
+    hostile = 'started <img src=x onerror="window.__xss=1"> from 203.0.113.7 for parent@example.com\n' * 3
+    done = treeline_bridge.run_once(os.getuid(), req_dir=req, out_dir=out, audit_path=os.path.join(bridge, "audit.log"),
+                                    journal=lambda r: (hostile, False))
+    check(len(done) == 1 and done[0][1] == "ok", f"the page's request is one the real helper accepts ({done})")
+    a.wait_for_selector(".tl-logview")
+    text = a.inner_text(".tl-logview")
+    check("<img src=x" in text and a.locator(".tl-logview img").count() == 0 and not a.evaluate("() => window.__xss"),
+          "a log line that looks like markup is shown as text, never run")
+    check("203.0.113.7" not in text and "parent@example.com" not in text and "[ip]" in text and "[email]" in text, "addresses and emails are hidden")
+    for w in WIDTHS:
+        a.set_viewport_size({"width": w, "height": 900}); a.wait_for_timeout(150)
+        no_sideways_scroll(a, f"admin logs {w}")
+    for theme in ("light", "dark"):
+        a.evaluate("(t) => document.documentElement.setAttribute('data-theme', t)", theme)
+        a.set_viewport_size({"width": 390, "height": 844}); shoot(a, f"admin-logs-390-{theme}")
+        a.set_viewport_size({"width": 1280, "height": 900}); shoot(a, f"admin-logs-1280-{theme}")
+    a.evaluate("() => document.documentElement.removeAttribute('data-theme')")
+    a.set_viewport_size({"width": 390, "height": 844})
+    # Releases: what the helper last reported
+    rep = {"current": "v0.2.0", "previous": None, "failed": [], "asterisk": "24.0.0-t1", "error": None,
+           "published": [{"version": "v0.3.0", "published_at": "2026-11-24T10:00:00Z", "newer": True, "failed": False},
+                         {"version": "v0.2.0", "published_at": "2026-11-22T02:58:38Z", "newer": False, "failed": False}]}
+    import subprocess as _sp
+    treeline_bridge.refresh_releases(out_dir=out, run=lambda *x, **k: _sp.CompletedProcess(x, 0, _json.dumps(rep), ""))
+    a.goto(f"{BASE}/parent/#/admin/releases"); a.wait_for_selector("text=Published")
+    body = a.inner_text("main")
+    check("v0.3.0" in body and "Newer" in body and "Running" in body and "24.0.0-t1" in body, "Releases shows what runs and what is newer")
+    shoot(a, "admin-releases-390")
+    a.goto(f"{BASE}/parent/#/admin/admins"); a.wait_for_selector("text=alex@example.com")
+    check("ssh:smoke" in a.inner_text("main"), "Admins lists who added whom")
+    a.goto(f"{BASE}/parent/#/admin/audit"); a.wait_for_selector(".tl-row")
+    check("log" in a.inner_text("main").lower(), "the audit log has the log view")
+    # An admin session older than 12 hours: one plain page, not a loop
+    token = a.evaluate("() => localStorage.getItem('treeline.token').replace(/\"/g, '')")
+    import hashlib
+    central.execute("UPDATE session SET created_at='2000-01-01T00:00:00+00:00' WHERE token_hash=?", (hashlib.sha256(token.encode()).hexdigest(),))
+    a.goto(f"{BASE}/parent/#/admin/logs"); a.wait_for_selector("text=Sign in again to use the admin page")
+    a.wait_for_timeout(1500)
+    check(a.locator("text=Sign in again to use the admin page").count() == 1 and "#/admin/logs" in a.url, "an old session gets one sign-in-again page, not a loop")
+    check(a.locator("[data-resignin]").count() == 1, "with a button that signs out")
+    central.execute("UPDATE session SET created_at=? WHERE token_hash=?", (tdb.iso(), hashlib.sha256(token.encode()).hexdigest()))
+    a.goto(f"{BASE}/parent/#/home"); a.wait_for_selector("[data-pause]")
+
+
 def main():
     with sync_playwright() as p:
         browser = browsers.launch(p)
@@ -643,6 +725,7 @@ def main():
                   f"Show older loads the rest (all 61) and the button goes away ({a.locator('.tl-log').count()})")
             a.click("label:has(input[value=week])"); a.wait_for_selector(".tl-log")
             check(a.locator(".tl-log").count() == 61 and a.locator("[data-show-older]").count() == 0, "This week shows them all at once")
+            admin_pages(browser, a, s, central, tdb, ui_db)
         else:
             print("skip  911 alert screens: run through ./dev ui smoke (it gives the test database's path)", flush=True)
 

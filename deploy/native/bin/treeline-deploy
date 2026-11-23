@@ -6,6 +6,7 @@
     treeline-deploy --tarball F [--sig S]    deploy a release from local files (offline installs and the CI job; still verified)
     treeline-deploy --rollback               go back to the previous release (refused if the data layout moved since)
     treeline-deploy status
+    treeline-deploy releases                 read-only: what runs, what is published, what failed (JSON; the admin page shows it)
     treeline-deploy adopt DIR                first install: stage the unpacked release DIR (called by install.sh)
     treeline-deploy install-asterisk DIR     install (or check) the Asterisk build of the installed release DIR (called by install.sh)
 
@@ -121,6 +122,23 @@ def source(host_env):
     return f"https://github.com/{repo}/releases", False
 
 
+def published(releases):
+    """[(tag, published_at)] of the PUBLISHED plain vX.Y.Z releases in GitHub's list, newest first (drafts, prereleases, the asterisk-*
+    builds and odd tags are left out). Raises Failed if the answer is not a list."""
+    if not isinstance(releases, list):
+        raise Failed("the release list from GitHub is not a list")
+    out = []
+    for r in releases:
+        if not isinstance(r, dict) or r.get("draft") is not False or r.get("prerelease") is not False:
+            continue
+        tag = r.get("tag_name")
+        if not isinstance(tag, str) or not re.fullmatch(r"v\d+\.\d+\.\d+", tag):
+            continue
+        when = r.get("published_at")
+        out.append((tag, when if isinstance(when, str) and re.fullmatch(r"[0-9T:Z+.-]{10,32}", when) else None))
+    return sorted(out, key=lambda t: vkey(t[0]), reverse=True)
+
+
 def pick_latest(releases):
     """The highest plain vX.Y.Z among PUBLISHED releases. The repository also holds other releases (the asterisk-* ones, which are
     prereleases of an Asterisk build and not something to deploy); GitHub's "latest" would be one of them whenever it was newer,
@@ -139,6 +157,26 @@ def pick_latest(releases):
     if best is None:
         raise Failed("GitHub lists no published release of the form vX.Y.Z")
     return best
+
+
+def releases_report(p, host_env):
+    """What the admin page's Releases screen shows (docs/ADMIN.md): what is running, what is published, what failed. Read-only:
+    nothing is downloaded, staged or changed, and it takes no input."""
+    state = read_state(p)
+    cur = current_version(p)
+    report = {"current": cur, "previous": state.get("previous"), "failed": [v for v in state.get("failed", []) if rel.VERSION_RE.match(str(v))],
+              "asterisk": running_asterisk_id(), "published": [], "error": None}
+    try:
+        base, local = source(host_env)
+        if local:
+            rows = [(latest_version(host_env), None)]
+        else:
+            rows = published(json.loads(https_get(f"https://api.github.com/repos/{host_env['TREELINE_RELEASE_REPO']}/releases?per_page=100")))
+        report["published"] = [{"version": v, "published_at": when, "newer": bool(cur) and vkey(v) > vkey(cur), "failed": v in report["failed"]}
+                               for v, when in rows[:30]]
+    except (Failed, Refused, urllib.error.URLError, OSError, ValueError) as err:
+        report["error"] = f"could not read the published releases: {str(err)[:200]}"
+    return report
 
 
 def latest_version(host_env):
@@ -1047,6 +1085,9 @@ def run(argv):
     opts = {"--version": None, "--tarball": None, "--sig": None, "--rollback": False, "--force": False, "--wait": None}
     it = iter(argv)
     for a in it:
+        if a == "releases":
+            print(json.dumps(releases_report(p, host_env)))
+            return 0
         if a == "status":
             cur = current_version(p)
             print(json.dumps({"current": cur, "installed": installed(p), "state": read_state(p),

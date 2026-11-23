@@ -146,7 +146,8 @@ def parse_request(data, name, now=None):
 
 # ---------------------------------------------------------------- the answer
 _CONTROL = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]|[\x00-\x08\x0b-\x1f\x7f-\x9f]")
-_EMAIL = re.compile(r"[^\s@<>()\[\]\"',;]+@[^\s@<>()\[\]\"',;]+\.[A-Za-z]{2,}")
+# Bounded to real address lengths (64 before the @, 253 after): unbounded, a long line with no spaces made this quadratic.
+_EMAIL = re.compile(r"[^\s@<>()\[\]\"',;]{1,64}@[^\s@<>()\[\]\"',;]{1,253}\.[A-Za-z]{2,24}")
 _IPV4 = re.compile(r"(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}(?![\d.])")
 # IPv6: eight-ish groups, or anything with "::". A time such as 18:58:35 (three groups, no "::") is left alone.
 _IPV6 = re.compile(r"(?<![\w:])(?:(?:[0-9A-Fa-f]{1,4}:){4,7}[0-9A-Fa-f]{1,4}|[0-9A-Fa-f]{0,4}(?::[0-9A-Fa-f]{0,4}){0,6}::(?:[0-9A-Fa-f]{1,4}(?::[0-9A-Fa-f]{1,4}){0,6})?)(?![\w:])")
@@ -286,7 +287,7 @@ def sweep(out_dir=None, now=None, ttl=RESULT_TTL):
                 st = os.stat(name, dir_fd=dfd, follow_symlinks=False)
             except FileNotFoundError:
                 continue
-            if not stat.S_ISREG(st.st_mode) or now - st.st_mtime > ttl:
+            if not stat.S_ISREG(st.st_mode) or (now - st.st_mtime > ttl and name != "releases.json"):
                 remove_entry(dfd, name)
                 removed.append(name)
     finally:
@@ -294,8 +295,35 @@ def sweep(out_dir=None, now=None, ttl=RESULT_TTL):
     return removed
 
 
+RELEASES_KEYS = {"current", "previous", "failed", "asterisk", "published", "error"}
+
+
+def refresh_releases(out_dir=None, run=subprocess.run, now=None):
+    """Ask the deploy agent (read-only `releases`) and leave its answer, re-checked, as releases.json for the admin page. Takes no
+    input from the app: this runs on a timer."""
+    done = run(["/usr/local/sbin/treeline-deploy", "releases"], stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=120, cwd="/")
+    try:
+        report = json.loads(done.stdout.strip().splitlines()[-1])
+        if not isinstance(report, dict) or set(report) != RELEASES_KEYS or not isinstance(report["published"], list):
+            raise ValueError("unexpected shape")
+    except (ValueError, IndexError):
+        report = {"current": None, "previous": None, "failed": [], "asterisk": None, "published": [],
+                  "error": "the deploy agent did not answer: " + clean((done.stderr or "")[-200:])}
+    report = json.loads(clean(json.dumps(report)))          # the same cleaning as a log answer
+    report["at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now))
+    dfd = open_dir(out_dir or OUT_DIR)
+    try:
+        write_result(dfd, "releases", report)
+    finally:
+        os.close(dfd)
+    return report
+
+
 def main(argv):
     import pwd
+    if argv == ["releases"]:
+        refresh_releases()
+        return 0
     if argv == ["run"]:
         for rid, outcome in run_once(pwd.getpwnam("treeline").pw_uid):
             print(f"{rid}: {outcome}")
@@ -304,5 +332,5 @@ def main(argv):
     if argv == ["sweep"]:
         sweep()
         return 0
-    print("usage: treeline-bridge run | sweep")
+    print("usage: treeline-bridge run | sweep | releases")
     return 2

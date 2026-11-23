@@ -121,3 +121,24 @@ def admin_log_result(rid):
         result = json.loads(f.read(4 * 1024 * 1024))    # 256 KiB of text can grow when JSON-escaped (non-ASCII becomes \\uXXXX)
     keep = ("status", "reason", "source", "lines", "since", "truncated", "text")
     return jsonify({k: result[k] for k in keep if k in result})
+
+
+# ---------------------------------------------------------------- releases (read-only here; installing comes with its own review)
+RELEASE_KEYS = ("version", "published_at", "newer", "failed")
+
+
+@app.get("/api/admin/releases")
+@admin_required
+def admin_releases():
+    """What the deploy agent last reported (the helper refreshes it every 15 minutes), and the release this API process runs."""
+    from .api import RELEASE
+    try:
+        fd = os.open(os.path.join(BRIDGE_OUT, "releases.json"), os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    except FileNotFoundError:
+        return jsonify(running=RELEASE, report=None, installed=bridge_installed())
+    with os.fdopen(fd, "rb") as f:
+        r = json.loads(f.read(1024 * 1024))
+    report = {"at": r.get("at"), "current": r.get("current"), "previous": r.get("previous"), "asterisk": r.get("asterisk"),
+              "failed": [v for v in r.get("failed") or [] if isinstance(v, str)][:50], "error": r.get("error"),
+              "published": [{k: p.get(k) for k in RELEASE_KEYS} for p in (r.get("published") or [])[:30] if isinstance(p, dict)]}
+    return jsonify(running=RELEASE, report=report, installed=bridge_installed())

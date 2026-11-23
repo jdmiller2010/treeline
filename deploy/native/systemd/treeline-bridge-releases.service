@@ -1,0 +1,27 @@
+# The admin page's Releases screen: the deploy agent's read-only `releases` report, written to /run/treeline/bridge/releases.json.
+# No input from the app reaches it (a timer starts it). It needs the network (GitHub's release list) and to read the agent's state.
+[Unit]
+Description=Treeline admin helper: what runs, what is published, what failed
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/treeline/treeline-bridge releases
+TimeoutStartSec=180
+Nice=10
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/run/treeline/bridge
+InaccessiblePaths=-/etc/treeline/aws-credentials -/etc/treeline/ari-password -/etc/treeline/release_signers -/var/lib/treeline/generated -/var/lib/treeline/bridge -/etc/asterisk -/run/treeline/env -/run/treeline/backup-env -/var/lib/treeline/data -/var/lib/treeline/caddy -/var/lib/treeline/backup -/var/lib/treeline/spool -/var/lib/treeline/asterisk -/root
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+SystemCallFilter=@system-service
+SystemCallArchitectures=native

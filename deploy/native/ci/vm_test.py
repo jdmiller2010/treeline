@@ -357,7 +357,7 @@ class VmTestCase(unittest.TestCase):
            " aws_secret_access_key " + key_secret + " > /etc/treeline/aws-credentials && chmod 600 /etc/treeline/aws-credentials")
         vm("systemctl restart asterisk caddy && systemctl start treeline-api treeline-controller")
         # install.sh starts these itself; with --no-start it only enabled them (as it does the other timers, which tests start when needed)
-        vm("systemctl start treeline-bridge.path treeline-bridge-sweep.timer")
+        vm("systemctl start treeline-bridge.path treeline-bridge-sweep.timer treeline-bridge-releases.timer")
 
     @classmethod
     def install(cls, extra="", public_ip=None, src="/root/rel"):
@@ -672,7 +672,7 @@ class A4_Bridge(VmTestCase):
         return self.fetch(token, json.loads(body)["id"])
 
     def test_1_the_units_are_installed_and_the_helper_is_sandboxed(self):
-        self.assertEqual(vm("systemctl is-active treeline-bridge.path treeline-bridge-sweep.timer").stdout.split(), ["active", "active"])
+        self.assertEqual(vm("systemctl is-active treeline-bridge.path treeline-bridge-sweep.timer treeline-bridge-releases.timer").stdout.split(), ["active"] * 3)
         show = vm("systemctl show treeline-bridge.service -p CapabilityBoundingSet -p PrivateNetwork -p ProtectSystem -p NoNewPrivileges").stdout
         caps = re.search(r"CapabilityBoundingSet=(.*)", show).group(1).split()
         self.assertEqual(sorted(caps), ["cap_dac_override", "cap_dac_read_search"], show)
@@ -724,6 +724,25 @@ class A4_Bridge(VmTestCase):
         self.assertEqual(vm("sha256sum /etc/shadow").stdout, before)
         self.assertEqual(vm("systemctl is-active treeline-bridge.path").stdout.strip(), "active", "the helper did not get stuck")
         self.assertIn("refused", vm("cat /var/lib/treeline/bridge/audit.log").stdout)
+
+    def test_7_the_releases_report_comes_from_the_agent_and_reaches_the_page(self):
+        vm("systemctl start treeline-bridge-releases.service")
+        self.assertEqual(vm("stat -c '%U:%G %a' /run/treeline/bridge/releases.json").stdout.strip(), "root:treeline 640")
+        agent = json.loads(vm("treeline-deploy releases").stdout)
+        self.assertEqual(set(agent), {"current", "previous", "failed", "asterisk", "published", "error"})
+        status, body = A3_Admin.api(self, "/api/admin/releases", self.token())
+        self.assertEqual(status, 200, body)
+        r = json.loads(body)
+        running = vm("basename $(readlink -f /opt/treeline/current)").stdout.strip()
+        self.assertEqual((r["running"], r["report"]["current"]), (running, running))
+        self.assertEqual(r["report"]["asterisk"], ast_id())
+        # At this point in the run the local release server may not list anything yet (the deploy tests publish later): then the
+        # agent says why and still reports what runs. Either way the page gets an honest answer.
+        if r["report"]["error"]:
+            self.assertIn("could not read the published releases", r["report"]["error"])
+            self.assertEqual(r["report"]["published"], [])
+        else:
+            self.assertTrue(r["report"]["published"], "the local release server's latest is listed")
 
     def test_6_answers_are_readable_by_the_app_only_and_go_away(self):
         token = self.token()

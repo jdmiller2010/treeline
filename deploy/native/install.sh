@@ -305,10 +305,10 @@ SOUNDS_SRC="$REL/asterisk/sounds" sh "$REL/asterisk/make_sounds.sh" >/dev/null
 say "configuration"
 "$LIB/treeline-config" apply --release "$OPT/current"
 systemctl daemon-reload
-systemctl enable asterisk caddy treeline-api treeline-controller treeline-certsync.timer treeline-deploy.timer treeline-backup.timer treeline-health.timer treeline-bridge.path treeline-bridge-sweep.timer >/dev/null 2>&1
+systemctl enable asterisk caddy treeline-api treeline-controller treeline-certsync.timer treeline-deploy.timer treeline-backup.timer treeline-health.timer treeline-bridge.path treeline-bridge-sweep.timer treeline-bridge-releases.timer >/dev/null 2>&1
 if [ "$START" = 1 ]; then
   systemctl restart asterisk caddy
-  systemctl start treeline-certsync.timer treeline-deploy.timer treeline-backup.timer treeline-health.timer treeline-bridge.path treeline-bridge-sweep.timer
+  systemctl start treeline-certsync.timer treeline-deploy.timer treeline-backup.timer treeline-health.timer treeline-bridge.path treeline-bridge-sweep.timer treeline-bridge-releases.timer
   if [ -f "$ETC/aws-credentials" ]; then
     systemctl restart treeline-api treeline-controller
     say "started. Check: curl -fsS https://$DOMAIN/api/health"
