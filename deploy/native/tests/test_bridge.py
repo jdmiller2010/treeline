@@ -1,5 +1,6 @@
 """treeline_bridge: the root side of the admin page (docs/ADMIN.md). The app that writes the requests is treated as hostile here."""
 import json
+import re
 import os
 import pathlib
 import shutil
@@ -217,6 +218,26 @@ class Cleaning(unittest.TestCase):
             raise subprocess.TimeoutExpired("journalctl", 10)
         self.assertIn("too long", b.read_logs(request(), run=hang)[0])
         self.assertIn("failed", b.read_logs(request(), run=lambda *a, **k: subprocess.CompletedProcess(a, 1, b"", b"no journal"))[0])
+
+
+class Installed(unittest.TestCase):
+    def test_install_sh_installs_enables_and_starts_the_units(self):
+        text = (helpers.ROOT / "deploy" / "native" / "install.sh").read_text()
+        self.assertIn('"$S"/*.path', text)
+        enable = re.search(r"systemctl enable asterisk[^\n]*", text).group(0)
+        start = re.search(r"systemctl start treeline-certsync[^\n]*", text).group(0)
+        for unit in ("treeline-bridge.path", "treeline-bridge-sweep.timer"):
+            self.assertIn(unit, enable)
+            self.assertIn(unit, start)
+        self.assertNotIn("treeline-bridge.service", enable, "the service is started by its path unit, never on its own")
+        for name in ("treeline-bridge.path", "treeline-bridge.service", "treeline-bridge-sweep.service", "treeline-bridge-sweep.timer"):
+            self.assertTrue((helpers.ROOT / "deploy" / "native" / "systemd" / name).is_file(), name)
+
+    def test_the_api_may_write_the_request_folder_and_nothing_else_of_the_bridge(self):
+        unit = (helpers.ROOT / "deploy" / "native" / "systemd" / "treeline-api.service").read_text()
+        rw = re.search(r"^ReadWritePaths=(.*)$", unit, re.M).group(1).split()
+        self.assertIn("-/var/lib/treeline/bridge/req", rw)
+        self.assertFalse([p for p in rw if "bridge" in p and p != "-/var/lib/treeline/bridge/req"])
 
 
 class MatchesTheApp(unittest.TestCase):

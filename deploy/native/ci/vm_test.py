@@ -356,6 +356,8 @@ class VmTestCase(unittest.TestCase):
         vm("install -d -m 0755 /etc/treeline && printf '[treeline-vm]\\n%s = %s\\n%s = %s\\n' aws_access_key_id " + key_id +
            " aws_secret_access_key " + key_secret + " > /etc/treeline/aws-credentials && chmod 600 /etc/treeline/aws-credentials")
         vm("systemctl restart asterisk caddy && systemctl start treeline-api treeline-controller")
+        # install.sh starts these itself; with --no-start it only enabled them (as it does the other timers, which tests start when needed)
+        vm("systemctl start treeline-bridge.path treeline-bridge-sweep.timer")
 
     @classmethod
     def install(cls, extra="", public_ip=None, src="/root/rel"):
