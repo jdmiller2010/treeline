@@ -1,0 +1,38 @@
+# The admin page's root helper (deploy/native/bin/treeline_bridge.py): reads the app's requests, answers them, empties the folder.
+# Root, because it must read and remove what the app (uid treeline) wrote in a 0700 folder and read the journal; but sandboxed:
+# no network, two capabilities, a read-only system, and the secrets, databases and keys made invisible to it.
+[Unit]
+Description=Treeline admin helper (answers log requests from the app)
+RequiresMountsFor=/var/lib/treeline
+StartLimitIntervalSec=0
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/treeline/treeline-bridge run
+TimeoutStartSec=60
+Nice=10
+MemoryMax=256M
+
+CapabilityBoundingSet=CAP_DAC_OVERRIDE CAP_DAC_READ_SEARCH
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/treeline/bridge /run/treeline/bridge
+InaccessiblePaths=-/etc/treeline -/run/treeline/env -/var/lib/treeline/data -/var/lib/treeline/caddy -/var/lib/treeline/deploy -/var/lib/treeline/backup -/var/lib/treeline/spool -/var/lib/treeline/asterisk -/var/lib/treeline/generated -/etc/asterisk -/root
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+PrivateNetwork=yes
+RestrictAddressFamilies=AF_UNIX
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallFilter=@system-service
+SystemCallArchitectures=native
+UMask=0027

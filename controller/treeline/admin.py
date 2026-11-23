@@ -10,6 +10,11 @@ What keeps an admin from becoming a way into a family, by construction:
 - Responses are built from explicit column lists, never from a row that may grow a column later.
 """
 import datetime as dt
+import json
+import os
+import re
+import secrets
+import time
 from functools import wraps
 
 from flask import g, jsonify, request
@@ -18,6 +23,14 @@ from . import db
 from .api import ApiError, app, bearer, conn, now, rate_limit
 
 ADMIN_SESSION_HOURS = 12
+
+# The root helper on the machine (deploy/native/bin/treeline_bridge.py) reads requests from BRIDGE_REQ and answers in BRIDGE_OUT. These
+# two lists must equal its SOURCES and SINCE (a test compares them); the API and controller logs are deliberately absent.
+BRIDGE_REQ = os.environ.get("TREELINE_BRIDGE_REQ", "/var/lib/treeline/bridge/req")
+BRIDGE_OUT = os.environ.get("TREELINE_BRIDGE_OUT", "/run/treeline/bridge")
+LOG_SOURCES = ("deploy", "backup", "health", "certsync", "caddy", "bridge")
+LOG_SINCE = ("15m", "1h", "6h", "24h", "boot")
+LOG_ID = re.compile(r"[0-9a-f]{32}")
 
 
 def admin_required(fn):
@@ -54,3 +67,57 @@ def admin_audit():
         raise ApiError("That is not a page.", 400)
     rows = db.list_audit(conn(), 100, before)
     return jsonify(audit=rows, next=rows[-1]["id"] if len(rows) == 100 else None)
+
+
+# ---------------------------------------------------------------- logs, through the root helper
+def bridge_installed():
+    return os.path.isdir(BRIDGE_REQ) and os.path.isdir(BRIDGE_OUT)
+
+
+@app.get("/api/admin/logs/sources")
+@admin_required
+def admin_log_sources():
+    return jsonify(sources=list(LOG_SOURCES), since=list(LOG_SINCE), installed=bridge_installed())
+
+
+@app.post("/api/admin/logs")
+@admin_required
+def admin_log_request():
+    data = request.get_json(silent=True) or {}
+    source, since, lines = data.get("source"), data.get("since", "1h"), data.get("lines", 200)
+    if source not in LOG_SOURCES:
+        raise ApiError("Pick one of the listed logs.", 400, "bad_source")
+    if since not in LOG_SINCE:
+        raise ApiError("Pick one of the listed time ranges.", 400, "bad_since")
+    if type(lines) is not int or not 1 <= lines <= 1000:
+        raise ApiError("Lines must be between 1 and 1000.", 400, "bad_lines")
+    if not bridge_installed():
+        raise ApiError("The helper on the machine is not installed yet (run install.sh from this release).", 503, "bridge_missing")
+    rate_limit("adminlogs:" + g.email, 20, 60)
+    rid = secrets.token_hex(16)
+    body = json.dumps({"v": 1, "id": rid, "op": "logs", "source": source, "lines": lines, "since": since, "by": g.email,
+                       "t": int(time.time())}).encode()
+    tmp, final = os.path.join(BRIDGE_REQ, f".tmp-{rid}"), os.path.join(BRIDGE_REQ, f"{rid}.json")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
+    try:
+        os.write(fd, body)
+    finally:
+        os.close(fd)
+    os.rename(tmp, final)                                   # the helper only looks at <id>.json: it never sees half a request
+    db.log_admin(conn(), g.email, "logs_view", "log_source", source, f"lines={lines} since={since}")
+    return jsonify(id=rid), 202
+
+
+@app.get("/api/admin/logs/<rid>")
+@admin_required
+def admin_log_result(rid):
+    if not LOG_ID.fullmatch(rid):
+        raise ApiError("That page isn't here.", 404)
+    try:
+        fd = os.open(os.path.join(BRIDGE_OUT, f"{rid}.json"), os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    except FileNotFoundError:
+        return jsonify(status="pending")
+    with os.fdopen(fd, "rb") as f:
+        result = json.loads(f.read(512 * 1024))
+    keep = ("status", "reason", "source", "lines", "since", "truncated", "text")
+    return jsonify({k: result[k] for k in keep if k in result})

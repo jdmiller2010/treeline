@@ -6,6 +6,7 @@ import datetime as dt
 import os
 import re
 import sqlite3
+import stat
 import tempfile
 import threading
 import unittest
@@ -205,7 +206,89 @@ class Gate(unittest.TestCase):
     def test_the_admin_routes_are_exactly_these(self):
         """A new /api/admin route has to be a deliberate edit of this list (and of docs/ADMIN.md)."""
         rules = sorted((r.rule, tuple(sorted(r.methods - {"HEAD", "OPTIONS"}))) for r in api.app.url_map.iter_rules() if r.rule.startswith("/api/admin"))
-        self.assertEqual(rules, [("/api/admin/admins", ("GET",)), ("/api/admin/audit", ("GET",))])
+        self.assertEqual(rules, [("/api/admin/admins", ("GET",)), ("/api/admin/audit", ("GET",)), ("/api/admin/logs", ("POST",)),
+                                 ("/api/admin/logs/<rid>", ("GET",)), ("/api/admin/logs/sources", ("GET",))])
+
+
+BRIDGE_CODE = os.path.join(os.path.dirname(CONTROLLER), "deploy", "native", "bin")
+
+
+@unittest.skipUnless(os.path.isfile(os.path.join(BRIDGE_CODE, "treeline_bridge.py")),
+                     "needs deploy/native/bin beside controller/ (CI's checkout has it; the dev container mounts only controller/)")
+class Logs(unittest.TestCase):
+    """The app's half of the log bridge, run against the REAL root half (treeline_bridge.run_once, stdlib only) in temp folders:
+    only journalctl is replaced."""
+
+    def setUp(self):
+        import sys
+        from unittest import mock
+        from treeline import admin
+        sys.path.insert(0, BRIDGE_CODE)
+        import treeline_bridge
+        self.bridge = treeline_bridge
+        d = tempfile.mkdtemp(prefix="treeline-bridge-")
+        self.req, self.out = os.path.join(d, "req"), os.path.join(d, "out")
+        os.mkdir(self.req)
+        os.mkdir(self.out)
+        self.audit_path = os.path.join(d, "audit.log")
+        for name, value in (("BRIDGE_REQ", self.req), ("BRIDGE_OUT", self.out)):
+            patcher = mock.patch.object(admin, name, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        self.a = make_admin()
+
+    def answer(self):
+        return self.bridge.run_once(os.getuid(), req_dir=self.req, out_dir=self.out, audit_path=self.audit_path,
+                                    journal=lambda req: (f"journal for {req['source']} by mail parent@example.com", False))
+
+    def test_a_request_goes_through_the_root_helper_and_back(self):
+        r = self.a.get("/api/admin/logs/sources").get_json()
+        self.assertTrue(r["installed"])
+        r = self.a.post("/api/admin/logs", {"source": "deploy", "lines": 20, "since": "1h"})
+        self.assertEqual(r.status_code, 202, r.get_json())
+        rid = r.get_json()["id"]
+        self.assertEqual(self.a.get(f"/api/admin/logs/{rid}").get_json(), {"status": "pending"})
+        self.assertEqual(self.answer(), [(rid, "ok")])
+        got = self.a.get(f"/api/admin/logs/{rid}").get_json()
+        self.assertEqual(got["status"], "ok")
+        self.assertEqual(got["text"], "journal for deploy by mail [email]", "the helper's redaction reaches the page")
+        self.assertEqual(os.listdir(self.req), [])
+
+    def test_the_request_the_app_writes_is_exactly_what_the_helper_accepts(self):
+        rid = self.a.post("/api/admin/logs", {"source": "caddy", "lines": 5, "since": "boot"}).get_json()["id"]
+        with open(os.path.join(self.req, f"{rid}.json"), "rb") as f:
+            data = f.read()
+        req = self.bridge.parse_request(data, f"{rid}.json")
+        self.assertEqual((req["source"], req["lines"], req["since"], req["by"]), ("caddy", 5, "boot", self.a.email))
+        self.assertEqual(stat.S_IMODE(os.stat(os.path.join(self.req, f"{rid}.json")).st_mode), 0o600)
+
+    def test_only_listed_values_are_accepted(self):
+        for body in ({"source": "api"}, {"source": "treeline-controller"}, {"source": "deploy", "since": "1y"},
+                     {"source": "deploy", "lines": 0}, {"source": "deploy", "lines": "5"}, {"source": "deploy", "lines": 5000}, {}):
+            self.assertEqual(self.a.post("/api/admin/logs", body).status_code, 400, body)
+        self.assertEqual(os.listdir(self.req), [])
+
+    def test_each_view_is_audited_without_the_text(self):
+        self.a.post("/api/admin/logs", {"source": "backup", "lines": 9, "since": "6h"})
+        row = db.list_audit(central(), 1)[0]
+        self.assertEqual((row["action"], row["target_id"], row["detail"]), ("logs_view", "backup", "lines=9 since=6h"))
+
+    def test_without_the_helper_the_page_says_so(self):
+        os.rmdir(self.req)
+        self.assertFalse(self.a.get("/api/admin/logs/sources").get_json()["installed"])
+        r = self.a.post("/api/admin/logs", {"source": "deploy"})
+        self.assertEqual((r.status_code, r.get_json()["code"]), (503, "bridge_missing"))
+
+    def test_a_result_id_must_be_an_id(self):
+        for bad in ("../../etc/passwd", "x" * 32, "0" * 31):
+            self.assertEqual(self.a.get(f"/api/admin/logs/{bad}").status_code, 404, bad)
+
+    def test_a_non_admin_cannot_ask_or_read(self):
+        p = Person()
+        self.assertEqual(p.post("/api/admin/logs", {"source": "deploy"}).status_code, 404)
+        self.assertEqual(p.get("/api/admin/logs/" + "0" * 32).status_code, 404)
+        self.assertEqual(p.get("/api/admin/logs/sources").status_code, 404)
+        self.assertEqual(os.listdir(self.req), [])
 
 
 class AnAdminIsNotAWayIntoAFamily(unittest.TestCase):

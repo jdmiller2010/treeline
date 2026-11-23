@@ -1,0 +1,9 @@
+[Unit]
+Description=Remove old answers of the admin helper, and make sure its path unit is running
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/treeline/treeline-bridge sweep
+# A flood can trip the path unit's trigger limit and stop it: start it again (a no-op when it is running).
+ExecStart=/bin/systemctl start treeline-bridge.path
+TimeoutStartSec=60
