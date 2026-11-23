@@ -1,7 +1,7 @@
 // Treeline Admin (docs/ADMIN.md): for the people who run Treeline, never a view into a family. The server decides who may see these
 // pages (every /api/admin call is checked there); the menu link only appears for an admin. Log text is set with textContent.
 import { get, post, ApiError } from "/shared/api.js";
-import { html, card, button, alert, emptyState, selectField, tag, icon, setBusy } from "/shared/ui.js";
+import { html, card, button, alert, emptyState, selectField, textField, tag, icon, setBusy, toast } from "/shared/ui.js";
 import { when as whenRaw } from "/shared/format.js";
 
 /** A date from the machine, shown as a time; anything that is not a date shows as it is (it never breaks the page). */
@@ -13,6 +13,40 @@ const SOURCE_NAMES = {
   deploy: "Deploys", backup: "Backups", health: "Health ping", certsync: "Certificate copy", caddy: "Web server (Caddy)", bridge: "This helper",
 };
 const SINCE_NAMES = { "15m": "15 minutes", "1h": "1 hour", "6h": "6 hours", "24h": "24 hours", boot: "Since start-up" };
+/** Run something that changes things. If the server wants a fresh sign-in first (needs_stepup), get one, then run it again.
+ *  With Google the browser leaves for Google and comes back to this page (#/admin/stepup.ok); returns null then. */
+async function act(ctx, root, fn) {
+  try { return await fn(); } catch (e) {
+    if (!(e instanceof ApiError && e.code === "needs_stepup")) throw e;
+    if (!(await stepUp(ctx, root))) return null;
+    return fn();
+  }
+}
+
+async function stepUp(ctx, root) {
+  const st = await get("/api/admin/stepup");
+  if (st.google) {
+    const { url } = await post("/api/admin/stepup");
+    try { sessionStorage.setItem("tl-stepup-return", location.hash); } catch { /* then back to the overview */ }
+    location.assign(url);
+    return false;
+  }
+  // Development and the test suites only (the server refuses this in production): the emailed code stands in for Google.
+  const r = await post("/api/auth/request", { email: ctx.me.email });
+  const box = root.querySelector("[data-stepup]");
+  box.innerHTML = String(card({ title: "Confirm it's you", children: html`<form class="tl-stack tl-stack--group" id="stepup-form" novalidate>
+    ${textField({ id: "stepup-code", name: "code", label: "The code we just emailed you", attrs: { inputmode: "numeric", autocomplete: "one-time-code" } })}
+    ${r.dev_code ? html`<p class="body-sm" id="stepup-dev" style="color:var(--ink-muted)">Development: the code is ${r.dev_code}</p>` : ""}
+    <div class="tl-actions">${button({ label: "Confirm", type: "submit" })}</div></form>` }));
+  const form = box.querySelector("#stepup-form");
+  await new Promise((done) => form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try { await post("/api/admin/stepup/code", { code: form.querySelector("#stepup-code").value }); box.innerHTML = ""; done(); }
+    catch (err) { toast(err.message, "warning"); }
+  }));
+  return true;
+}
+
 const ACTION_NAMES = {
   admin_add: (a) => `Made ${a.target_id} an admin`, admin_remove: (a) => `Removed ${a.target_id} as an admin`,
   logs_view: (a) => `Read the ${SOURCE_NAMES[a.target_id] || a.target_id} log (${a.detail || ""})`,
@@ -137,13 +171,44 @@ async function releasesPage(ctx) {
   return { title: "Releases", back: "#/admin", nav: null, template: "settings", noDoodles: true, content };
 }
 
-async function adminsPage() {
+async function adminsPage(ctx) {
   const { admins } = await get("/api/admin/admins");
   const content = html`<h2 class="title-lg">Admins</h2>
-  <div class="tl-card tl-card--list">${admins.map((a) => html`<div class="tl-row"><div class="tl-row__main"><div class="tl-row__title">${a.email}</div>
-    <div class="tl-row__meta"><span>Added ${when(a.created_at)}</span><span>by ${a.added_by}</span></div></div></div>`)}</div>
-  <p class="body-sm" style="color:var(--ink-muted)">Admins are added and removed on the machine for now: <code>sudo treeline-admin add EMAIL</code>.</p>`;
-  return { title: "Admins", back: "#/admin", nav: null, template: "settings", noDoodles: true, content };
+  <div class="tl-card tl-card--list">${admins.map((a) => html`<div class="tl-row" data-admin="${a.email}"><div class="tl-row__main"><div class="tl-row__title">${a.email}</div>
+    <div class="tl-row__meta"><span>Added ${when(a.created_at)}</span><span>by ${a.added_by}</span></div></div>
+    ${admins.length > 1 ? button({ label: "Remove", size: "sm", attrs: { "data-remove": a.email } }) : ""}</div>`)}</div>
+  <div data-confirm></div>
+  ${card({ title: "Add an admin", children: html`<form class="tl-stack tl-stack--group" id="add-admin" novalidate>
+    ${textField({ id: "admin-email", name: "email", type: "email", label: "Their email", hint: "The address they sign in to Treeline with. An admin can read the machine's logs and manage releases and admins; never a family's calls or settings." })}
+    <div class="tl-actions">${button({ label: "Add admin", variant: "primary", type: "submit" })}</div></form>` })}
+  <div data-stepup></div>
+  <p class="body-sm" style="color:var(--ink-muted)">Adding or removing an admin asks you to sign in with Google again first. The last admin cannot be removed; on the machine, <code>sudo treeline-admin</code> always works.</p>`;
+  return {
+    title: "Admins", back: "#/admin", nav: null, template: "settings", noDoodles: true, content,
+    mount(root) {
+      root.querySelector("#add-admin").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const email = root.querySelector("#admin-email").value.trim();
+        try {
+          const r = await act(ctx, root, () => post("/api/admin/admins", { email }));
+          if (r) { toast(`${email} is an admin`, "success"); ctx.render(); }
+        } catch (err) { toast(err.message, "warning"); }
+      });
+      root.querySelectorAll("[data-remove]").forEach((b) => b.addEventListener("click", () => {
+        const email = b.dataset.remove;
+        const box = root.querySelector("[data-confirm]");
+        box.innerHTML = String(alert({ tone: "warning", title: `Remove ${email} as an admin?`, body: "They keep their treehouse and their sign-in; only the admin page goes.",
+          actions: html`${button({ label: "Keep", size: "sm", attrs: "data-keep" })}${button({ label: "Remove", size: "sm", attrs: "data-yes" })}` }));
+        box.querySelector("[data-keep]").addEventListener("click", () => { box.innerHTML = ""; });
+        box.querySelector("[data-yes]").addEventListener("click", async () => {
+          try {
+            const r = await act(ctx, root, () => post("/api/admin/admins/remove", { email }));
+            if (r) { toast(`${email} is no longer an admin`, "success"); ctx.render(); }
+          } catch (err) { toast(err.message, "warning"); }
+        });
+      }));
+    },
+  };
 }
 
 async function auditPage(ctx, before) {
@@ -160,11 +225,18 @@ async function auditPage(ctx, before) {
 
 export async function admin(ctx, params) {
   const [page, arg] = params;
+  if (page === "stepup.ok" || page === "stepup.failed") {          // back from Google
+    let back = "#/admin";
+    try { back = sessionStorage.getItem("tl-stepup-return") || back; sessionStorage.removeItem("tl-stepup-return"); } catch { /* fine */ }
+    toast(page === "stepup.ok" ? "Confirmed. Do it again now (for 15 minutes you won't be asked)." : "That didn't confirm it was you. Try again.",
+      page === "stepup.ok" ? "success" : "warning");
+    return { redirect: /^#\/admin(\/[a-z]+)?$/.test(back) ? back : "#/admin" };
+  }
   return guarded(ctx, () => {
     if (!page) return overview();
     if (page === "logs") return logsPage();
     if (page === "releases") return releasesPage(ctx);
-    if (page === "admins") return adminsPage();
+    if (page === "admins") return adminsPage(ctx);
     if (page === "audit") return auditPage(ctx, /^\d+$/.test(arg || "") ? arg : null);
     return { redirect: "#/admin" };
   });

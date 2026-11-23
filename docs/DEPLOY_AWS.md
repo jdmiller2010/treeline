@@ -294,6 +294,21 @@ The pilot with real families ([PILOT.md](PILOT.md)); phone adapters and SIP-TLS 
 ([ADAPTER.md](ADAPTER.md), later); a legal review of children's privacy before families beyond friends join;
 the `provision_secret` and other open SECURITY.md items unrelated to deployment.
 
+## What has run on the real VM
+
+The owner's Lightsail instance, with no families on it (only the owner testing). What was **seen**, from the owner's own output; nothing
+here is inferred from the CI job.
+
+| When | What | Seen |
+|---|---|---|
+| 2026-11-20 | First install of v0.1.1 (format 1, Ubuntu's Asterisk) | the app answered; the owner signed in |
+| 2026-11-22 to 23 | The old agent fetched v0.2.0 by itself and stopped before switching (it left `releases/v0.2.0` behind and changed nothing) | `treeline-deploy status` and `/api/health` still on v0.1.1 |
+| 2026-11-23 | v0.2.0 by `install.sh` (the format-1 upgrade, PR 9): our Asterisk 24.0.0 build installed, Ubuntu's `asterisk` packages removed | health `"release":"v0.2.0"`, `asterisk -V` 24.0.0, `dpkg` empty, five units active |
+| 2026-11-23 | v0.3.0 by `sudo treeline-deploy --version v0.3.0`: the **first real central migration** (1 to 2) | health `"release":"v0.3.0"` |
+| 2026-11-23 | `install.sh` from v0.3.0 (the admin helper's units), `treeline-admin add`, Google sign-in, the admin page with logs and releases | the owner: "everything is working" |
+
+HTTPS works, so Caddy got a real Let's Encrypt certificate. **Not yet run or seen on the real VM:** a call between a phone on mobile data and a browser elsewhere with audio both ways (the NAT check); a backup arriving in S3 and the restore drill; an automatic rollback after a failed health check; SES mail delivery; the timer deploying a release on its own in its window; Asterisk's memory during a call; the attached disk's encryption as observed.
+
 ## Verification record
 
 Checked in work on this spec, **against the real components**, not recalled. "Not verified" says why.

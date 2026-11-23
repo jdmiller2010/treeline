@@ -405,6 +405,13 @@ def set_signin_cookie(resp, value, max_age):
     return resp
 
 
+def back_to_admin(result):
+    """After a step-up: back to the admin page (which returns to the page that asked). The binding cookie has done its job."""
+    resp = redirect(f"{signin_origin()}/parent/#/admin/{result}")
+    set_signin_cookie(resp, "", 0)
+    return resp
+
+
 def back_to_app(result, clear_cookie=False):
     """Where the browser lands after Google: the parent app, with a one-time word in the fragment (never in a query)."""
     resp = redirect(f"{signin_origin()}/parent/#/signin/{result}")
@@ -444,10 +451,17 @@ def google_callback():
         google.take("state", request.args.get("state"))
         return back_to_app("e.denied", clear_cookie=True)
     try:
-        email, gate, binding = google.finish(request.args.get("code"), request.args.get("state"), signin_cookie())
+        email, gate, binding, stepup = google.finish(request.args.get("code"), request.args.get("state"), signin_cookie())
     except google.GoogleError as err:
-        log.warning("google sign-in refused: %s", err)
+        log.warning("google sign-in refused: %s", err.reason)
+        if err.reason == "stepup":
+            return back_to_admin("stepup.failed")
         return back_to_app("e." + err.reason, clear_cookie=True)
+    if stepup:
+        # Confirm the session that asked, and only it: same email, still valid. No new session is made.
+        done = conn().execute("UPDATE session SET stepped_up_at=? WHERE token_hash=? AND email=? AND expires_at>?",
+                              (db.iso(now()), stepup["token_hash"], email, db.iso()))
+        return back_to_admin("stepup.ok" if done.rowcount == 1 else "stepup.failed")
     known = conn().execute("SELECT 1 FROM grown_up g JOIN treehouse t ON t.id=g.treehouse_id "
                            "WHERE g.email=? AND t.left_at IS NULL", (email,)).fetchone()
     # A grown-up a parent added signs in with Google alone. Anyone else needs a beta code (a gate) to get as far as making a treehouse.
@@ -500,6 +514,15 @@ def auth_verify():
     email = str(data.get("email", "")).strip().lower()
     code = "".join(c for c in str(data.get("code", "")) if c.isdigit())
     rate_limit(f"verify-ip:{client_ip()}", 30, 3600)
+    use_login_code(email, code)
+    token = secrets.token_urlsafe(32)
+    conn().execute("INSERT INTO session(token_hash,email,expires_at,created_at) VALUES(?,?,?,?)",
+                   (db.hash_token(token), email, db.iso(now() + dt.timedelta(days=SESSION_DAYS)), db.iso(now())))
+    return jsonify(token=token)
+
+
+def use_login_code(email, code):
+    """Check and use up an emailed code (the development and test-suite sign-in only; a 404 in production). Raises ApiError."""
     row = conn().execute("SELECT * FROM login_code WHERE email=?", (email,)).fetchone()
     bad = ApiError("That code didn't match. Check your email and try again.", 400, "bad_code")
     if not row or row["expires_at"] < db.iso():
@@ -510,10 +533,6 @@ def auth_verify():
         conn().execute("UPDATE login_code SET attempts=attempts+1 WHERE email=?", (email,))
         raise bad
     conn().execute("DELETE FROM login_code WHERE email=?", (email,))
-    token = secrets.token_urlsafe(32)
-    conn().execute("INSERT INTO session(token_hash,email,expires_at,created_at) VALUES(?,?,?,?)",
-                   (db.hash_token(token), email, db.iso(now() + dt.timedelta(days=SESSION_DAYS)), db.iso(now())))
-    return jsonify(token=token)
 
 
 @app.post("/api/auth/signout")

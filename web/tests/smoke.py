@@ -217,6 +217,22 @@ def admin_pages(browser, a, s, central, tdb, ui_db):
     check("ssh:smoke" in a.inner_text("main"), "Admins lists who added whom")
     a.goto(f"{BASE}/parent/#/admin/audit"); a.wait_for_selector(".tl-row")
     check("log" in a.inner_text("main").lower(), "the audit log has the log view")
+    # Adding and removing an admin: refused until a fresh sign-in (the emailed code stands in for Google here), then done
+    a.goto(f"{BASE}/parent/#/admin/admins"); a.wait_for_selector("#add-admin")
+    check(a.locator(".tl-btn--primary").count() == 1, "one main button on the Admins page")
+    a.fill("#admin-email", "helper@example.com"); a.click("#add-admin button[type=submit]")
+    a.wait_for_selector("#stepup-form")
+    check(not tdb.is_admin(central, "helper@example.com"), "nothing changes before the fresh sign-in")
+    code = re.search(r"(\d{6})", a.inner_text("#stepup-dev")).group(1)
+    a.fill("#stepup-code", code); a.click("#stepup-form button[type=submit]")
+    a.wait_for_selector("text=helper@example.com is an admin")
+    a.wait_for_selector("[data-admin='helper@example.com']")
+    check(tdb.is_admin(central, "helper@example.com"), "after it, the admin is added")
+    a.click("[data-remove='helper@example.com']"); a.wait_for_selector("[data-yes]")
+    a.click("[data-yes]"); a.wait_for_selector("text=helper@example.com is no longer an admin")
+    check(not tdb.is_admin(central, "helper@example.com"), "and removed again, without a second sign-in inside the 15 minutes")
+    check(a.locator("[data-remove]").count() == 0, "the last admin has no Remove button")
+    shoot(a, "admin-admins-390")
     # An admin session older than 12 hours: one plain page, not a loop
     token = a.evaluate("() => localStorage.getItem('treeline.token').replace(/\"/g, '')")
     import hashlib

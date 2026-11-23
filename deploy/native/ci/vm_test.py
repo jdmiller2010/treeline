@@ -604,7 +604,7 @@ class A3_Admin(VmTestCase):
         self.assertEqual(owner, "treeline", "the tool runs as the app user: it must not leave a root-owned database")
         self.assertEqual(int(mode, 8) & 0o007, 0, "and nobody else can read it (the services' umask is 027: 640 or 600)")
         self.assertEqual(vm("find /var/lib/treeline/data -maxdepth 1 -user root | wc -l").stdout.strip(), "0", "no root-owned WAL or shm either")
-        self.assertEqual(int(vm("runuser -u treeline -- python3 -c \"import sqlite3; print(sqlite3.connect('/var/lib/treeline/data/treeline.db').execute('PRAGMA user_version').fetchone()[0])\"").stdout.strip()), 2)
+        self.assertEqual(int(vm("runuser -u treeline -- python3 -c \"import sqlite3; print(sqlite3.connect('/var/lib/treeline/data/treeline.db').execute('PRAGMA user_version').fetchone()[0])\"").stdout.strip()), REAL_CENTRAL)
 
     def test_2_the_last_admin_cannot_be_removed_and_bad_input_is_refused(self):
         r = vm("treeline-admin remove owner@example.test", check=False)
@@ -958,11 +958,12 @@ class E_Production(VmTestCase):
         self.assertEqual(wrong.strip(), "400")
 
 
-# The real list has one step (the admin tables, version 2); the probe is a second one on top of it (version 3).
-MIGRATE = [("controller/treeline/db.py", "MIGRATIONS = [add_admin_tables]",
-            'MIGRATIONS = [add_admin_tables, lambda conn: conn.execute("CREATE TABLE ci_probe(x)")]')]
+# The real list (REAL_CENTRAL steps: the admin tables, the step-up column) and a probe step on top of it.
+MIGRATE = [("controller/treeline/db.py", "MIGRATIONS = [add_admin_tables, add_session_stepup]",
+            'MIGRATIONS = [add_admin_tables, add_session_stepup, lambda conn: conn.execute("CREATE TABLE ci_probe(x)")]')]
+REAL_CENTRAL = 3                                    # the central version a fresh machine is at with this code
 UNHEALTHY = [("controller/treeline/api.py", "ok = asterisk and behind == 0", "ok = False")]
-SCHEMA2 = {"central": 3, "household": 1}      # the real central version (2) plus the probe step
+SCHEMA2 = {"central": REAL_CENTRAL + 1, "household": 1}      # the real central version plus the probe step
 
 
 class F_Deploy(VmTestCase):
@@ -1043,13 +1044,13 @@ class F_Deploy(VmTestCase):
 
     def test_09_a_failed_release_that_migrated_the_data_is_undone_with_the_pre_migration_copy(self):
         vm("runuser -u treeline -- python3 -c \"import sqlite3; c=sqlite3.connect('/var/lib/treeline/data/treeline.db'); c.execute('CREATE TABLE IF NOT EXISTS ci_marker(x)'); c.execute('INSERT INTO ci_marker VALUES (42)'); c.commit()\"")
-        self.assertEqual(self.central_version(), 2)
+        self.assertEqual(self.central_version(), REAL_CENTRAL)
         self.variant("v0.0.5", "migrate-bad", patches=MIGRATE + UNHEALTHY, schema=SCHEMA2)
         rc, out = self.deploy("migrate-bad")
         self.assertEqual(rc, 1, out)
         self.assertIn("restoring the copies", out)
         self.assertIn("ROLLED BACK to v0.0.2", out)
-        self.assertEqual(self.central_version(), 2, "the file must be back at the version the old code understands")
+        self.assertEqual(self.central_version(), REAL_CENTRAL, "the file must be back at the version the old code understands")
         self.assertEqual(vm("runuser -u treeline -- python3 -c \"import sqlite3; print(sqlite3.connect('/var/lib/treeline/data/treeline.db').execute('SELECT x FROM ci_marker').fetchone()[0])\"").stdout.strip(), "42")
         self.wait_healthy()
         self.assertEqual(self.serving(), "v0.0.2")
@@ -1059,7 +1060,7 @@ class F_Deploy(VmTestCase):
         self.variant("v0.0.6", "migrate-ok", patches=MIGRATE, schema=SCHEMA2)
         rc, out = self.deploy("migrate-ok")
         self.assertEqual(rc, 0, out)
-        self.assertEqual(self.central_version(), 3)
+        self.assertEqual(self.central_version(), REAL_CENTRAL + 1)
         self.wait_healthy()
         before = (self.current(), self.started(), self.releases())
         rc, out = vm("treeline-deploy --rollback 2>&1; echo RC=$?").stdout.rpartition("RC=")[::2]
@@ -1319,7 +1320,7 @@ class H_AsteriskDeploy(VmTestCase):
         """variant() arguments that give the new release the data layout the machine is ALREADY at: after the F_Deploy tests it is at
         schema 3 (the real step plus the probe), and a release that expects schema 2 would (rightly) refuse that data and be rolled back; on a fresh machine it is at 2
         and nothing should migrate, so a rollback stays possible."""
-        if self.central_version() >= 3:
+        if self.central_version() > REAL_CENTRAL:
             return dict(patches=MIGRATE + list(patches), schema=SCHEMA2)
         return dict(patches=list(patches))
 
