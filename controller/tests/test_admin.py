@@ -254,6 +254,14 @@ class Logs(unittest.TestCase):
         self.assertEqual(got["text"], "journal for deploy by mail [email]", "the helper's redaction reaches the page")
         self.assertEqual(os.listdir(self.req), [])
 
+    def test_a_large_answer_full_of_non_ascii_text_is_still_read(self):
+        """256 KiB of text becomes far more once JSON-escaped; the app read only 512 KiB and failed (a review note)."""
+        rid = self.a.post("/api/admin/logs", {"source": "deploy", "lines": 1000, "since": "boot"}).get_json()["id"]
+        self.bridge.run_once(os.getuid(), req_dir=self.req, out_dir=self.out, audit_path=self.audit_path,
+                             journal=lambda req: ("é\u2603" * 90000, True))
+        got = self.a.get(f"/api/admin/logs/{rid}").get_json()
+        self.assertEqual((got["status"], got["truncated"], len(got["text"])), ("ok", True, 180000))
+
     def test_the_request_the_app_writes_is_exactly_what_the_helper_accepts(self):
         rid = self.a.post("/api/admin/logs", {"source": "caddy", "lines": 5, "since": "boot"}).get_json()["id"]
         with open(os.path.join(self.req, f"{rid}.json"), "rb") as f:

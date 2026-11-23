@@ -151,11 +151,17 @@ _IPV4 = re.compile(r"(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}(?![\d.])")
 # IPv6: eight-ish groups, or anything with "::". A time such as 18:58:35 (three groups, no "::") is left alone.
 _IPV6 = re.compile(r"(?<![\w:])(?:(?:[0-9A-Fa-f]{1,4}:){4,7}[0-9A-Fa-f]{1,4}|[0-9A-Fa-f]{0,4}(?::[0-9A-Fa-f]{0,4}){0,6}::(?:[0-9A-Fa-f]{1,4}(?::[0-9A-Fa-f]{1,4}){0,6})?)(?![\w:])")
 _ACCOUNT = re.compile(r"(?<!\d)\d{12}(?!\d)")
+# A URL's query string can carry a live token (the phone's pairing poll, /api/pair/status?token=...): Caddy may log the full URI of a
+# request that failed while the API restarted. Everything after "?" in a URL-shaped run of characters goes.
+_QUERY = re.compile(r"(?<=[\w/.-])\?[^\s\"'<>]+")
+_TOKEN_PARAM = re.compile(r"(?i)\b(token|code|secret|password|key|sig|signature)=[^\s&\"'<>]+")
 
 
 def clean(text):
-    """Control characters out; then emails, IP addresses and AWS account numbers replaced, in that order."""
+    """Control characters out; then query strings, token-like parameters, emails, IP addresses and AWS account numbers replaced."""
     text = _CONTROL.sub("", text)
+    text = _QUERY.sub("?[query]", text)
+    text = _TOKEN_PARAM.sub(lambda m: m.group(1) + "=[hidden]", text)
     text = _EMAIL.sub("[email]", text)
     text = _IPV6.sub(lambda m: "[ip]" if len(m.group(0)) > 2 else m.group(0), text)
     text = _IPV4.sub("[ip]", text)

@@ -118,6 +118,6 @@ def admin_log_result(rid):
     except FileNotFoundError:
         return jsonify(status="pending")
     with os.fdopen(fd, "rb") as f:
-        result = json.loads(f.read(512 * 1024))
+        result = json.loads(f.read(4 * 1024 * 1024))    # 256 KiB of text can grow when JSON-escaped (non-ASCII becomes \\uXXXX)
     keep = ("status", "reason", "source", "lines", "since", "truncated", "text")
     return jsonify({k: result[k] for k in keep if k in result})

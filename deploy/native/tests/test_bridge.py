@@ -191,6 +191,10 @@ class Cleaning(unittest.TestCase):
             "\x1b[31mred\x1b[0m\x07": "red",
             "2026-11-23T18:58:35+00:00 started at 18:58:35": "2026-11-23T18:58:35+00:00 started at 18:58:35",
             "release v0.2.0 build 24.0.0-t1": "release v0.2.0 build 24.0.0-t1",
+            '"uri":"/api/pair/status?token=Zx9_secret-Token"': '"uri":"/api/pair/status?[query]"',
+            "GET /api/provision/abc?x=1&token=s3cr3t HTTP/1.1": "GET /api/provision/abc?[query] HTTP/1.1",
+            "failed: token=abc123 and password=hunter2": "failed: token=[hidden] and password=[hidden]",
+            "what? nothing to hide here": "what? nothing to hide here",
         }
         for raw, want in cases.items():
             self.assertEqual(b.clean(raw), want, raw)
