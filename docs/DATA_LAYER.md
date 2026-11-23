@@ -169,6 +169,14 @@ layout. The new layout is the baseline:
   first**, removes the central file set and `households/`, and starts them again (never delete a database a
   process has open). The old `clean` also listed the long-dropped `number_rest` table and failed on it.
 
+## The shipped central steps
+
+| Step | Version | What | Release |
+|---|---|---|---|
+| 1 | 1 to 2 | `add_admin_tables`: `app_admin`, `admin_audit`, `session.created_at` (the app's operators, [ADMIN.md](ADMIN.md)). Expand only. | v0.3.0 (first real step; before it `MIGRATIONS` was empty) |
+
+Household files have no steps yet (`HOUSEHOLD_MIGRATIONS` is empty).
+
 ## Schema changes after go-live
 
 Once real families are on this, every schema change has to be safe on data that cannot be thrown away.

@@ -465,8 +465,8 @@ def auth_exchange():
     if not data or not google.bound(data, signin_cookie()):
         raise ApiError("That sign-in link has expired. Please sign in again.", 400, "expired_code")
     token = secrets.token_urlsafe(32)
-    conn().execute("INSERT INTO session(token_hash,email,expires_at) VALUES(?,?,?)",
-                   (db.hash_token(token), data["email"], db.iso(now() + dt.timedelta(days=SESSION_DAYS))))
+    conn().execute("INSERT INTO session(token_hash,email,expires_at,created_at) VALUES(?,?,?,?)",
+                   (db.hash_token(token), data["email"], db.iso(now() + dt.timedelta(days=SESSION_DAYS)), db.iso(now())))
     return set_signin_cookie(jsonify(token=token), "", 0)
 
 
@@ -511,8 +511,8 @@ def auth_verify():
         raise bad
     conn().execute("DELETE FROM login_code WHERE email=?", (email,))
     token = secrets.token_urlsafe(32)
-    conn().execute("INSERT INTO session(token_hash,email,expires_at) VALUES(?,?,?)",
-                   (db.hash_token(token), email, db.iso(now() + dt.timedelta(days=SESSION_DAYS))))
+    conn().execute("INSERT INTO session(token_hash,email,expires_at,created_at) VALUES(?,?,?,?)",
+                   (db.hash_token(token), email, db.iso(now() + dt.timedelta(days=SESSION_DAYS)), db.iso(now())))
     return jsonify(token=token)
 
 
@@ -527,6 +527,7 @@ def me_json():
     return {"email": g.email,
             "grown_up": {"id": g.gu["id"], "name": g.gu["name"], "role": g.gu["role"]} if g.gu else None,
             "treehouse": th_json(g.th) if g.th else None,
+            "admin": db.is_admin(conn(), g.email),         # only decides whether a menu link is drawn; /api/admin/* checks again
             "dev": DEV_CODES}
 
 
@@ -1586,3 +1587,6 @@ def site_files(path):
     if path in ("", "index.html"):
         return _send(root, "index.html")          # the launcher: it opens whichever mode this device is in (its <noscript> links to /phone/)
     return _send(root, path)
+
+
+from . import admin  # noqa: E402,F401  (registers the /api/admin routes; after everything they import)

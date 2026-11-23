@@ -564,6 +564,81 @@ class A2_Asterisk(VmTestCase):
 
 
 
+class A3_Admin(VmTestCase):
+    """The first admin is made over ssh (`treeline-admin`), and /api/admin answers only to an admin with a young session. Real tool, real
+    database, real production API behind Caddy: only the Google sign-in is replaced, by a session row written the way sign-in writes one."""
+
+    @classmethod
+    def session_for(cls, email, hours_old=0):
+        """A bearer token whose session row exists in the real central database (sign-in itself needs Google)."""
+        import secrets as _secrets
+        token = _secrets.token_urlsafe(24)
+        code = ("import datetime as dt, hashlib, sqlite3, sys\n"
+                "c = sqlite3.connect('/var/lib/treeline/data/treeline.db')\n"
+                "now = dt.datetime.now(dt.timezone.utc)\n"
+                "c.execute('INSERT INTO session(token_hash,email,expires_at,created_at) VALUES(?,?,?,?)', "
+                "(hashlib.sha256(sys.argv[1].encode()).hexdigest(), sys.argv[2], (now + dt.timedelta(days=30)).isoformat(timespec='seconds'), "
+                "(now - dt.timedelta(hours=float(sys.argv[3]))).isoformat(timespec='seconds')))\n"
+                "c.commit()\n")
+        vm(f"runuser -u treeline -- python3 -c \"{code}\" {token} {email} {hours_old}")
+        return token
+
+    def api(self, path, token=None):
+        auth = f"-H 'Authorization: Bearer {token}'" if token else ""
+        r = self.https(path, f"{auth} -w '\\n%{{http_code}}'")
+        body, _, status = r.stdout.rpartition("\n")
+        return int(status or 0), body
+
+    def test_1_the_first_admin_is_made_over_ssh_and_listed(self):
+        self.wait_healthy()
+        self.assertIn("no admins yet", vm("treeline-admin list").stdout)
+        out = vm("SUDO_USER=owner treeline-admin add Owner@Example.test").stdout
+        self.assertIn("owner@example.test is an admin", out)
+        self.assertIn("cannot sign in yet", out, "that address is not a grown-up in any treehouse")
+        listing = vm("treeline-admin list").stdout
+        self.assertIn("owner@example.test", listing)
+        self.assertIn("ssh:owner", listing)
+        owner, mode = vm("stat -c '%U %a' /var/lib/treeline/data/treeline.db").stdout.split()
+        self.assertEqual(owner, "treeline", "the tool runs as the app user: it must not leave a root-owned database")
+        self.assertEqual(int(mode, 8) & 0o007, 0, "and nobody else can read it (the services' umask is 027: 640 or 600)")
+        self.assertEqual(vm("find /var/lib/treeline/data -maxdepth 1 -user root | wc -l").stdout.strip(), "0", "no root-owned WAL or shm either")
+        self.assertEqual(int(vm("runuser -u treeline -- python3 -c \"import sqlite3; print(sqlite3.connect('/var/lib/treeline/data/treeline.db').execute('PRAGMA user_version').fetchone()[0])\"").stdout.strip()), 2)
+
+    def test_2_the_last_admin_cannot_be_removed_and_bad_input_is_refused(self):
+        r = vm("treeline-admin remove owner@example.test", check=False)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("last admin", r.stdout + r.stderr)
+        self.assertNotEqual(vm("treeline-admin add not-an-address", check=False).returncode, 0)
+        self.assertEqual(vm("treeline-admin bogus", check=False).returncode, 2)
+
+    def test_3_the_api_answers_only_an_admin_with_a_young_session(self):
+        admin = self.session_for("owner@example.test")
+        status, body = self.api("/api/admin/admins", admin)
+        self.assertEqual(status, 200, body)
+        self.assertIn("owner@example.test", body)
+        self.assertEqual(self.api("/api/admin/audit", admin)[0], 200)
+        self.assertEqual(self.api("/api/admin/admins")[0], 401, "no token")
+        self.assertEqual(self.api("/api/admin/admins", self.session_for("someone@example.test"))[0], 404, "signed in, not an admin")
+        status, body = self.api("/api/admin/admins", self.session_for("owner@example.test", hours_old=13))
+        self.assertEqual(status, 401, body)
+        self.assertIn("needs_fresh_signin", body)
+        status, body = self.api("/api/me", admin)
+        self.assertEqual(status, 200, body)
+        self.assertIn('"admin":true', body.replace(" ", "").replace("\n", ""))
+
+    def test_4_the_audit_log_has_the_ssh_actions_and_no_names(self):
+        status, body = self.api("/api/admin/audit", self.session_for("owner@example.test"))
+        self.assertEqual(status, 200)
+        self.assertIn("admin_add", body)
+        self.assertIn("ssh:owner", body)
+
+    def test_5_the_tool_will_not_run_under_a_deploy(self):
+        r = vm("mkdir -p /run/treeline; (flock -x /run/treeline/deploy.lock sleep 6 &) ; sleep 1; treeline-admin list", check=False)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("deploy is running", r.stdout + r.stderr)
+        vm("sleep 6; treeline-admin list")                    # the lock is released when the holder ends: the tool works again
+
+
 class B_Network(VmTestCase):
     """What can be reached from another host (the client container), and what is routed where."""
 
@@ -769,9 +844,11 @@ class E_Production(VmTestCase):
         self.assertEqual(wrong.strip(), "400")
 
 
-MIGRATE = [("controller/treeline/db.py", "MIGRATIONS = []", 'MIGRATIONS = [lambda conn: conn.execute("CREATE TABLE ci_probe(x)")]')]
+# The real list has one step (the admin tables, version 2); the probe is a second one on top of it (version 3).
+MIGRATE = [("controller/treeline/db.py", "MIGRATIONS = [add_admin_tables]",
+            'MIGRATIONS = [add_admin_tables, lambda conn: conn.execute("CREATE TABLE ci_probe(x)")]')]
 UNHEALTHY = [("controller/treeline/api.py", "ok = asterisk and behind == 0", "ok = False")]
-SCHEMA2 = {"central": 2, "household": 1}
+SCHEMA2 = {"central": 3, "household": 1}      # the real central version (2) plus the probe step
 
 
 class F_Deploy(VmTestCase):
@@ -852,13 +929,13 @@ class F_Deploy(VmTestCase):
 
     def test_09_a_failed_release_that_migrated_the_data_is_undone_with_the_pre_migration_copy(self):
         vm("runuser -u treeline -- python3 -c \"import sqlite3; c=sqlite3.connect('/var/lib/treeline/data/treeline.db'); c.execute('CREATE TABLE IF NOT EXISTS ci_marker(x)'); c.execute('INSERT INTO ci_marker VALUES (42)'); c.commit()\"")
-        self.assertEqual(self.central_version(), 1)
+        self.assertEqual(self.central_version(), 2)
         self.variant("v0.0.5", "migrate-bad", patches=MIGRATE + UNHEALTHY, schema=SCHEMA2)
         rc, out = self.deploy("migrate-bad")
         self.assertEqual(rc, 1, out)
         self.assertIn("restoring the copies", out)
         self.assertIn("ROLLED BACK to v0.0.2", out)
-        self.assertEqual(self.central_version(), 1, "the file must be back at the version the old code understands")
+        self.assertEqual(self.central_version(), 2, "the file must be back at the version the old code understands")
         self.assertEqual(vm("runuser -u treeline -- python3 -c \"import sqlite3; print(sqlite3.connect('/var/lib/treeline/data/treeline.db').execute('SELECT x FROM ci_marker').fetchone()[0])\"").stdout.strip(), "42")
         self.wait_healthy()
         self.assertEqual(self.serving(), "v0.0.2")
@@ -868,7 +945,7 @@ class F_Deploy(VmTestCase):
         self.variant("v0.0.6", "migrate-ok", patches=MIGRATE, schema=SCHEMA2)
         rc, out = self.deploy("migrate-ok")
         self.assertEqual(rc, 0, out)
-        self.assertEqual(self.central_version(), 2)
+        self.assertEqual(self.central_version(), 3)
         self.wait_healthy()
         before = (self.current(), self.started(), self.releases())
         rc, out = vm("treeline-deploy --rollback 2>&1; echo RC=$?").stdout.rpartition("RC=")[::2]
@@ -1126,9 +1203,9 @@ class H_AsteriskDeploy(VmTestCase):
 
     def same_data(self, patches=()):
         """variant() arguments that give the new release the data layout the machine is ALREADY at: after the F_Deploy tests it is at
-        schema 2, and a release that expects schema 1 would (rightly) refuse that data and be rolled back; on a fresh machine it is at 1
+        schema 3 (the real step plus the probe), and a release that expects schema 2 would (rightly) refuse that data and be rolled back; on a fresh machine it is at 2
         and nothing should migrate, so a rollback stays possible."""
-        if self.central_version() >= 2:
+        if self.central_version() >= 3:
             return dict(patches=MIGRATE + list(patches), schema=SCHEMA2)
         return dict(patches=list(patches))
 
