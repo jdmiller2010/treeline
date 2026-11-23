@@ -109,7 +109,7 @@ class Admins(unittest.TestCase):
         self.assertIn("not an admin", str(cm.exception))
 
     def test_bad_addresses_are_refused(self):
-        for bad in ("", "no-at", "a@b", "a b@c.com", "@x.com", "x@", "a@@b.com", "x" * 250 + "@b.com", None):
+        for bad in ("", "no-at", "a@b", "a b@example.com", "@x.com", "x@", "a@@b.com", "x" * 250 + "@b.com", None):
             with self.assertRaises(db.AdminError, msg=repr(bad)):
                 db.add_admin(self.c, bad, "x")
 
