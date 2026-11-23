@@ -1,0 +1,13 @@
+<!-- @dsCard group="Status" height=210 subtitle="The artist's doodles: grounded, airborne, clinging (drawn live, theme colors)" -->
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Doodle — Treeline</title></head>
+<body>
+<div id="root" class="tl-root" style="padding:24px"></div>
+<script>
+  var S = window.TLDoodles.SET, out = '<div style="display:flex;flex-wrap:wrap;gap:22px 26px;align-items:flex-end;max-width:640px">';
+  Object.keys(S).forEach(function (n) { var d = S[n]; out += '<svg class="tl-doodle" viewBox="0 0 ' + d[0] + ' ' + d[1] + '" width="' + d[0] * 1.3 + '" height="' + d[1] * 1.3 + '" aria-label="' + n + '" role="img">' + d[3] + '</svg>'; });
+  document.getElementById('root').innerHTML = out + '</div>';
+</script>
+</body>
+</html>
