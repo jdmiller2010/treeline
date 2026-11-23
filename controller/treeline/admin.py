@@ -22,7 +22,7 @@ from flask import g, jsonify, request
 from . import db
 from . import google
 from .api import (ApiError, app, bearer, client_ip, conn, emailed_codes_allowed, now, rate_limit, set_signin_cookie,
-                  signin_origin, use_login_code)
+                  set_stepup_cookie, signin_origin, stepup_cookie, use_login_code)
 
 ADMIN_SESSION_HOURS = 12
 
@@ -39,7 +39,7 @@ def admin_required(fn):
     @wraps(fn)
     def wrapper(*a, **kw):
         token = bearer()
-        row = token and conn().execute("SELECT email, created_at, stepped_up_at FROM session WHERE token_hash=? AND expires_at>?",
+        row = token and conn().execute("SELECT email, created_at, stepped_up_at, stepup_hash FROM session WHERE token_hash=? AND expires_at>?",
                                        (db.hash_token(token), db.iso())).fetchone()
         if not row:
             raise ApiError("Please sign in again.", 401, "signed_out")
@@ -50,7 +50,7 @@ def admin_required(fn):
             raise ApiError("Please sign in again to use the admin page.", 401, "needs_fresh_signin")
         rate_limit("admin:" + row["email"], 120, 600)
         g.email, g.admin = row["email"], True
-        g.session_hash, g.stepped_up_at = db.hash_token(token), row["stepped_up_at"]
+        g.session_hash, g.stepped_up_at, g.stepup_hash = db.hash_token(token), row["stepped_up_at"], row["stepup_hash"]
         return fn(*a, **kw)
     return wrapper
 
@@ -59,8 +59,12 @@ STEPUP_MINUTES = 15
 
 
 def stepped_up():
+    """Confirmed in the last STEPUP_MINUTES, by THIS browser: the step-up cookie it was given must match (a copy of the bearer token
+    elsewhere has no such cookie)."""
     at = db.parse(g.stepped_up_at) if g.stepped_up_at else None
-    return at is not None and at >= now() - dt.timedelta(minutes=STEPUP_MINUTES)
+    proof = stepup_cookie()
+    return (at is not None and at >= now() - dt.timedelta(minutes=STEPUP_MINUTES) and bool(proof) and bool(g.stepup_hash)
+            and secrets.compare_digest(db.hash_token(proof), g.stepup_hash))
 
 
 def admin_action(fn):
@@ -196,8 +200,9 @@ def admin_stepup_code():
     emailed_codes_allowed()
     rate_limit(f"verify-ip:{client_ip()}", 30, 3600)
     use_login_code(g.email, "".join(c for c in str((request.get_json(silent=True) or {}).get("code", "")) if c.isdigit()))
-    conn().execute("UPDATE session SET stepped_up_at=? WHERE token_hash=?", (db.iso(now()), g.session_hash))
-    return jsonify(confirmed=True)
+    proof = secrets.token_urlsafe(32)
+    conn().execute("UPDATE session SET stepped_up_at=?, stepup_hash=? WHERE token_hash=?", (db.iso(now()), db.hash_token(proof), g.session_hash))
+    return set_stepup_cookie(jsonify(confirmed=True), proof)
 
 
 # ---------------------------------------------------------------- admins, from the page

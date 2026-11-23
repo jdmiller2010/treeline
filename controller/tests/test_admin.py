@@ -389,6 +389,31 @@ class StepUp(unittest.TestCase):
         self.assertNotIn("stepup.ok", loc)
         self.assertIsNone(self.stepped())
 
+    def test_a_copy_of_the_token_in_another_browser_is_not_confirmed_by_this_one(self):
+        """Review 14: the confirmation was on the session row, so a stolen copy of the bearer token rode along on the owner's step-up."""
+        self.callback(self.start())
+        thief = api.app.test_client()                      # no step-up cookie, same bearer token
+        r = thief.post("/api/admin/admins", headers=self.a.h(), json={"email": new_email()})
+        self.assertEqual((r.status_code, r.get_json()["code"]), (403, "needs_stepup"))
+        self.assertEqual(self.a.post("/api/admin/admins", {"email": new_email()}).status_code, 200, "the browser that confirmed can")
+        forged = api.app.test_client()
+        forged.set_cookie("tl_stepup", "made-up")
+        self.assertEqual(forged.post("/api/admin/admins", headers=self.a.h(), json={"email": new_email()}).status_code, 403)
+
+    def test_the_step_up_cookie_is_http_only_and_strict(self):
+        q = self.start()
+        import time as _t
+        claims = {"iss": "https://accounts.google.com", "aud": "cid-test", "exp": _t.time() + 600, "email": self.a.email,
+                  "email_verified": True, "nonce": q["nonce"][0], "auth_time": int(_t.time())}
+        jwt = "e30." + self.b64.urlsafe_b64encode(json.dumps(claims).encode()).rstrip(b"=").decode() + ".sig"
+        with self.mock.patch.object(self.google, "post_form", lambda url, fields, timeout=10: {"id_token": jwt}):
+            r = client.get(f"/api/auth/google/callback?code=c&state={q['state'][0]}")
+        cookie = [h for h in r.headers.getlist("Set-Cookie") if h.startswith("tl_stepup=")]
+        self.assertEqual(len(cookie), 1, r.headers.getlist("Set-Cookie"))
+        self.assertIn("HttpOnly", cookie[0])
+        self.assertIn("SameSite=Strict", cookie[0])
+        self.assertIn("Max-Age=900", cookie[0])
+
     def test_a_step_up_lasts_fifteen_minutes(self):
         self.callback(self.start())
         self.assertEqual(self.a.post("/api/admin/admins", {"email": "x1@example.com"}).status_code, 200)

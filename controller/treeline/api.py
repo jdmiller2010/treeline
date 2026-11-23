@@ -405,6 +405,21 @@ def set_signin_cookie(resp, value, max_age):
     return resp
 
 
+STEPUP_COOKIE = "tl_stepup"
+
+
+def set_stepup_cookie(resp, value):
+    """The proof that THIS browser did the step-up: HttpOnly, SameSite=Strict, `__Host-` on https, as long as a step-up lasts."""
+    https = request.is_secure or request.headers.get("X-Forwarded-Proto", "").split(",")[0].strip() == "https" or prod.is_production()
+    name = ("__Host-" if https else "") + STEPUP_COOKIE
+    resp.set_cookie(name, value, max_age=15 * 60, path="/", httponly=True, samesite="Strict", secure=https)
+    return resp
+
+
+def stepup_cookie():
+    return request.cookies.get("__Host-" + STEPUP_COOKIE) or request.cookies.get(STEPUP_COOKIE)
+
+
 def back_to_admin(result):
     """After a step-up: back to the admin page (which returns to the page that asked). The binding cookie has done its job."""
     resp = redirect(f"{signin_origin()}/parent/#/admin/{result}")
@@ -459,9 +474,11 @@ def google_callback():
         return back_to_app("e." + err.reason, clear_cookie=True)
     if stepup:
         # Confirm the session that asked, and only it: same email, still valid. No new session is made.
-        done = conn().execute("UPDATE session SET stepped_up_at=? WHERE token_hash=? AND email=? AND expires_at>?",
-                              (db.iso(now()), stepup["token_hash"], email, db.iso()))
-        return back_to_admin("stepup.ok" if done.rowcount == 1 else "stepup.failed")
+        proof = secrets.token_urlsafe(32)
+        done = conn().execute("UPDATE session SET stepped_up_at=?, stepup_hash=? WHERE token_hash=? AND email=? AND expires_at>?",
+                              (db.iso(now()), db.hash_token(proof), stepup["token_hash"], email, db.iso()))
+        resp = back_to_admin("stepup.ok" if done.rowcount == 1 else "stepup.failed")
+        return set_stepup_cookie(resp, proof) if done.rowcount == 1 else resp
     known = conn().execute("SELECT 1 FROM grown_up g JOIN treehouse t ON t.id=g.treehouse_id "
                            "WHERE g.email=? AND t.left_at IS NULL", (email,)).fetchone()
     # A grown-up a parent added signs in with Google alone. Anyone else needs a beta code (a gate) to get as far as making a treehouse.
