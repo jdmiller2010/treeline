@@ -63,6 +63,31 @@ Everything not yet fixed, from every review. Move a row to its review's "Remedia
 | R8-2 | The development containers and the `controller unit tests` CI job install `controller/requirements.txt` unpinned, so tests can run on newer versions than the hash-pinned lock production installs | Informational | 2026-11-20 | Open |
 | R8-3 | `main` has no branch protection, and Dependabot alerts and security updates are off (GitHub settings, not repo files) | Low | 2026-11-20 | Open: the owner's checklist in [SUPPLY_CHAIN.md](SUPPLY_CHAIN.md) |
 
+## Review 16: 2026-11-23, security and privacy review of treehouse management (branch `admin-treehouses`)
+
+**In plain words.** Pausing a family (archive), bringing it back, the 14-day erase, and removing a grown-up or a phone, plus everything that has to treat a paused family as a number nobody has. Four reviewers (a paused family trying to keep using Treeline; a hostile admin; data integrity and the privacy promise; the pages), two skeptics ready per finding. **Nothing exploitable.** One finding split the skeptics on whether it was a vulnerability (both called it a real bug), and the notes below the bar held four more real bugs. All five were fixed before the PR, each with a test.
+
+**Fixed (bugs, not vulnerabilities).**
+- String approve, pause, resume and cut reached a string whose other family was paused and failed half way (a 500 with the change kept): such a string is now "not there", as on the list. Test: `Archive.test_string_actions_on_a_hidden_string_are_not_found_and_change_nothing`.
+- The "not your own family" rule covered only pausing: it now covers restoring, removing a grown-up and removing a phone. Test: `OwnFamily.test_an_admin_changes_nothing_in_their_own_family_here`.
+- A string code from a paused family answered differently from an unknown code: now word for word the same. Test: `Archive.test_a_string_code_from_an_archived_family_reads_like_an_unknown_one`.
+- Removing a phone gave a 500 if Asterisk was unreachable, after the phone was removed: now it succeeds. Test: `TreehousesForAdmins.test_removing_a_phone_while_asterisk_is_unreachable_still_removes_it`.
+- A paused family's softphone could not leave phone mode (a family must always be able to end things itself): it can, with the parent code. Test: `Archive.test_an_archived_familys_softphone_can_still_leave_phone_mode`.
+
+**Checked and clean.** Every query of the treehouse table and every route traced from a paused family's side: sign-in and `auth()`, phone routes, provisioning, pairing, string codes, strings, alerts, the SIP accounts; ids are checked against the family on every write; the "last parent" rule is one statement; the audit holds ids, not names or grown-ups' emails; the 14-day erase is the same code as a family's own delete, re-checked inside its transaction; the pages escape everything.
+
+**Accepted.** A paused family can delete itself and its grown-up could start a new treehouse with the same Google account (a family can always end things; a new string needs the other family to approve it). A family erased during the minutes a just-migrated release is health-checked comes back if that release is rolled back (already true of a family's own delete). Silent for now: removals and pauses send no email and write nothing in the family's action log (the owner's choice).
+
+## Review 15: 2026-11-23, security review of installing a release from the admin page (branch `admin-install`)
+
+**In plain words.** The Install button: the page asks, the root helper checks, the deploy agent installs. This is a root path, so a compromised app was assumed. Three reviewers (as uid `treeline` wanting root; release integrity: can the page cause anything but a signed, published, newer release; the API and page), two skeptics ready per finding. **Nothing reached the bar**, and none of the notes below it called for a change.
+
+**Scope.** `treeline_bridge.py` (`deploy_once` and its helpers), `treeline-bridge-deploy.{path,service}`, `install.sh`, `treeline-api.service` (one more optional write path), `admin.py` (`/api/admin/releases/install`, the install status), `admin.js` (Install, confirmation, progress).
+
+**Checked and clean.** One request at a time, read through descriptors (plain file, owned by the app, one link, capped) after the folder is emptied; exact keys, real types, the id matching the file name; the version with an explicit `[0-9]` pattern and `fullmatch`, starting with `v`, so it can never be a flag; the agent called with a fixed argument list, no shell, `PATH` only, no stdin; `--force`, `--tarball` and `--rollback` never passed, and the agent itself refuses a release that is not newer and verifies the signature after the download; drafts, prereleases and the `asterisk-*` builds are not in the agent's published list; the state file and results folder are root's; the endpoint is behind the admin gate and the browser-tied step-up; the output is cleaned and shown as text.
+
+**Accepted (below the bar).** A compromised app can make installs fail or repeat, or ask for a retry of a release that failed before (still a signed, newer release). An explicit install skips the 09:00 to 12:00 window by design (it still waits for calls to end and never cuts one). The status shows the agent's output after cleaning, no more than the Deploys log already shows.
+
 ## Review 14: 2026-11-23, security review of the step-up sign-in (branch `admin-stepup`)
 
 **In plain words.** Admin actions that change something now need a fresh Google sign-in from the last 15 minutes, on top of a young admin session. Three reviewers (the step-up flow as a token thief, OIDC correctness, the endpoints and page), two skeptics per finding. One finding split the skeptics (6 and 7 of 10): the confirmation sat on the session row, so a stolen copy of the token rode along on the owner's own step-up. It is the very thing the step-up exists to stop, so it was fixed before merge (R14-1). Not verified against the real component: what Google does with `prompt=login` and `max_age=0` (R14-2; it fails closed).

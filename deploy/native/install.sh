@@ -161,7 +161,7 @@ install -d -m 0700 -o treeline -g treeline "$STATE/spool"
 # The admin page's helper (docs/ADMIN.md): the app may write requests in bridge/req and nowhere else here; the top is root's, so the
 # app cannot swap req for a link. own-dir.py never follows a link and replaces whatever is not a plain folder.
 python3 -I "$HERE/own-dir.py" 0755 root root "$STATE/bridge"
-python3 -I "$HERE/own-dir.py" 0700 treeline treeline "$STATE/bridge/req"
+python3 -I "$HERE/own-dir.py" 0700 treeline treeline "$STATE/bridge/req" "$STATE/bridge/deploy-req"
 # Everything Asterisk writes lives on the state disk, in asterisk.conf's directories: the contact database (phones' addresses and
 # user agents), its spool and cache, and its logs (addresses, account names).
 own_asterisk_state() {
@@ -305,10 +305,10 @@ SOUNDS_SRC="$REL/asterisk/sounds" sh "$REL/asterisk/make_sounds.sh" >/dev/null
 say "configuration"
 "$LIB/treeline-config" apply --release "$OPT/current"
 systemctl daemon-reload
-systemctl enable asterisk caddy treeline-api treeline-controller treeline-certsync.timer treeline-deploy.timer treeline-backup.timer treeline-health.timer treeline-bridge.path treeline-bridge-sweep.timer treeline-bridge-releases.timer >/dev/null 2>&1
+systemctl enable asterisk caddy treeline-api treeline-controller treeline-certsync.timer treeline-deploy.timer treeline-backup.timer treeline-health.timer treeline-bridge.path treeline-bridge-sweep.timer treeline-bridge-releases.timer treeline-bridge-deploy.path >/dev/null 2>&1
 if [ "$START" = 1 ]; then
   systemctl restart asterisk caddy
-  systemctl start treeline-certsync.timer treeline-deploy.timer treeline-backup.timer treeline-health.timer treeline-bridge.path treeline-bridge-sweep.timer treeline-bridge-releases.timer
+  systemctl start treeline-certsync.timer treeline-deploy.timer treeline-backup.timer treeline-health.timer treeline-bridge.path treeline-bridge-sweep.timer treeline-bridge-releases.timer treeline-bridge-deploy.path
   if [ -f "$ETC/aws-credentials" ]; then
     systemctl restart treeline-api treeline-controller
     say "started. Check: curl -fsS https://$DOMAIN/api/health"

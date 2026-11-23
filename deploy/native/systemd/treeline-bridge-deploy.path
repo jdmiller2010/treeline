@@ -1,0 +1,11 @@
+[Unit]
+Description=Wake the admin helper's installer when the admin page asks for a release
+
+[Path]
+DirectoryNotEmpty=/var/lib/treeline/bridge/deploy-req
+Unit=treeline-bridge-deploy.service
+TriggerLimitIntervalSec=60s
+TriggerLimitBurst=20
+
+[Install]
+WantedBy=paths.target
