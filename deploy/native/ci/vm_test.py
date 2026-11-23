@@ -356,6 +356,8 @@ class VmTestCase(unittest.TestCase):
         vm("install -d -m 0755 /etc/treeline && printf '[treeline-vm]\\n%s = %s\\n%s = %s\\n' aws_access_key_id " + key_id +
            " aws_secret_access_key " + key_secret + " > /etc/treeline/aws-credentials && chmod 600 /etc/treeline/aws-credentials")
         vm("systemctl restart asterisk caddy && systemctl start treeline-api treeline-controller")
+        # install.sh starts these itself; with --no-start it only enabled them (as it does the other timers, which tests start when needed)
+        vm("systemctl start treeline-bridge.path treeline-bridge-sweep.timer")
 
     @classmethod
     def install(cls, extra="", public_ip=None, src="/root/rel"):
@@ -637,6 +639,99 @@ class A3_Admin(VmTestCase):
         self.assertNotEqual(r.returncode, 0)
         self.assertIn("deploy is running", r.stdout + r.stderr)
         vm("sleep 6; treeline-admin list")                    # the lock is released when the holder ends: the tool works again
+
+
+class A4_Bridge(VmTestCase):
+    """The admin page's root helper on a real systemd: the path unit, the sandbox, a real journal, and what a hostile app (uid treeline)
+    can plant in the one folder it may write. Uses the admin A3_Admin made."""
+
+    REQ = "/var/lib/treeline/bridge/req"
+
+    def token(self):
+        return A3_Admin.session_for("owner@example.test")
+
+    def post_logs(self, token, body):
+        r = self.https("/api/admin/logs", f"-X POST -H 'Content-Type: application/json' -H 'Authorization: Bearer {token}' "
+                                          f"--data '{json.dumps(body)}' -w '\\n%{{http_code}}'")
+        text, _, status = r.stdout.rpartition("\n")
+        return int(status or 0), text
+
+    def fetch(self, token, rid, seconds=45):
+        box = {}
+        def ready():
+            status, body = A3_Admin.api(self, f"/api/admin/logs/{rid}", token)
+            box["r"] = (status, body)
+            return status == 200 and '"pending"' not in body
+        wait_for(ready, seconds, f"the helper to answer {rid}")
+        return json.loads(box["r"][1])
+
+    def ask(self, source, lines=200, since="boot"):
+        token = self.token()
+        status, body = self.post_logs(token, {"source": source, "lines": lines, "since": since})
+        self.assertEqual(status, 202, body)
+        return self.fetch(token, json.loads(body)["id"])
+
+    def test_1_the_units_are_installed_and_the_helper_is_sandboxed(self):
+        self.assertEqual(vm("systemctl is-active treeline-bridge.path treeline-bridge-sweep.timer").stdout.split(), ["active", "active"])
+        show = vm("systemctl show treeline-bridge.service -p CapabilityBoundingSet -p PrivateNetwork -p ProtectSystem -p NoNewPrivileges").stdout
+        caps = re.search(r"CapabilityBoundingSet=(.*)", show).group(1).split()
+        self.assertEqual(sorted(caps), ["cap_dac_override", "cap_dac_read_search"], show)
+        self.assertIn("PrivateNetwork=yes", show)
+        self.assertIn("ProtectSystem=strict", show)
+        self.assertIn("NoNewPrivileges=yes", show)
+        self.assertEqual(vm("stat -c '%U:%G %a' /var/lib/treeline/bridge /var/lib/treeline/bridge/req /run/treeline/bridge").stdout.split("\n")[:3],
+                         ["root:root 755", "treeline:treeline 700", "root:treeline 2750"])
+        self.assertNotEqual(vm("runuser -u treeline -- touch /var/lib/treeline/bridge/x", check=False).returncode, 0, "the app writes only req/")
+        self.assertNotEqual(vm("runuser -u treeline -- touch /run/treeline/bridge/x", check=False).returncode, 0, "nor the answers")
+
+    def test_2_an_admin_reads_a_real_log_through_the_api(self):
+        r = self.ask("caddy", lines=100)
+        self.assertEqual(r["status"], "ok", r)
+        self.assertTrue(r["text"].strip(), "Caddy logged at start: there is something to read")
+        self.assertEqual(vm(f"ls {self.REQ} | wc -l").stdout.strip(), "0")
+        audit = vm("cat /var/lib/treeline/bridge/audit.log").stdout
+        self.assertIn('"source": "caddy"', audit)
+        self.assertNotIn(r["text"].strip().splitlines()[0][:40], audit, "no log text in the helper's audit")
+        self.assertEqual(vm("stat -c '%U %a' /var/lib/treeline/bridge/audit.log").stdout.strip(), "root 600")
+
+    def test_3_no_source_shows_an_address_an_email_or_an_account_number(self):
+        for source in ("deploy", "backup", "health", "certsync", "caddy", "bridge"):
+            r = self.ask(source, lines=1000)
+            self.assertEqual(r["status"], "ok", (source, r))
+            text = r["text"]
+            self.assertIsNone(re.search(r"(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}(?![\d.])", text), (source, "IPv4"))
+            self.assertIsNone(re.search(r"[^\s\[]@[^\s\]]", text), (source, "email"))
+            self.assertIsNone(re.search(r"(?<!\d)\d{12}(?!\d)", text), (source, "AWS account number"))
+            self.assertNotIn("treeline-dev", text, (source, "a dev password"))
+
+    def test_4_a_non_admin_and_a_bad_source_are_refused_by_the_app(self):
+        other = A3_Admin.session_for("someone@example.test")
+        self.assertEqual(self.post_logs(other, {"source": "deploy"})[0], 404)
+        self.assertEqual(self.post_logs(self.token(), {"source": "treeline-api"})[0], 400)
+        self.assertEqual(vm(f"ls {self.REQ} | wc -l").stdout.strip(), "0")
+
+    def test_5_what_a_hostile_app_plants_is_removed_and_nothing_is_followed(self):
+        before = vm("sha256sum /etc/shadow").stdout
+        hexname = "f" * 32 + ".json"
+        vm(f"runuser -u treeline -- sh -c 'cd {self.REQ} && mkdir -p {'e' * 32}.json x/y/z && touch x/y/z/f && "
+           f"ln -s /etc/shadow {hexname} && ln -s /etc deep-link && mkfifo {'d' * 32}.json && echo hi > README'")
+        token = self.token()
+        status, body = self.post_logs(token, {"source": "bridge", "lines": 20, "since": "1h"})
+        self.assertEqual(status, 202, body)
+        r = self.fetch(token, json.loads(body)["id"])
+        self.assertEqual(r["status"], "ok", "a good request still gets its answer next to the junk")
+        wait_for(lambda: vm(f"ls -A {self.REQ} | wc -l").stdout.strip() == "0", 30, "the request folder to be empty")
+        self.assertEqual(vm("sha256sum /etc/shadow").stdout, before)
+        self.assertEqual(vm("systemctl is-active treeline-bridge.path").stdout.strip(), "active", "the helper did not get stuck")
+        self.assertIn("refused", vm("cat /var/lib/treeline/bridge/audit.log").stdout)
+
+    def test_6_answers_are_readable_by_the_app_only_and_go_away(self):
+        token = self.token()
+        rid = json.loads(self.post_logs(token, {"source": "health", "lines": 5})[1])["id"]
+        self.fetch(token, rid)
+        self.assertEqual(vm(f"stat -c '%U:%G %a' /run/treeline/bridge/{rid}.json").stdout.strip(), "root:treeline 640")
+        vm(f"touch -d '-10 minutes' /run/treeline/bridge/{rid}.json; systemctl start treeline-bridge-sweep.service")
+        self.assertEqual(vm(f"test -e /run/treeline/bridge/{rid}.json && echo still || true").stdout.strip(), "")
 
 
 class B_Network(VmTestCase):

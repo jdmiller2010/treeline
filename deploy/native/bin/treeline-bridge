@@ -1,0 +1,12 @@
+#!/opt/treeline/tools/bin/python -I
+"""The admin page's root helper: `treeline-bridge run` answers the app's requests (started by treeline-bridge.path), `sweep` removes old
+answers (treeline-bridge-sweep.timer). See treeline_bridge.py for what it does and does not trust."""
+
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+import treeline_bridge  # noqa: E402
+
+if __name__ == "__main__":
+    sys.exit(treeline_bridge.main(sys.argv[1:]))

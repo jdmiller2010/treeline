@@ -1,0 +1,12 @@
+[Unit]
+Description=Wake the admin page's root helper when the app leaves a request
+
+[Path]
+# Any entry at all (a request, or something planted): the helper empties the folder every run, so this goes false again.
+DirectoryNotEmpty=/var/lib/treeline/bridge/req
+Unit=treeline-bridge.service
+TriggerLimitIntervalSec=10s
+TriggerLimitBurst=100
+
+[Install]
+WantedBy=paths.target

@@ -24,7 +24,7 @@ TimeoutStartSec=60
 # Hardening: the app only needs the state directory, the loopback and the network.
 NoNewPrivileges=yes
 ProtectSystem=strict
-ReadWritePaths=/var/lib/treeline/data /var/lib/treeline/generated
+ReadWritePaths=/var/lib/treeline/data /var/lib/treeline/generated -/var/lib/treeline/bridge/req
 ProtectHome=yes
 PrivateTmp=yes
 PrivateDevices=yes

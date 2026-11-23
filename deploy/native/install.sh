@@ -158,6 +158,10 @@ install -d -m 2750 -o treeline -g asterisk "$STATE/generated"
 [ -f "$STATE/generated/pjsip_handsets.conf" ] || install -m 0640 -o treeline -g asterisk /dev/null "$STATE/generated/pjsip_handsets.conf"
 install -d -m 0700 -o caddy -g caddy "$STATE/caddy"
 install -d -m 0700 -o treeline -g treeline "$STATE/spool"
+# The admin page's helper (docs/ADMIN.md): the app may write requests in bridge/req and nowhere else here; the top is root's, so the
+# app cannot swap req for a link. own-dir.py never follows a link and replaces whatever is not a plain folder.
+python3 -I "$HERE/own-dir.py" 0755 root root "$STATE/bridge"
+python3 -I "$HERE/own-dir.py" 0700 treeline treeline "$STATE/bridge/req"
 # Everything Asterisk writes lives on the state disk, in asterisk.conf's directories: the contact database (phones' addresses and
 # user agents), its spool and cache, and its logs (addresses, account names).
 own_asterisk_state() {
@@ -231,11 +235,12 @@ for f in "$HERE"/bin/*; do install -m 0755 -o root -g root "$f" "$LIB/$(basename
 for t in treeline-deploy treeline-config treeline-certsync treeline-backup treeline-health treeline-admin; do ln -sf "$LIB/$t" "/usr/local/sbin/$t"; done
 # The tools' shebang is the tools venv's Python; the library modules sit beside the scripts.
 install -d -m 0755 /run/treeline
+install -d -m 2750 -o root -g treeline /run/treeline/bridge     # the helper's answers (tmpfs); setgid: the app can read them, nobody else
 
 # ---------------------------------------------------------------- systemd, journald, sysctl
 say "services"
 S="$HERE/systemd"
-for unit in "$S"/*.service "$S"/*.timer; do
+for unit in "$S"/*.service "$S"/*.timer "$S"/*.path; do
   [ "$(basename "$unit")" = asterisk.service ] || install -m 0644 "$unit" /etc/systemd/system/    # that one comes with the release, below
 done
 install -d /etc/systemd/system/caddy.service.d /etc/systemd/journald.conf.d
@@ -300,10 +305,10 @@ SOUNDS_SRC="$REL/asterisk/sounds" sh "$REL/asterisk/make_sounds.sh" >/dev/null
 say "configuration"
 "$LIB/treeline-config" apply --release "$OPT/current"
 systemctl daemon-reload
-systemctl enable asterisk caddy treeline-api treeline-controller treeline-certsync.timer treeline-deploy.timer treeline-backup.timer treeline-health.timer >/dev/null 2>&1
+systemctl enable asterisk caddy treeline-api treeline-controller treeline-certsync.timer treeline-deploy.timer treeline-backup.timer treeline-health.timer treeline-bridge.path treeline-bridge-sweep.timer >/dev/null 2>&1
 if [ "$START" = 1 ]; then
   systemctl restart asterisk caddy
-  systemctl start treeline-certsync.timer treeline-deploy.timer treeline-backup.timer treeline-health.timer treeline-backup.timer treeline-health.timer
+  systemctl start treeline-certsync.timer treeline-deploy.timer treeline-backup.timer treeline-health.timer treeline-bridge.path treeline-bridge-sweep.timer
   if [ -f "$ETC/aws-credentials" ]; then
     systemctl restart treeline-api treeline-controller
     say "started. Check: curl -fsS https://$DOMAIN/api/health"
