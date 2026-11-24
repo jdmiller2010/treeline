@@ -2,7 +2,7 @@ import type * as React from 'react';
 
 export type IconName =
   | 'phone' | 'phone-incoming' | 'phone-outgoing' | 'phone-off' | 'bell' | 'moon' | 'sun' | 'pause'
-  | 'check' | 'close' | 'plus' | 'clock' | 'leaf' | 'users' | 'lock' | 'chevron-right'
+  | 'check' | 'close' | 'plus' | 'clock' | 'leaf' | 'users' | 'string' | 'lock' | 'chevron-right'
   | 'shield-check' | 'ladder' | 'home';
 
 export type Status = 'available' | 'ringing' | 'on-call' | 'quiet' | 'paused' | 'offline';
@@ -215,3 +215,10 @@ export interface CardFileProps {
   id?: string; className?: string;
 }
 export declare function CardFile(props: CardFileProps): any;
+
+/* Grove, QrCode and CodeShow are plain-HTML pieces (js/grove.js, js/qr.js), shown in the design system through window.TLGrove and window.TLQR. */
+export interface TLGroveFriend { id: number | string; name: string; number: string; state: 'live' | 'paused' | 'wait' | 'ask'; href?: string }
+export interface TLGroveOptions { me: { name: string; number: string }; friends: TLGroveFriend[]; selectedId?: number | string; newIds?: Array<number | string>; moreHref?: string }
+export interface TLGroveApi { html(options: TLGroveOptions): string; slots(n: number): Array<{ x: number; y: number; ang: number }>; MAX: number }
+export interface TLQRApi { svg(text: string, options?: { label?: string; level?: 'L' | 'M' | 'Q' | 'H' }): string }
+declare global { interface Window { TLGrove: TLGroveApi; TLQR: TLQRApi } }

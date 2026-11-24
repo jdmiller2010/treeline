@@ -29,6 +29,7 @@ export const ICONS = {
  "plus": "<path d=\"M12 5v14M5 12h14\"/>",
  "settings": "<path d=\"M4 7h9M17 7h3M4 17h3M11 17h9\"/><circle cx=\"15\" cy=\"7\" r=\"2\"/><circle cx=\"9\" cy=\"17\" r=\"2\"/>",
  "shield-check": "<path d=\"M12 3l7 3v5c0 5-3 8.5-7 10-4-1.5-7-5-7-10V6z\"/><path d=\"M9 12l2 2 4-4\"/>",
+ "string": "<circle cx=\"5\" cy=\"17.5\" r=\"2.5\"/><circle cx=\"19\" cy=\"6.5\" r=\"2.5\"/><path d=\"M7.4 16.6C11 15.5 10 10 12 9.8c2-.2 2.6-1.8 4.6-2.6\"/>",
  "sun": "<circle cx=\"12\" cy=\"12\" r=\"4\"/><path d=\"M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4\"/>",
  "trend-up": "<path d=\"M4 16l5-5 4 4 7-7\"/><path d=\"M15 8h5v5\"/>",
  "users": "<circle cx=\"9\" cy=\"8\" r=\"3\"/><path d=\"M3 19a6 6 0 0 1 12 0\"/><circle cx=\"17\" cy=\"9\" r=\"2.5\"/><path d=\"M16.5 14.2A5 5 0 0 1 21 19\"/>"

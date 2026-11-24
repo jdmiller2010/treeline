@@ -236,6 +236,8 @@ Full markup for each part is in the AppShell, AppBar, NavBar, Sheet, ListDetail 
 | SegmentedControl | Under 480 content it fills the width, segments equal | Sizes to its labels unless `fullWidth` |
 | RadioGroup, Textarea, PasswordField | Full width of the card | Capped at `sheet-max` |
 | CodeInput | Under 400 content the boxes shrink and close up so six fit at 320 | Six 48 × 56 boxes |
+| Grove | Fills the column, max 520 wide, always the same 390 × 470 shape; houses and tags scale with it (container units) | Same, centered; beside the selected string's card in the list-and-detail layout |
+| QrCode, CodeShow | 224px max, centered; the code wraps under it | Same |
 | Slider | Full width; the whole control is 44px tall to grab | Capped at `sheet-max` |
 | Steps | Under 560 content the names fold into one line: "Step 2 of 4: Add a kid" | Each bar has its name under it |
 | ProgressBar, Skeleton | Full width of the card | Same |

@@ -50,7 +50,7 @@ NPM_LOCKS = [("infra/package-lock.json", "owner-infra-cli", False)]
 # vendored file changed without its notice is caught by scripts/test_supply_chain.py, which also checks the files exist.
 VENDORED = [
     {"name": "jssip", "notice": "JsSIP", "file": "web/phone/vendor/jssip.min.js"},
-    {"name": "qrcode-generator", "notice": "qrcode-generator", "file": "web/phone/vendor/qrcode.js"},
+    {"name": "qrcode-generator", "notice": "qrcode-generator", "file": "design/ui/js/vendor/qrcode.js"},
 ]
 
 UBUNTU_RELEASE = "24.04"          # the VM's release (deploy/native/install.sh); OSV calls it "Ubuntu:24.04:LTS"

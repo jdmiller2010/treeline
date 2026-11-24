@@ -2,7 +2,7 @@
 import { get, post } from "/shared/api.js";
 import { alert, art, button, checkRow, html, raw, selectField, setBusy, steps, textField, NO_911, str, icon } from "/shared/ui.js";
 import { KIND, addHandsetDialog } from "./house.js";
-import { showStringCode } from "./strings.js";
+import { stringConnect } from "./strings.js";
 import { privacyAccordion } from "./privacy-content.js";
 
 const NAMES = ["Your treehouse", "No 911", "First phone", "First string"];
@@ -132,12 +132,12 @@ export async function setup(ctx) {
           <div data-error></div>
           <div class="tl-actions">
             ${button({ label: "I'll do this later", attrs: "data-later" })}
-            ${button({ label: "Make a string code", variant: "primary", icon: "plus", attrs: "data-code" })}
+            ${button({ label: "New string connection", variant: "primary", icon: "string", attrs: "data-code" })}
           </div>
         </section>`);
         const finish = () => ctx.go("#/home");
         body.querySelector("[data-later]").addEventListener("click", finish);
-        body.querySelector("[data-code]").addEventListener("click", async () => { await showStringCode(ctx); finish(); });
+        body.querySelector("[data-code]").addEventListener("click", async () => { await stringConnect(ctx); finish(); });
       }
 
       step1();
