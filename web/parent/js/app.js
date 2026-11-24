@@ -81,12 +81,9 @@ function navBar(current, badge) {
 </div></nav>`;
 }
 
-/** The header bar is the same on every page: the logo, the treehouse's name, the pause button and the account menu. What a page is
- *  called is its own hidden h1 and its visible section titles; the page's buttons sit down in the page, by their sections. */
-function pauseButton() {
-  const th = ctx.me.treehouse;
-  return button({ label: th.paused ? "Turn calls back on" : "Pause calls", variant: "secondary", collapse: true, icon: th.paused ? "phone" : "pause", attrs: "data-pause" });
-}
+/** The header bar is the same on every page: the logo, the treehouse's name and the account menu. What a page is called is its
+ *  own hidden h1 and its visible section titles; the page's buttons sit down in the page, by their sections. (Pause all calls is
+ *  on Home, under the treehouse; the click is handled below, for whichever page has it.) */
 
 /** The signed-in shell around a view. */
 function shell(v) {
@@ -102,7 +99,7 @@ function shell(v) {
         ${v.lockup ? html`<span class="tl-appbar__lockup" aria-hidden="true"><span class="tl-appbar__word">Treeline</span><span class="tl-tagline">${TAGLINE}</span></span>` : ""}
         <span class="tl-appbar__title" id="app-title">${ctx.me.treehouse.name}</span>
       </div>
-      <div class="tl-appbar__actions">${pauseButton()}${accountMenu()}</div>
+      <div class="tl-appbar__actions">${accountMenu()}</div>
     </header>
     <main class="tl-app__main" id="main"><h1 class="tl-sr">${v.title}</h1>${content}</main>
     ${navBar(v.nav, ctx.badge || 0)}

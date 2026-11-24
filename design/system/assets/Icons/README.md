@@ -9,7 +9,8 @@ These SVG files are drawn in `ink` (#2a251c) because an `<img>` can't inherit co
 - `phone-off`: the rotary phone struck through. Offline, missed call, end call
 - `bell`: ringing
 - `moon` / `sun`: quiet hours / daytime
-- `pause`: paused by a parent
+- `pause`: paused by a parent; Pause all calls
+- `play`: Resume calls (calls back on after a pause)
 - `lock`: blocked call
 - `shield-check`: approved, safe
 - `leaf`: connected friends
