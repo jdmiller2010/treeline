@@ -1,9 +1,9 @@
 // The profile, the settings drawn on Home, privacy and safety, about, the action log, and the two "arrive by link" screens.
 import { api, apiUrl, del, get, patch, post, token } from "/shared/api.js";
-import { alert, button, card, emptyState, html, icon, raw, selectField, tag, textField, toast, NO_911, TAGLINE } from "/shared/ui.js";
+import { alert, button, card, emptyState, html, icon, raw, selectField, tag, textField, toast, CONTACT, NO_911, SUPPORT_URL, TAGLINE } from "/shared/ui.js";
 import { time12, when } from "/shared/format.js";
 import { formDialog } from "./dialogs.js";
-import { privacyAccordion } from "./privacy-content.js";
+import { POLICIES, privacyAccordion } from "./privacy-content.js";
 import { disablePush, enablePush, pushState } from "./push.js";
 import { hasParentCode, newCodeFields, parentCodeDialog, saveNewCode } from "./parentcode.js";
 import { redeemCode, strings } from "./strings.js";
@@ -132,9 +132,19 @@ export async function privacy(ctx) {
   const content = html`
   ${alert({ tone: "info", title: "Treeline can't call 911", body: NO_911 })}
   <section class="tl-stack"><h2 class="title-lg">How Treeline treats your family's information</h2>
-  <p class="tl-measure" style="color:var(--ink-muted)">Plain answers. If something here isn't clear, write to jdmiller2010@gmail.com.</p>
-  <div class="tl-card">${privacyAccordion()}</div></section>`;
+  <p class="tl-measure" style="color:var(--ink-muted)">Plain answers. If something here isn't clear, write to ${CONTACT}.</p>
+  <div class="tl-card">${privacyAccordion()}</div></section>
+  ${policiesCard()}`;
   return { title: "Privacy and safety", back: "#/home", nav: null, content };
+}
+
+/** The documents every grown-up agreed to at setup (docs/legal/), as plain links that open the public pages. */
+function policiesCard() {
+  return html`<section class="tl-card"><div class="tl-stack tl-stack--group">
+    <h2 class="tl-card__title">Terms and policies</h2>
+    <p class="tl-card__body">What every grown-up in your treehouse agrees to before using Treeline. Each page shows when it last changed.</p>
+    <ul class="tl-stack tl-stack--tight" style="list-style:none;padding:0;margin:0">${POLICIES.map(([label, href]) => html`<li><a href="${href}">${label}</a></li>`)}</ul>
+  </div></section>`;
 }
 
 export async function about(ctx) {
@@ -145,15 +155,16 @@ export async function about(ctx) {
     <p class="tl-card__body">A house-to-house phone for kids who live near each other, with parents holding the keys.</p>
     <dl class="tl-dl">
       <div class="tl-dl__row"><dt>Made by</dt><dd>Jordan Miller</dd></div>
-      <div class="tl-dl__row"><dt>Questions</dt><dd><a href="mailto:jdmiller2010@gmail.com">jdmiller2010@gmail.com</a></dd></div>
+      <div class="tl-dl__row"><dt>Questions</dt><dd><a href="mailto:${CONTACT}">${CONTACT}</a></dd></div>
       <div class="tl-dl__row"><dt>Code license</dt><dd>PolyForm Noncommercial 1.0.0</dd></div>
       <div class="tl-dl__row"><dt>Design license</dt><dd>CC BY-NC 4.0, "Treeline by Jordan Miller"</dd></div>
     </dl>
     <div class="tl-actions">
       ${button({ label: "Open-source licenses", attrs: "data-licenses" })}
-      <a class="tl-btn tl-btn--primary tl-btn--md" href="https://buymeacoffee.com/REPLACE-ME" target="_blank" rel="noopener"><span class="tl-btn__label">Support Treeline</span></a>
+      <a class="tl-btn tl-btn--primary tl-btn--md" href="${SUPPORT_URL}" target="_blank" rel="noopener"><span class="tl-btn__label">Support Treeline</span></a>
     </div>
   </div></section>
+  ${policiesCard()}
   ${alert({ tone: "info", title: "Treeline can't call 911", body: NO_911 })}`;
   return { title: "About Treeline", back: "#/home", nav: null, template: "settings", content, mount(root) { root.querySelector("[data-licenses]").addEventListener("click", () => { location.href = "/parent/licenses.html"; }); } };
 }
@@ -174,7 +185,6 @@ const ACTIONS = {
   changed_parent_code: () => "Set or changed the parent code",
   handset_left: (a) => `${a.target} left phone mode`,
   changed_number: (a) => `Changed the number from ${a.before} to ${a.after}`,
-  ladder_code_created: () => "Made a ladder code",
   string_requested: (a) => `Asked to string with ${a.target}`,
   string_approved: (a) => `Approved the string with ${a.target}`,
   string_paused: (a) => `Paused the string with ${a.target}`,

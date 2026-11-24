@@ -32,7 +32,7 @@ app = Flask(__name__, static_folder=None)
 WEB = os.environ.get("TREELINE_WEB", "/web")
 DEV_CODES = os.environ.get("TREELINE_DEV_CODES") == "1"
 CORS_ORIGINS = {o.strip() for o in os.environ.get("TREELINE_CORS_ORIGINS", "").split(",") if o.strip()}
-PRIVACY_VERSION = "2026-11"      # bump when the privacy notes change in a way parents should re-read
+AGREEMENT_VERSION = "2026-11-23"  # the "Last updated" date of docs/legal/ (a test keeps them equal); recorded when a parent agrees
 SESSION_DAYS = 30
 CODE_MINUTES = 10
 LADDER_DAYS = 7
@@ -149,10 +149,12 @@ ARCHIVED_MESSAGE = ("Treeline has paused this treehouse for now, so its phones c
                     "use a regular phone in an emergency. You can still sign out, or delete your treehouse.")
 
 
-def auth(parent=False, house=True, allow_archived=False):
+def auth(parent=False, house=True, allow_archived=False, before_agreement=False):
     """Require a signed-in grown-up. `house=False` allows someone who hasn't made a treehouse yet; `parent=True` rules out sitters.
     A member of a treehouse Treeline staff archived gets 403 `archived` everywhere except where `allow_archived` (sign out, leave,
-    delete: a family can always end things itself), and there g.th is the archived row."""
+    delete: a family can always end things itself), and there g.th is the archived row.
+    A grown-up of a treehouse who hasn't agreed to the current terms and policies (added later, or the documents changed) gets 403
+    `agreement_needed` everywhere except where `before_agreement`: who they are, agreeing, signing out, leaving and deleting."""
     def deco(fn):
         @wraps(fn)
         def wrapper(*a, **kw):
@@ -177,6 +179,8 @@ def auth(parent=False, house=True, allow_archived=False):
                 raise ApiError("Set up your treehouse first.", 403, "no_treehouse")
             if parent and g.gu["role"] != "parent":
                 raise ApiError("Only a parent can do that.", 403, "parents_only")
+            if not before_agreement and g.th is not None and not g.th["archived_at"] and not has_agreed():
+                raise ApiError("Please read and agree to Treeline's terms first.", 403, "agreement_needed")
             return fn(*a, **kw)
         return wrapper
     return deco
@@ -595,14 +599,27 @@ def use_login_code(email, code):
 
 
 @app.post("/api/auth/signout")
-@auth(house=False, allow_archived=True)
+@auth(house=False, allow_archived=True, before_agreement=True)
 def auth_signout():
     conn().execute("DELETE FROM session WHERE token_hash=?", (db.hash_token(bearer()),))
     return jsonify(ok=True)
 
 
+def has_agreed():
+    """Has this grown-up agreed to the current terms and policies (docs/legal/)? The parent who made the treehouse agreed at setup;
+    a grown-up added later, or anyone who agreed to an older version, is asked by the app before anything else."""
+    if not (g.gu and g.th):
+        return True                                   # no treehouse yet: setup asks
+    try:
+        return households.conn(g.th["id"]).execute("SELECT 1 FROM agreement WHERE email=? AND version=?",
+                                                    (g.email, AGREEMENT_VERSION)).fetchone() is not None
+    except households.HouseholdGone:
+        return True                                   # reconcile makes the file; never lock a family out of its own app over it
+
+
 def me_json():
     return {"email": g.email,
+            "agreed": has_agreed(),
             "grown_up": {"id": g.gu["id"], "name": g.gu["name"], "role": g.gu["role"]} if g.gu else None,
             "treehouse": th_json(g.th) if g.th else None,
             "archived": bool(g.th and g.th["archived_at"]),
@@ -611,8 +628,23 @@ def me_json():
 
 
 @app.get("/api/me")
-@auth(house=False, allow_archived=True)
+@auth(house=False, allow_archived=True, before_agreement=True)
 def me():
+    return jsonify(me_json())
+
+
+@app.post("/api/agreement")
+@auth(before_agreement=True)
+def agreement():
+    """A grown-up (a parent or a sitter added later, or anyone after the documents changed) agrees to the current version."""
+    data = body()
+    if not data.get("ack_911"):
+        raise ApiError("Please tick the box to say you understand Treeline can't call 911.", 400, "ack_911")
+    if not data.get("consent"):
+        raise ApiError("Please tick the box to say you've read how Treeline handles your family's information and agree to its terms.",
+                       400, "consent")
+    if not has_agreed():
+        households.record_agreement(households.conn(g.th["id"]), g.email, AGREEMENT_VERSION, True)
     return jsonify(me_json())
 
 
@@ -649,7 +681,7 @@ def treehouse_create():
         raise ApiError("Please tick the box to say you understand Treeline can't call 911.",
                        400, "ack_911")
     if not data.get("consent"):
-        raise ApiError("Please tick the box to say you've read how Treeline handles your family's information.",
+        raise ApiError("Please tick the box to say you've read how Treeline handles your family's information and agree to its terms.",
                        400, "consent")
     name = clean_name(data.get("name"), "treehouse name")
     tz = valid_tz(data.get("timezone") or "America/Los_Angeles")
@@ -661,7 +693,7 @@ def treehouse_create():
     c.execute("BEGIN IMMEDIATE")
     try:
         tid = db.create_treehouse(c, name, timezone=tz)
-        households.create(tid, ack_911=True, consent_at=db.iso(), consent_version=PRIVACY_VERSION)
+        households.create(tid, ack_911=True, consent_at=db.iso(), consent_version=AGREEMENT_VERSION, agreed_by=g.email)
         c.execute("INSERT INTO grown_up(email,name,treehouse_id,role,created_at) VALUES(?,?,?,?,?)",
                   (g.email, who, tid, "parent", db.iso()))
         c.execute("COMMIT")
@@ -804,7 +836,7 @@ def central_transaction(work):
 
 
 @app.post("/api/treehouse/leave")
-@auth(parent=True, allow_archived=True)
+@auth(parent=True, allow_archived=True, before_agreement=True)
 def treehouse_leave():
     """Leave the Treeline but keep the records until the family's own retention is up (then the purge job
     removes the file). Order: the action-log entry (household), then one central change, then the other families' notes."""
@@ -825,7 +857,7 @@ def treehouse_leave():
 
 
 @app.delete("/api/treehouse")
-@auth(parent=True, allow_archived=True)
+@auth(parent=True, allow_archived=True, before_agreement=True)
 def treehouse_delete():
     """Leave the Treeline and delete every record for this treehouse. Order: one central transaction (so a crash
     leaves either everything as it was or the treehouse deleted), then the other families' notes, then the household's
@@ -1577,6 +1609,8 @@ def grown_up_remove(gid):
         raise ApiError("A treehouse needs at least one parent.", 409)
     conn().execute("DELETE FROM grown_up WHERE id=?", (gid,))
     conn().execute("DELETE FROM session WHERE email=?", (row["email"],))
+    # Their agreement goes with them (central first: a crash in between leaves a row reconcile removes within the hour).
+    households.conn(g.th["id"]).execute("DELETE FROM agreement WHERE email=?", (row["email"].lower(),))
     audit("grown_up_removed", row["email"], row["role"], None)
     return jsonify(ok=True)
 

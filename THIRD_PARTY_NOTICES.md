@@ -14,6 +14,7 @@ This file is the source for the **Open-source licenses** page in the parent app 
 | [JsSIP](https://github.com/versatica/JsSIP) 3.11.1 | SIP over WebSocket in the softphone (`web/phone/vendor/jssip.min.js`, a minified build from cdnjs) | MIT (`web/phone/vendor/LICENSE-JsSIP.txt`) | 2012-2026 José Luis Millán and Iñaki Baz Castillo |
 | [qrcode-generator](https://github.com/kazuhikoarase/qrcode-generator) 1.4.4 | The QR codes in the parent app and on the softphone's pairing screen (`design/ui/js/vendor/qrcode.js`) | MIT | 2009 Kazuhiko Arase |
 | [Google "G" logo](https://developers.google.com/identity/branding-guidelines) | The Sign in with Google button (`web/shared/ui.js`, `googleButton()`) | A Google trademark, used unchanged as Google's sign-in branding guidelines allow; not licensed for any other use | Google LLC |
+| [Basecamp open-source policies](https://github.com/basecamp/policies) | The starting text of Treeline's Terms of Service, Privacy Policy and Acceptable Use Policy (`docs/legal/`, served at `/legal/`), changed for Treeline | CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/) | 37signals LLC (Basecamp) |
 
 "QR Code" is a registered trademark of DENSO WAVE INCORPORATED.
 

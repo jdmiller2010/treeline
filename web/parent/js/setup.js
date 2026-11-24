@@ -2,7 +2,7 @@
 // suggested on Home afterwards. Nothing is created until "Create my treehouse", so leaving before then leaves nothing behind.
 import { post } from "/shared/api.js";
 import { alert, button, checkRow, html, setBusy, steps, textField, NO_911, str } from "/shared/ui.js";
-import { privacyAccordion } from "./privacy-content.js";
+import { policyLinks, privacyAccordion } from "./privacy-content.js";
 
 const NAMES = ["Your treehouse", "No 911"];
 
@@ -63,8 +63,9 @@ export async function setup(ctx) {
           ${privacyAccordion()}
           <div class="tl-stack tl-stack--tight">
             ${checkRow({ id: "ack", label: "I understand Treeline can't call 911" })}
-            ${checkRow({ id: "consent", label: "I'm a parent or guardian and I've read this" })}
+            ${checkRow({ id: "consent", label: "I'm a parent or guardian, I've read this, and I agree to Treeline's terms and policies" })}
           </div>
+          <p class="caption">The full ${policyLinks()} say the same things in more detail. Each opens in a new tab.</p>
           <div data-error></div>
           <div class="tl-actions">
             ${button({ label: "Back", attrs: "data-back" })}
@@ -87,6 +88,53 @@ export async function setup(ctx) {
       }
 
       step1();
+    },
+  };
+}
+
+/** A grown-up who hasn't agreed to the current terms and policies: someone a parent added (a co-parent or a sitter), or anyone after
+ *  the documents changed. Shown before anything else, like setup's last step; agreeing is recorded in the family's own file. */
+export async function agree(ctx) {
+  const th = ctx.me.treehouse;
+  const content = html`
+  <div class="tl-stack tl-stack--related"><img src="/ui/logo/treeline-lockup.svg" width="220" alt="Treeline" style="max-width:100%;height:auto"></div>
+  <section class="tl-stack">
+    <h1 class="display-md">Treeline can't call 911</h1>
+    <p class="body tl-measure">${NO_911}</p>
+    <p class="caption">Before you use ${th.name}'s treehouse, please read how Treeline works and agree to its terms. Signed in as <strong>${ctx.me.email}</strong> · Not you? <a class="tl-footer__link" href="#/signin" data-not-me>Sign out</a></p>
+  </section>
+  <section class="tl-card"><form class="tl-stack tl-stack--group" novalidate>
+    <h2 class="tl-card__title">Your family's information</h2>
+    ${privacyAccordion()}
+    <div class="tl-stack tl-stack--tight">
+      ${checkRow({ id: "ack", label: "I understand Treeline can't call 911" })}
+      ${checkRow({ id: "consent", label: "I've read this, and I agree to Treeline's terms and policies" })}
+    </div>
+    <p class="caption">The full ${policyLinks()} say the same things in more detail. Each opens in a new tab.</p>
+    <div data-error></div>
+    <div class="tl-actions">${button({ label: "Agree and continue", variant: "primary", type: "submit", disabled: true })}</div>
+  </form></section>`;
+  return {
+    bare: true, title: "Before you start", content,
+    mount(root) {
+      const form = root.querySelector("form"), submit = form.querySelector("[type=submit]");
+      const ready = () => { submit.disabled = !(form.querySelector("#ack").checked && form.querySelector("#consent").checked); };
+      form.querySelector("#ack").addEventListener("change", ready);
+      form.querySelector("#consent").addEventListener("change", ready);
+      root.querySelector("[data-not-me]").addEventListener("click", (e) => { e.preventDefault(); ctx.signOut(); });
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        setBusy(submit, true, "Saving");
+        try {
+          ctx.me = await post("/api/agreement", { ack_911: true, consent: true });
+          // Back to where they were going: a string or pairing link (or the page saved at sign-in) opens now, it isn't lost.
+          const here = location.hash;
+          ctx.go(here && !here.startsWith("#/signin") ? here : "#/home");
+        } catch (err) {
+          form.querySelector("[data-error]").innerHTML = str(alert({ tone: "danger", title: err.message }));
+          setBusy(submit, false);
+        }
+      });
     },
   };
 }
