@@ -46,10 +46,11 @@
     }
     var sx = window.pageXOffset, sy = window.pageYOffset;
     var rnd = prng(LOAD ^ hash(String(key || "page")));
-    var rr = root.getBoundingClientRect(), wide = rr.width >= 600, budget = (wide ? 2 : 1) + (rnd() < .5 ? 1 : 0) - (rnd() < .15 ? 1 : 0), used = [];
+    var rr = root.getBoundingClientRect(), wide = rr.width >= 600, budget = wide ? 1 + (rnd() < .3 ? 1 : 0) : (rnd() < .5 ? 1 : 0), used = [];
     /* A sprinkle, not a rule: a spot that could take a doodle usually does not get one. */
-    function sprinkle() { return rnd() < .55; }
-    var cards = [].slice.call(root.querySelectorAll(".tl-card")).filter(function (c) { return visible(c) && !clipsOverflow(c); });
+    function sprinkle() { return rnd() < .3; }
+    var cards = [].slice.call(root.querySelectorAll(".tl-card")).filter(function (c) { return visible(c) && !clipsOverflow(c) && !/tl-card--(breeze|blossom|oak|fern|seeds|maple|plank|dusk|night)/.test(c.className); });
+    /* A toned card is already painted; the artist leaves it alone. */
     var taken = new Set();
     function free(x0, x1, y0, y1) { return used.every(function (u) { return x1 < u[0] || x0 > u[1] || y1 < u[2] || y0 > u[3]; }); }
     function note(card, x0, x1, h) { var t = card.getBoundingClientRect().top; used.push([card.getBoundingClientRect().left + x0, card.getBoundingClientRect().left + x1, t - h, t]); }
@@ -78,7 +79,7 @@
     }
     function placeInside(card) {
       var cr = card.getBoundingClientRect(), occ = occupied(card), floor = cr.bottom - 9, pad = 8, tries = 8;
-      var names = Object.keys(SET).filter(function (n) { return SET[n][2] === "grounded" && n !== "snail" && n !== "ladybug"; });
+      var names = Object.keys(SET).filter(function (n) { return SET[n][2] === "grounded" && n !== "snail" && n !== "ladybug" && n !== "acorn"; });
       while (tries--) {
         var usePaint = rnd() < .4, pn = usePaint ? pick(rnd, Object.keys(PAINT)) : null, name = usePaint ? null : pick(rnd, names);
         var d = usePaint ? PAINT[pn] : SET[name], sc = usePaint ? .8 : .9 + rnd() * .3, w = d[0] * sc, h = d[1] * sc;
@@ -120,7 +121,7 @@
       if (!sprinkle()) return;
       if (rnd() < .5 && placeInside(card)) { taken.add(card); singlesLeft--; return; }
       var room = roomAbove(card, root) - 6; if (room < 22) return;
-      var pool = Object.keys(SET).filter(function (n) { return SET[n][2] === "grounded" && SET[n][1] <= room; });
+      var pool = Object.keys(SET).filter(function (n) { return SET[n][2] === "grounded" && n !== "acorn" && SET[n][1] <= room; });
       if (!pool.length) return;
       var name = pick(rnd, pool), cw = card.clientWidth;
       if (placeGrounded(card, name, 30 + rnd() * (cw - 60), .9 + rnd() * .25, rnd() < .5, room + 6)) { taken.add(card); singlesLeft--; }

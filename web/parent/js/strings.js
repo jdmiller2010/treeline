@@ -98,7 +98,7 @@ export async function strings(ctx, params) {
 
   const detail = selected ? html`
     <button class="tl-btn tl-btn--quiet tl-btn--sm tl-listdetail__back" type="button" data-back-list><span class="tl-btn__label">‹ All strings</span></button>
-    ${selected.state === "waiting" ? approvalCard(selected, parent) : html`<div class="tl-card"${selected.state === "live" ? raw(' data-scene="bloom"') : ""}>
+    ${selected.state === "waiting" ? approvalCard(selected, parent) : html`<div class="tl-card">
       <header class="tl-card__head"><div><p class="tl-card__eyebrow">String</p><h3 class="tl-card__title">${selected.other.name}</h3></div>${stateTag(selected)}</header>
       <dl class="tl-dl">
         <div class="tl-dl__row"><dt>Their number</dt><dd class="tl-num">${selected.other.number}</dd></div>

@@ -48,7 +48,7 @@ export declare function Checkbox(props: CheckboxProps): React.ReactElement;
 export interface TextFieldProps extends React.InputHTMLAttributes<HTMLInputElement> { label?: string; hint?: string; error?: string; icon?: IconName }
 export declare function TextField(props: TextFieldProps): React.ReactElement;
 
-export interface CardProps { title?: React.ReactNode; eyebrow?: string; action?: React.ReactNode; tone?: 'sun' | 'plank' | 'dusk' | 'night'; elevated?: boolean; sprig?: boolean; as?: string; children?: React.ReactNode; className?: string }
+export interface CardProps { title?: React.ReactNode; eyebrow?: string; action?: React.ReactNode; tone?: 'breeze' | 'blossom' | 'oak' | 'fern' | 'seeds' | 'maple' | 'plank' | 'dusk' | 'night'; elevated?: boolean; sprig?: boolean; as?: string; children?: React.ReactNode; className?: string }
 export declare function Card(props: CardProps): React.ReactElement;
 
 export interface FriendRowProps { name: string; household?: string; speedDial?: string; status?: Status; action?: React.ReactNode; onClick?: () => void; className?: string }

@@ -67,6 +67,7 @@ All of this lives in `components/bundle.css` as named recipes built from the was
 | `--tl-bloom-mist` | Warm neutral haze | Skeletons, waiting states |
 | `--tl-dusk` | Sky at the top warming to petal at the bottom | Quiet hours |
 | `.tl-card--breeze` | A watercolor leafy branch swaying in from the corner, loose leaves on the wind, warm light behind | Good news, play, a friend connected |
+| `.tl-card--blossom` · `--oak` · `--fern` · `--seeds` · `--maple` | The same painted corner as breeze, in petal, bark, teal, sky or amber pigments | See "Art direction: one hand, three scales" |
 | `.tl-card--night` | Deep night sky, crescent moon and a few stars | It's night for the kid right now |
 | `--tl-fade-line` | A hairline that fades in and out | Dividers between rows |
 | `--tl-canopy-fill` | `canopy-light` to `canopy` | Primary buttons, switches on, checkmarks |
@@ -160,6 +161,40 @@ Things fade in like pigment soaking into paper, and fade away rather than snappi
 - Ringing: a gentle `shadow-glow` that breathes every 1.6s. No shaking.
 - Respect `prefers-reduced-motion`: drop transitions, arrivals and the glow entirely.
 
+## Art direction: one hand, three scales
+
+Everything pictorial in Treeline is by the same hand: a patient illustrator with a soft pencil and a small box of watercolors, working at a kitchen table. There are three scales of work, and they obey one grammar so they always sit well together.
+
+| Scale | What | Where | How much |
+| --- | --- | --- | --- |
+| **Plates** | Illustrations, the logo, empty states | Page headers, empty and first-run states | One per page at most |
+| **Painted cards** | Toned cards: breeze, blossom, oak, fern, seeds, maple (and plank, dusk, night as plain washes) | One card whose meaning the painting carries | One per view |
+| **Marginalia** | Doodles, scenes and paintings (the artist's layer) | The edges and empty floor of ordinary cards | A sprinkle: often none |
+
+**The grammar (shared by all three)**
+
+1. **Pencil line, then wash.** A soft graphite line (`ink-muted`, 1.2 to 1.5px, round caps) with one to three watercolor washes laid slightly off the line, as if painted without looking. Never a hard fill, never an outline in a bright color.
+2. **Pigments come from the tokens.** Greens (`canopy`), warm browns (`bark`), sun yellows (`sun`), sky blues (`sky`), petal pinks (`petal`, `berry`). Nothing outside the palette; each tone has a pigment trio (a dark, a light, a wash) that flips for dark mode.
+3. **Light comes from the top-right.** (A plant that grows from the ground, like the fern, may rise from the bottom-right instead.) Washes pool in the top-right corner and fade out before the middle; shadows fall down and a little left. At least half of any card stays bright `surface`.
+4. **Things are in the world.** A branch or a stem is attached to something; a plant stands on a surface; a butterfly may float. Nothing hovers without a reason.
+5. **Botanical, never mascot.** Leaves, blossoms, acorns, ferns, seeds, maple leaves, small creatures at a glance. No faces, no cartoon characters, no emoji.
+6. **The UI is never the picture.** Art goes in corners, edges and empty floor. It never covers text or a control, and never changes spacing, alignment or size of a component; where a painting needs room, the words keep clear of it.
+7. **Less is the style.** A page earns one painted card and a sprinkle of marginalia. When two pictures compete, the quieter one is removed.
+8. **Gentle motion.** A branch sways, a butterfly bobs, a snail inches. Nothing loops fast; everything stops under reduced motion.
+
+**Painted cards: which one, when**
+
+| Tone | The meaning | Pigments | Used in the app |
+| --- | --- | --- | --- |
+| `breeze` | Good news, play: a friend connected | canopy greens | Home: newly strung |
+| `blossom` | A welcome, a first, a celebration | petal pinks | Available for first-run and milestones |
+| `oak` | Kept safe, kept close | bark browns | Available |
+| `fern` | Quiet, calm, nothing needed from you. Grows up from the lower-right corner (ferns come from the ground), the one painted card that is not top-right | teal greens | Settings: Notifications |
+| `seeds` | On its way, in the air, waiting on someone | sky blues | Available for "waiting on them" states |
+| `maple` | The turning of the year, records, memory | sun and amber | Available |
+
+The rule is one painted card per view (a page with a long scroll, like Settings, still gets one), chosen for what the page most needs to say; the others stay plain `surface`. A painted card is the system's hero for its view, so the artist's layer leaves it alone: no doodle is drawn on, in or from a toned card, and a view with a painted card gets the quietest sprinkle. To add a tone, draw it on a 150 × 120 canvas anchored top-right (a stem or branch, five to nine elements, a few loose pieces on the wind), keep the same line weight, give it a pigment trio and a meaning, and add it to the table above before using it.
+
 ## Nature touches
 
 Treeline is a treehouse, and the interface says so quietly. Two layers do it, and neither changes the UI itself:
@@ -212,7 +247,7 @@ The interface already has a light from above (its shadows fall straight down). D
 1. **Never over text or a control.** A doodle never covers a heading, body text, button, field, link or tag. Surfaces are chosen so it sits in the empty space around them.
 2. **Takes no room.** Lives in the overlay layer (`.tl-doodle-layer`), never inside a component; adds no padding, margin or reflow; never makes the page scroll sideways. Scenes appear only where room already exists and are skipped otherwise; never add space for a doodle.
 3. **Inert.** `aria-hidden`, no pointer events, no focus. Hidden when printed.
-4. **Few, and a sprinkle.** Usually one or two on a phone, two or three on a wide screen, sometimes fewer. A spot that could take a doodle usually does not get one: the fun is in not knowing where, or whether. Quiet beats busy.
+4. **Few, and a sprinkle.** Far between: often none, at most one on a phone, one or two on a wide screen, and many pages have none. Never on or inside a toned card. A spot that could take a doodle usually does not get one: the fun is in not knowing where, or whether. Quiet beats busy.
 5. **Still when asked.** Under reduced motion nothing moves. Otherwise motion is tiny and slow: a bob of a few pixels, a snail that inches along over minutes.
 6. **Fits or skips.** A doodle only appears where its surface has room for it. It is never shrunk to fit and never squeezed in.
 
@@ -227,10 +262,10 @@ Some cards have a small scene that fits what the card is about. Mark the card wi
 | `data-scene` | Where | What |
 |---|---|---|
 | `sprout` | Setup, name your treehouse | a seedling with a butterfly above |
-| `acorn` | Parent code | acorns and a sprout: kept safe, will grow |
-| `forest` | Records | mushroom, grass tuft, pebbles: the forest floor |
-| `fern` | Notifications | a fern and a ladybug: quiet |
-| `bloom` | A live string | a tulip, grass and a butterfly: a friendship in bloom |
+| `acorn` | Free (the app's Parent code is an `oak` card) | acorns and a sprout: kept safe, will grow |
+| `forest` | Free | mushroom, grass tuft, pebbles: the forest floor |
+| `fern` | Free | a fern and a ladybug: quiet |
+| `bloom` | Free | a tulip, grass and a butterfly: a friendship in bloom |
 
 ### Inside a card, and paintings
 
