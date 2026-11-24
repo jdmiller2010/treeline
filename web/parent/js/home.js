@@ -5,7 +5,7 @@ import { dateText, minutesText, plural, time12 } from "/shared/format.js";
 import { bindTreehouse, treehouseSections } from "./house.js";
 import { bindHomeSettings, homeSettings } from "./account.js";
 import { pushState } from "./push.js";
-import { approvalCard, bindStringActions, showStringCode } from "./strings.js";
+import { approvalCard, bindStringActions, stringConnect } from "./strings.js";
 
 const NOTICE_TONE = { string_request: "info", string_live: "success", string_ended: "info", number_changed: "info",
   handset_offline: "warning", not_strung_attempt: "warning", unstrung_dials: "warning", no_911: "danger" };
@@ -51,7 +51,7 @@ export async function home(ctx) {
   if (d.handsets.length && !d.strings.live && !d.strings.waiting_on_me.length && !d.strings.waiting_on_them.length) setupCards.push(html`<section class="tl-card tl-card--seeds" aria-label="Invite a friend's family">
     <header class="tl-card__head"><div><p class="tl-card__eyebrow">First string</p><h3 class="tl-card__title">Invite a friend's family</h3></div></header>
     <p class="tl-card__body">Share a string code with a parent you know. Once you both say yes, the kids can call.</p>
-    ${parent ? html`<div class="tl-actions">${button({ label: "Make a string code", variant: "primary", icon: "plus", attrs: "data-make-code" })}</div>` : ""}</section>`);
+    ${parent ? html`<div class="tl-actions">${button({ label: "New string connection", variant: "primary", icon: "string", attrs: "data-make-code" })}</div>` : ""}</section>`);
 
   const waiting = [...d.strings.waiting_on_me, ...d.strings.waiting_on_them];
   const content = html`
@@ -84,7 +84,7 @@ export async function home(ctx) {
       if (bar && big && "IntersectionObserver" in window) {
         new IntersectionObserver(([e]) => bar.classList.toggle("is-title", !e.isIntersecting), { rootMargin: "-64px 0px 0px 0px" }).observe(big);
       } else bar?.classList.add("is-title");
-      root.querySelectorAll("[data-make-code]").forEach((b) => b.addEventListener("click", async () => { await showStringCode(ctx); ctx.render(); }));
+      root.querySelectorAll("[data-make-code]").forEach((b) => b.addEventListener("click", async () => { await stringConnect(ctx); ctx.render(); }));
     },
   };
 }

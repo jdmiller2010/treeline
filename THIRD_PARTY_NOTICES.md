@@ -12,7 +12,7 @@ This file is the source for the **Open-source licenses** page in the parent app 
 | [Figtree](https://github.com/erikdkennedy/figtree) | Interface typeface (`design/ui/fonts/`) | SIL Open Font License 1.1 (`design/ui/fonts/OFL-Figtree.txt`) | 2022 The Figtree Project Authors |
 | [Caveat](https://github.com/googlefonts/caveat) | Handwriting in the softphone room (`design/ui/fonts/`) | SIL Open Font License 1.1 (`design/ui/fonts/OFL-Caveat.txt`) | 2014 The Caveat Project Authors |
 | [JsSIP](https://github.com/versatica/JsSIP) 3.11.1 | SIP over WebSocket in the softphone (`web/phone/vendor/jssip.min.js`, a minified build from cdnjs) | MIT (`web/phone/vendor/LICENSE-JsSIP.txt`) | 2012-2026 José Luis Millán and Iñaki Baz Castillo |
-| [qrcode-generator](https://github.com/kazuhikoarase/qrcode-generator) 1.4.4 | The QR code on the softphone's pairing screen (`web/phone/vendor/qrcode.js`) | MIT | 2009 Kazuhiko Arase |
+| [qrcode-generator](https://github.com/kazuhikoarase/qrcode-generator) 1.4.4 | The QR codes in the parent app and on the softphone's pairing screen (`design/ui/js/vendor/qrcode.js`) | MIT | 2009 Kazuhiko Arase |
 
 "QR Code" is a registered trademark of DENSO WAVE INCORPORATED.
 

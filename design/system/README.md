@@ -167,7 +167,7 @@ Everything pictorial in Treeline is by the same hand: a patient illustrator with
 
 | Scale | What | Where | How much |
 | --- | --- | --- | --- |
-| **Plates** | Illustrations, the logo, empty states | Page headers, empty and first-run states | One per page at most |
+| **Plates** | Illustrations, the logo, empty states, and the Grove map (your house, strings and the families around it, drawn live: houses are the `treehouse` plate in miniature, strings are pencil lines on a wash) | Page headers, empty and first-run states, the Strings page | One per page at most |
 | **Painted cards** | Toned cards: breeze, blossom, oak, fern, seeds, maple (and plank, dusk, night as plain washes) | Cards whose meaning the painting carries | At most a third of the cards, never three in a row |
 | **Marginalia** | Doodles, scenes and paintings (the artist's layer) | The edges of ordinary cards and the gaps between them, always outside the cards | A sprinkle: often none |
 
@@ -404,6 +404,7 @@ Don't recolor the line or the washes, crop the ground line, fill the crowns, add
 
 - Load `tokens.css` (CSS variables for both themes; set `data-theme="dark"` on `<html>` for Lantern), then `components/bundle.css`, then React 18 and `components/bundle.js`. That last one exposes `window.Treeline`.
 - `bundle.css` imports Fraunces and Figtree from Google Fonts, and defines the watercolor recipes and the artwork styles.
+- Plain-HTML pieces (no React): `Grove` (`js/grove.js`), `QrCode` and `CodeShow` (`js/qr.js` + `js/vendor/qrcode.js`).
 - Components: `Icon`, `Button`, `IconButton`, `Tag`, `Presence`, `Avatar`, `Switch`, `Checkbox`, `TextField`, `Card` (atoms and containers); `FriendRow`, `ApprovalCard`, `QuietHours`, `CallLogItem` (Treeline patterns); and `Illustration`, `EmptyState`, `LeafDivider`, `LeafLoader` (nature). Each has guidelines, a live preview and plain-HTML markup.
 - **No React?** Every component's guidelines end with its exact HTML. Use it with `tokens.css`, `components/bundle.css` and, for switches, the few lines of script shown in Switch.
 - Build anything new from tokens first, then from these components. If you need a new color, size or radius, add a token rather than a one-off value.

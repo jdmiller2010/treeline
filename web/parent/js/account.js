@@ -6,7 +6,7 @@ import { formDialog } from "./dialogs.js";
 import { privacyAccordion } from "./privacy-content.js";
 import { disablePush, enablePush, pushState } from "./push.js";
 import { hasParentCode, newCodeFields, parentCodeDialog, saveNewCode } from "./parentcode.js";
-import { redeemDialog, strings } from "./strings.js";
+import { redeemCode, strings } from "./strings.js";
 
 const ZONES = [["America/New_York", "Eastern"], ["America/Chicago", "Central"], ["America/Denver", "Mountain"], ["America/Phoenix", "Arizona"],
   ["America/Los_Angeles", "Pacific"], ["America/Anchorage", "Alaska"], ["Pacific/Honolulu", "Hawaii"]];
@@ -227,10 +227,21 @@ export async function pairClaim(ctx, params) {
   };
 }
 
-/** Arrive from a shared string-code link: show Strings with the code filled in. */
+/**
+ * Arrive from a string-code link, which is what a QR code holds: scanning it is the same as typing the code in and pressing
+ * Connect. The request is sent right away, then the Strings page shows the new string.
+ */
 export async function stringLink(ctx, params) {
   const v = await strings(ctx, []);
   const mount = v.mount;
-  v.mount = (root) => { mount(root); redeemDialog(ctx, params[0] || "").then(() => ctx.go("#/strings")); };
+  const code = params[0] || "";
+  v.mount = (root) => {
+    mount(root);
+    (async () => {
+      if (!ctx.isParent()) { toast("Only a parent can connect strings. Ask one to scan this code.", "warning"); ctx.go("#/strings"); return; }
+      try { await redeemCode(code); } catch (e) { toast(e.message || "That code didn't work.", "warning"); }
+      ctx.go("#/strings");
+    })();
+  };
   return v;
 }

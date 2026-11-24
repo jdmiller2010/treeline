@@ -417,18 +417,24 @@ def main():
         check(abs(st4["artMid"] - st4["bodyMid"]) < 4 and 160 <= st4["artW"] <= 280 and st4["arts"] == 1 and st4["primaries"] == 1 and st4["gap"] < 64,
               f"setup step 4: one picture, 160-280px wide and centered, the buttons right under it, one main button ({st4})")
         a.click("[data-code]")
-        copy_btn = a.locator(".tl-sheet-scrim:not([hidden]) button[type=submit]:has-text('Copy message')")
-        done_btn = a.locator(".tl-sheet-scrim:not([hidden]) button[data-tl-close]:has-text('Done')")
-        copy_btn.wait_for()
-        code = re.search(r"[A-Z2-9]{4}-[A-Z2-9]{4}", a.inner_text(".tl-sheet-scrim:not([hidden])")).group(0)
-        check("string code" in a.inner_text(".tl-sheet-scrim:not([hidden])").lower() and "ladder" not in a.inner_text(".tl-sheet-scrim:not([hidden])").lower(), "the new code is called a string code")
+        sheet = ".tl-sheet-scrim:not([hidden])"
+        done_btn = a.locator(f"{sheet} button[data-tl-close]:has-text('Done')")
+        a.wait_for_selector(f"{sheet} .tl-qr__svg")
+        code = re.search(r"[A-Z2-9]{4}-[A-Z2-9]{4}", a.inner_text(f"{sheet} [data-code]")).group(0)
+        check("string code" in a.inner_text(sheet).lower() and "ladder" not in a.inner_text(sheet).lower(), "the new code is called a string code")
+        check(a.inner_text(f"{sheet} .tl-sheet__title") == "New string connection" and a.locator(f"{sheet} .tl-qr__svg").count() == 1
+              and a.locator(f"{sheet} #string-code").count() == 1, "one sheet: a QR code, your code, and a box for theirs")
         a.wait_for_timeout(600)                                        # let the sheet finish sliding up before measuring
-        cb, db_ = copy_btn.bounding_box(), done_btn.bounding_box()
-        check(a.locator(".tl-sheet-scrim:not([hidden]) .tl-actions").count() == 1 and abs(cb["y"] - db_["y"]) < 4 and cb["x"] < db_["x"],
-              f"the string code dialog has one row of buttons, Copy message first with Done beside it ({cb['x']:.0f},{cb['y']:.0f} / {db_['x']:.0f},{db_['y']:.0f})")
+        connect_btn = a.locator(f"{sheet} button[type=submit]:has-text('Connect')")
+        cb, db_ = connect_btn.bounding_box(), done_btn.bounding_box()
+        check(a.locator(f"{sheet} .tl-actions").count() == 1 and abs(cb["y"] - db_["y"]) < 4 and cb["x"] < db_["x"],
+              f"the sheet has one row of buttons, Connect first with Done beside it ({cb['x']:.0f},{cb['y']:.0f} / {db_['x']:.0f},{db_['y']:.0f})")
+        check(a.evaluate("document.activeElement && document.activeElement.id !== 'string-code'"), "opening the sheet doesn't pop the keyboard (the QR code stays in view)")
         a.wait_for_timeout(600); shoot(a, "string-code-390")
-        copy_btn.click(); a.wait_for_timeout(300)
-        check(a.locator(".tl-sheet-scrim:not([hidden])").count() == 1, "copying leaves the dialog open")
+        a.click(f"{sheet} [data-copy]"); a.wait_for_timeout(300)
+        check(a.locator(sheet).count() == 1, "copying leaves the sheet open")
+        a.click(f"{sheet} button[type=submit]"); a.wait_for_selector(f"{sheet} .tl-alert")
+        check("their string code" in a.inner_text(f"{sheet} .tl-alert").lower(), "Connect with nothing typed asks for their code")
         done_btn.click()
         a.wait_for_selector("#app-title")
         check(a.inner_text("#app-title") == "Alex's house" and a.locator(".tl-home-hero").count() == 1, "setup ends on Home, titled with the treehouse")
@@ -452,12 +458,14 @@ def main():
         s.goto(f"{BASE}/parent/#/phonebook"); s.wait_for_selector(".tl-card--blossom")
         shoot(s, "phonebook-blossom-390")
         s.goto(f"{BASE}/parent/#/strings")
-        s.wait_for_selector("text=No strings yet")
-        s.click("main [data-redeem]")
+        s.wait_for_selector("main .tl-grove")
+        check(s.locator("main .tl-grove__node--me").count() == 1 and s.locator("main .tl-grove button.tl-grove__node").count() == 0, "with no strings the map shows only your own treehouse")
+        s.click("main [data-connect]")
         s.fill("#string-code", code)
         s.click(".tl-sheet-scrim:not([hidden]) button[type=submit]")
-        s.wait_for_selector("text=Waiting on them")
-        check("Waiting on them" in s.inner_text("main"), "Sam's request waits on Alex")
+        s.wait_for_selector("main .tl-grove__node[data-state=wait]")
+        check("waiting" in s.inner_text("main").lower() and s.locator("main .tl-grove__node[data-state=wait] .tl-grove__name").inner_text() == "Alex's house",
+              "Sam's request waits on Alex, and Alex's treehouse hangs on the map as waiting")
 
         # Alex approves from Home.
         a.goto(f"{BASE}/parent/#/home")
@@ -468,8 +476,54 @@ def main():
         a.click("[data-string=approve]")
         a.wait_for_selector(".tl-toast")
         a.goto(f"{BASE}/parent/#/strings")
-        a.wait_for_selector("text=Sam's house")
-        check("Strung" in a.inner_text("main"), "the string is live")
+        a.wait_for_selector(".tl-grove__node[data-state=live]")
+        check(a.locator(".tl-grove__node[data-state=live] .tl-grove__name").inner_text() == "Sam's house", "the string is live on the map")
+        a.click(".tl-grove__node[data-state=live]")
+        a.wait_for_selector("main [data-detail] .tl-card")
+        check("Strung" in a.inner_text("main"), "tapping a house shows its string")
+        # The map is real buttons on a drawing that scales: nothing scrolls sideways, every house is a thumb-sized target with its name as text.
+        vp0 = a.viewport_size
+        for w in (360, 768, 1280):
+            a.set_viewport_size({"width": w, "height": 900}); a.wait_for_timeout(250)
+            m = a.evaluate("""() => { const c = document.querySelector('.tl-grove').getBoundingClientRect(), n = [...document.querySelectorAll('button.tl-grove__node')].map((b) => b.getBoundingClientRect());
+              return { sideways: document.documentElement.scrollWidth > innerWidth, min: Math.min(...n.map((r) => Math.min(r.width, r.height))), inside: n.every((r) => r.left >= c.left - 1 && r.right <= c.right + 1),
+                       named: [...document.querySelectorAll('button.tl-grove__node')].every((b) => b.getAttribute('aria-label') && b.querySelector('.tl-grove__name').textContent.length > 0) }; }""")
+            check(not m["sideways"] and m["min"] >= 44 and m["inside"] and m["named"], f"the map at {w}px: nothing scrolls sideways, houses are 44px+ buttons inside it, each named ({m})")
+        # A crowded grove: 7 to 12 families, drawn in a throwaway block, never overlap (houses, tags) or leave the drawing, at phone and desktop widths.
+        for w in (360, 1280):
+            a.set_viewport_size({"width": w, "height": 900})
+            for n in (7, 9, 10, 12):
+                bad = a.evaluate("""(n) => { const names = ['The Okafors','The Nguyens','The Hartleys','The Morenos','The Lindqvists','The Brightwater family','The Abernathys','The Castillos','The Yamadas','The Pembertons','The Ellisons','The Fitzgeralds'];
+                  const st = ['live','live','paused','ask','wait','live','live','paused','live','wait','live','live'];
+                  const box = document.createElement('div'); box.id = 'crowd'; box.innerHTML = TLGrove.html({ me: { name: 'The Parks', number: '3317' }, friends: names.slice(0, n).map((x, i) => ({ id: i, name: x, number: String(2000 + i * 137), state: st[i] })) });
+                  document.querySelector('main').appendChild(box); const c = box.querySelector('.tl-grove').getBoundingClientRect(), rs = [];
+                  box.querySelectorAll('.tl-grove__node').forEach((nd, i) => { rs.push([i + 't', nd.querySelector('.tl-grove__tag').getBoundingClientRect()]); rs.push([i + 'h', nd.querySelector('.tl-house__canopy').getBoundingClientRect()]); });
+                  const bad = []; rs.forEach(([k, r]) => { if (r.left < c.left - 1 || r.right > c.right + 1 || r.top < c.top - 1 || r.bottom > c.bottom + 1) bad.push('out ' + k); });
+                  for (let i = 0; i < rs.length; i++) for (let j = i + 1; j < rs.length; j++) { const a = rs[i][1], b = rs[j][1]; if (parseInt(rs[i][0]) === parseInt(rs[j][0])) continue;
+                    if (Math.min(a.right, b.right) - Math.max(a.left, b.left) > 2 && Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 2) bad.push(rs[i][0] + '/' + rs[j][0]); }
+                  box.remove(); return bad; }""", n)
+                check(not bad, f"{n} families at {w}px: no houses or name tags overlap and none leave the drawing ({bad})")
+        # The kit never draws more than twelve houses (the page shows a list from the thirteenth family).
+        more = a.evaluate("""() => { const f = Array.from({ length: 15 }, (_, i) => ({ id: i, name: 'Family ' + i, number: String(2000 + i), state: i === 14 ? 'ask' : i % 2 ? 'paused' : 'live' }));
+          const box = document.createElement('div'); box.innerHTML = TLGrove.html({ me: { name: 'Me', number: '1' }, friends: f });
+          return { nodes: box.querySelectorAll('button.tl-grove__node').length, more: box.querySelectorAll('[data-more]').length }; }""")
+        check(more["nodes"] == 12 and more["more"] == 0, f"fifteen families: the kit draws twelve houses and no overflow button ({more})")
+        a.set_viewport_size({"width": 390, "height": 900}); a.wait_for_timeout(250); shoot(a, "strings-map-390")
+        a.set_viewport_size(vp0)
+
+        # Scanning the QR code is opening its link: the same as typing the code and pressing Connect. The sheet on the other phone closes by itself.
+        a.goto(f"{BASE}/parent/#/strings"); a.wait_for_selector("main [data-connect]")
+        a.click("main [data-connect]"); a.wait_for_selector(".tl-sheet-scrim:not([hidden]) .tl-qr__svg")
+        scan = a.inner_text(".tl-sheet-scrim:not([hidden]) [data-code]")
+        f_ctx, f = make_family(browser, "fern@example.com", "Fern's house")
+        f.click("[data-skip]"); f.click("[data-later]"); f.wait_for_selector("#app-title")
+        f.goto(f"{BASE}/parent/#/string/{scan}")
+        f.wait_for_selector("main .tl-grove__node[data-state=wait]")
+        check(f.evaluate("location.hash") == "#/strings" and f.locator(".tl-toast").count() >= 1, "opening a string link sends the request and lands on Strings")
+        a.wait_for_selector(".tl-sheet-scrim:not([hidden])", state="detached", timeout=15000)
+        a.wait_for_selector("main .tl-grove__node[data-state=ask]")
+        check(a.locator("main .tl-grove__node[data-state=ask] .tl-grove__name").inner_text() == "Fern's house", "Alex's sheet closed when Fern scanned, and Fern's house is on the map waiting for Alex")
+        f_ctx.close()
 
         # ---- one switch disconnects a phone; one tap makes this browser a phone
         a.goto(f"{BASE}/parent/#/home")
@@ -585,11 +639,11 @@ def main():
           const res = await fetch('/api/ladder-codes', {method:'POST', headers:{Authorization:'Bearer '+t,'Content-Type':'application/json'}, body:'{}'});
           return (await res.json()).code; }""")
         e.goto(f"{BASE}/parent/#/strings")
-        e.wait_for_selector("main [data-redeem]")
-        e.click("main [data-redeem]")
+        e.wait_for_selector("main [data-connect]")
+        e.click("main [data-connect]")
         e.fill("#string-code", r)
         e.click(".tl-sheet-scrim:not([hidden]) button[type=submit]")
-        e.wait_for_selector("text=Waiting on them")
+        e.wait_for_selector("main .tl-grove__node[data-state=wait]")
         a.reload()
         a.wait_for_selector("text=Waiting on families")
         a.click("[data-string=decline]")
@@ -658,7 +712,7 @@ def main():
         check(a.locator("#house-form").count() == 1, "the old Settings address goes to Home, which now holds the treehouse settings")
         a.goto(f"{BASE}/parent/#/quiet"); a.wait_for_selector("#quiet-form")
         check(a.locator("#pause").count() == 0, "the quiet hours page has no pause switch (the title bar has the pause button)")
-        a.goto(f"{BASE}/parent/#/phonebook"); a.wait_for_selector("text=Phone book")
+        a.goto(f"{BASE}/parent/#/phonebook"); a.wait_for_selector(".tl-nav a[aria-current=page]:has-text('Phone book')")
         check(a.locator(".tl-nav a[aria-current=page]").inner_text().strip() == "Phone book", "the phone book is a tab in the main navigation")
         a.goto(f"{BASE}/parent/#/profile"); a.wait_for_selector("h2:has-text('You')")
         check(a.locator("[data-parent-code], #house-form").count() == 0 and a.locator("[data-sign-out-btn]").count() == 1, "the profile page is only about the signed-in person")

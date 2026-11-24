@@ -24,6 +24,7 @@ A 24-grid line icon drawn with `currentColor`, so it takes the color of the text
 | `key` | Enter a code |
 | `home` | Household |
 | `users` | Friends list |
+| `string` | A string between two treehouses (the New string connection button) |
 | `clock` | Time limits, waiting |
 | `check` · `close` · `plus` · `chevron-right` | Utility |
 

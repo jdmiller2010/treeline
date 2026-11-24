@@ -7,7 +7,7 @@ import { alert, html, iconButton, nextId, str, button, setBusy } from "/shared/u
  * pressed; throw an ApiError (or any Error) to show its message inside the
  * sheet. Resolves with onSubmit's value, or null if the sheet was closed.
  */
-export function formDialog({ title, intro, body, submit = "Save", submitHref = null, cancel = "Cancel", danger = false, keepOpen = false, onSubmit, onOpen }) {
+export function formDialog({ title, intro, body, submit = "Save", submitHref = null, cancel = "Cancel", danger = false, keepOpen = false, autofocus = true, onSubmit, onOpen }) {
   return new Promise((resolve) => {
     const id = nextId("dlg");
     const scrim = document.createElement("div");
@@ -51,8 +51,10 @@ export function formDialog({ title, intro, body, submit = "Save", submitHref = n
       }
     });
     scrim.hidden = false;
-    onOpen?.(scrim);
-    (scrim.querySelector("input, select, textarea") || scrim.querySelector("button[type=submit]"))?.focus();
+    // onOpen(scrim, close): `close(value)` shuts the sheet from outside and resolves with `value` (e.g. a string that arrived while it was open).
+    onOpen?.(scrim, (value) => { result = value; scrim.hidden = true; });
+    if (autofocus) (scrim.querySelector("input, select, textarea") || scrim.querySelector("button[type=submit]"))?.focus();
+    else scrim.querySelector(".tl-sheet")?.setAttribute("tabindex", "-1");
   });
 }
 

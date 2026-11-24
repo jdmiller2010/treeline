@@ -18,6 +18,7 @@ These SVG files are drawn in `ink` (#2a251c) because an `<img>` can't inherit co
 - `home`: household
 - `users`: strings (friends' families), and Profile in the account menu
 - `book`: the phone book
+- `string`: a string between two treehouses (New string connection)
 - `clock`: time limits, waiting for approval
 - `check`, `close`, `plus`, `chevron-right`: utility
 - `chevron-down`: opens a select or a disclosure
