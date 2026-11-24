@@ -677,20 +677,25 @@ def main():
         a.click("[data-tl-menu='account-menu']")
         check("Our treehouse" not in a.inner_text("#account-menu"), "the account menu has no treehouse page")
         a.keyboard.press("Escape")
-        a.goto(f"{BASE}/parent/#/home"); a.wait_for_selector("[data-this-device]")
-        a.click("[data-this-device]")
-        a.fill("#dev-name", "My laptop")
+        a.goto(f"{BASE}/parent/#/home"); a.wait_for_selector("[data-add-phone]")
+        check(a.locator("[data-this-device]").count() == 0, "there is no separate Use this device button: it is a choice in Add a phone")
+        a.locator("[data-add-phone]").first.click(); a.wait_for_selector(".tl-sheet-scrim:not([hidden]) input[name=kind]")
+        kinds = a.locator(".tl-sheet-scrim:not([hidden]) input[name=kind]").evaluate_all("(els) => els.map((e) => e.value)")
+        check(kinds == ["softphone", "ata", "rotary", "thisdevice"], f"Add a phone offers four choices, This device the fourth ({kinds})")
+        a.click(".tl-sheet-scrim:not([hidden]) label[for=kind-3]")
+        check(a.locator(".tl-sheet-scrim:not([hidden]) [data-for=code]").is_hidden(), "This device needs no code typed in")
+        a.fill("#hs-name", "My laptop")
         # no parent code yet: the dialog asks for one (twice), and checks it, before the phone is made
-        check(a.locator(".tl-sheet-scrim:not([hidden]) #dev-new").count() == 1 and a.locator(".tl-sheet-scrim:not([hidden]) #dev-new").get_attribute("type") == "password",
+        check(a.locator(".tl-sheet-scrim:not([hidden]) #add-new").count() == 1 and a.locator(".tl-sheet-scrim:not([hidden]) #add-new").get_attribute("type") == "password",
               "with no parent code yet, making this device a phone asks for one (hidden, numeric)")
         a.click(".tl-sheet-scrim:not([hidden]) button[type=submit]")
         a.wait_for_selector(".tl-sheet-scrim:not([hidden]) [data-error] .tl-alert")
         check("4 to 6 digits" in a.inner_text(".tl-sheet-scrim:not([hidden]) [data-error]"), "an empty code is refused with the rule")
-        a.fill("#dev-new", "2468"); a.fill("#dev-again", "2469")
+        a.fill("#add-new", "2468"); a.fill("#add-again", "2469")
         a.click(".tl-sheet-scrim:not([hidden]) button[type=submit]")
         a.wait_for_function("() => document.querySelector('.tl-sheet-scrim:not([hidden]) [data-error]').innerText.includes(\"don't match\")")
         check(len(api_get(a, "/api/handsets")["handsets"]) == 1, "two codes that differ are refused, and no phone is made")
-        a.fill("#dev-new", "2468"); a.fill("#dev-again", "2468")
+        a.fill("#add-new", "2468"); a.fill("#add-again", "2468")
         a.click(".tl-sheet-scrim:not([hidden]) button[type=submit]")
         a.wait_for_url("**/phone/**", timeout=15000)
         a.wait_for_selector(".tl-rotary", timeout=15000)
@@ -753,12 +758,12 @@ def main():
                             check(a.locator(f"main a[href='{href}']").count() == 1, f"{name} links the full {href}")
                     if theme == "light" and width in (390, 1280):
                         hb = a.evaluate("""() => ({ name: document.querySelector('#app-title').textContent, pause: document.querySelectorAll('.tl-appbar [data-pause]').length,
-                          avatar: document.querySelectorAll('.tl-appbar .tl-avatar-btn').length, avatarH: Math.round(document.querySelector('.tl-appbar .tl-avatar-btn .tl-avatar').getBoundingClientRect().height), pauseH: Math.round(document.querySelector('.tl-appbar [data-pause]').getBoundingClientRect().height), h1s: document.querySelectorAll('h1').length, h1w: document.querySelector('h1').getBoundingClientRect().width,
+                          avatar: document.querySelectorAll('.tl-appbar .tl-avatar-btn').length, avatarH: Math.round(document.querySelector('.tl-appbar .tl-avatar-btn .tl-avatar').getBoundingClientRect().height), h1s: document.querySelectorAll('h1').length, h1w: document.querySelector('h1').getBoundingClientRect().width,
                           h2: [...document.querySelectorAll('main h2')].filter((h) => h.getBoundingClientRect().width > 2).length,
                           buttonsInBar: [...document.querySelectorAll('.tl-appbar__actions .tl-btn')].map((b) => b.getAttribute('data-pause') !== null ? '' : b.textContent.trim()).filter(Boolean) })""")
-                        check(hb["name"] == "Alex's house" and hb["pause"] == 1 and hb["avatar"] == 1 and hb["avatarH"] == hb["pauseH"] and hb["h1s"] == 1 and hb["h1w"] <= 2 and hb["h2"] >= 1 and not hb["buttonsInBar"],
-                              f"{name} {width}: the header bar is the same on every page (name, pause, account, the account circle as tall as the pause button); the page's title is hidden and it has its own section titles; no page buttons up in the bar ({hb})")
-                    # The logo: in the title bar from the very top on a phone (with the pause button and the avatar on the same row);
+                        check(hb["name"] == "Alex's house" and hb["pause"] == 0 and hb["avatar"] == 1 and hb["h1s"] == 1 and hb["h1w"] <= 2 and hb["h2"] >= 1 and not hb["buttonsInBar"],
+                              f"{name} {width}: the header bar is the same on every page (name and account; pause is on Home, not up here); the page's title is hidden and it has its own section titles; no page buttons up in the bar ({hb})")
+                    # The logo: in the title bar from the very top on a phone (with the avatar on the same row);
                     # the side rail has it from 768 up.
                     if theme == "light" and name in ("home", "quiet"):
                         logo = a.evaluate("""() => { const q = (s) => document.querySelector(s); const r = (e) => e.getBoundingClientRect(); const b = r(q('.tl-appbar__brand')), av = r(q('.tl-appbar .tl-avatar-btn'));
@@ -825,7 +830,7 @@ def main():
         a.wait_for_selector(".tl-nav a[aria-current=page]")
         check(a.locator(".tl-nav a[aria-current=page] .tl-nav__label").inner_text().strip() == "Home", "the phone book opens from Home and keeps Home lit in the nav")
         a.goto(f"{BASE}/parent/#/quiet"); a.wait_for_selector("#quiet-form")
-        check(a.locator("#pause").count() == 0, "the quiet hours page has no pause switch (the title bar has the pause button)")
+        check(a.locator("#pause").count() == 0, "the quiet hours page has no pause switch (Pause all calls is on Home)")
         a.goto(f"{BASE}/parent/#/profile"); a.wait_for_selector("h2:has-text('You')")
         check(a.locator("[data-parent-code], #house-form").count() == 0 and a.locator("[data-sign-out-btn]").count() == 1, "the profile page is only about the signed-in person")
         # ---- the account menu offers to install the app, once the browser says it can
@@ -1009,14 +1014,23 @@ def main():
         else:
             print("skip  911 alert screens: run through ./dev ui smoke (it gives the test database's path)", flush=True)
 
-        # ---- pause is one tap
+        # ---- pause is one tap, on Home under the treehouse, beside New string connection and Phone book (all small)
         a.goto(f"{BASE}/parent/#/home")
-        a.wait_for_selector("[data-pause]")
-        a.click("[data-pause]")
+        a.wait_for_selector(".tl-home-hero__actions [data-pause]")
+        hero = a.locator(".tl-home-hero__actions .tl-btn")
+        check(hero.count() == 3 and all("tl-btn--sm" in (hero.nth(i).get_attribute("class") or "") for i in range(3)),
+              "under the treehouse: New string connection, Phone book and Pause all calls, all small buttons")
+        pause = a.locator(".tl-home-hero__actions [data-pause]")
+        check(pause.inner_text().strip() == "Pause all calls", "it says Pause all calls")
+        pause.click()
         a.wait_for_selector("text=Calls are paused")
+        a.wait_for_selector(".tl-home-hero__actions [data-pause]:has-text('Resume calls')")
+        check(a.evaluate("() => document.querySelector('.tl-home-hero__actions [data-pause] svg').innerHTML.includes('M8 5.5v13l10.5-6.5z')"),
+              "paused, it says Resume calls with a play icon")
         a.wait_for_load_state("networkidle")
-        a.click("[data-pause]")
+        a.click(".tl-home-hero__actions [data-pause]")
         a.wait_for_selector("text=Calls are back on")
+        a.wait_for_selector(".tl-home-hero__actions [data-pause]:has-text('Pause all calls')")
         a.wait_for_load_state("networkidle")
 
         # ---- sign out returns to sign-in

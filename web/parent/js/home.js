@@ -65,8 +65,9 @@ export async function home(ctx) {
     <p class="tl-home-hero__name" id="home-name" aria-hidden="true">${th.name}</p>
     <p class="tl-home-hero__meta">Joined ${dateText(th.created_at, th.timezone)} · Number <span class="tl-num">${th.number}</span></p>
     <div class="tl-home-hero__actions">
-      ${parent ? button({ label: "New string connection", icon: "string", attrs: "data-make-code" }) : ""}
-      ${button({ label: "Phone book", icon: "book", attrs: 'data-href="#/phonebook"' })}
+      ${parent ? button({ label: "New string connection", size: "sm", icon: "string", attrs: "data-make-code" }) : ""}
+      ${button({ label: "Phone book", size: "sm", icon: "book", attrs: 'data-href="#/phonebook"' })}
+      ${button({ label: th.paused ? "Resume calls" : "Pause all calls", size: "sm", icon: th.paused ? "play" : "pause", attrs: "data-pause" })}
     </div>
   </header>
   ${topNotices.length ? html`<div class="tl-stack">${topNotices}</div>` : ""}

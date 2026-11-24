@@ -12,7 +12,11 @@ export const KIND = {
   rotary: ["Treeline rotary phone", "The Treeline phone, paired with the code printed under it."],
 };
 
-/** Add a handset: pick the kind, name it, and (for softphones and Treeline phones) enter the code it shows. */
+/** "This device" in Add a phone: not a kind of its own (it is a softphone), but the one choice that needs no code to type. */
+const THIS_DEVICE = ["thisdevice", "This device", "The phone, tablet or computer you're using now. The rotary phone opens here, and this dashboard stays closed on it until someone enters your parent code."];
+
+/** Add a handset: pick the kind, name it, and (for softphones and Treeline phones) enter the code it shows. "This device" makes the
+ *  browser in hand a phone, with no code: a parent is already signed in here. */
 export async function addHandsetDialog(ctx) {
   const added = await formDialog({
     title: "Add a phone",
@@ -20,16 +24,16 @@ export async function addHandsetDialog(ctx) {
     submit: "Add phone",
     body: html`
       ${radioGroup({ name: "kind", legend: "What are you adding?", cards: true, value: "softphone",
-        options: [["softphone", ...KIND.softphone], ["ata", ...KIND.ata], ["rotary", ...KIND.rotary]] })}
+        options: [["softphone", ...KIND.softphone], ["ata", ...KIND.ata], ["rotary", ...KIND.rotary], THIS_DEVICE] })}
       ${textField({ id: "hs-name", name: "name", label: "Name for this phone", placeholder: "Kitchen phone", hint: "You'll see this in your call log." })}
       <div data-for="code">${codeInput({ legend: "Code on the phone", hint: "Six digits. A softphone shows it on screen; the Treeline phone has it printed underneath." })}</div>
       ${hasParentCode(ctx) ? "" : html`<div class="tl-stack tl-stack--group" data-for="pin" hidden>${newCodeFields("add")}</div>`}`,
     onOpen(scrim) {
       const sync = () => {
         const kind = scrim.querySelector("input[name=kind]:checked").value;
-        scrim.querySelector("[data-for=code]").hidden = kind === "ata";
+        scrim.querySelector("[data-for=code]").hidden = kind === "ata" || kind === "thisdevice";
         const pin = scrim.querySelector("[data-for=pin]");
-        if (pin) pin.hidden = kind !== "softphone";             // a softphone needs a parent code before it can be added
+        if (pin) pin.hidden = kind !== "softphone" && kind !== "thisdevice";   // a softphone needs a parent code before it can be added
       };
       scrim.querySelectorAll("input[name=kind]").forEach((r) => r.addEventListener("change", sync));
       sync();
@@ -37,13 +41,15 @@ export async function addHandsetDialog(ctx) {
     async onSubmit(form) {
       const kind = form.querySelector("input[name=kind]:checked").value;
       const name = form.querySelector("[name=name]").value;
-      if (kind === "softphone" && !hasParentCode(ctx)) await saveNewCode(ctx, form);
+      if ((kind === "softphone" || kind === "thisdevice") && !hasParentCode(ctx)) await saveNewCode(ctx, form);
+      if (kind === "thisdevice") return { ...(await makeThisDeviceAPhone(name)), thisDevice: true };
       if (kind === "ata") return post("/api/handsets", { kind, name });
       const code = codeValue(form.querySelector("[data-for=code]"));
       return post("/api/pair/claim", { code, name, kind });
     },
   });
   if (!added) return false;
+  if (added.thisDevice) { location.assign("/phone/"); return true; }     // locked to the phone from here on (lockedToPhone)
   if (added.credentials) await showAdapterSettings(added);
   else toast(`${added.handset.name} is connected`, "success");
   return true;
@@ -69,34 +75,16 @@ const PHONE_KEY = "treeline.phone";            // where the softphone keeps its 
 
 /** Turn this browser into a phone for the treehouse, with no QR code: a parent is already signed in. From then on this device is
  *  locked to the phone in every tab (see lockedToPhone), so the page goes straight to it. Only the parent code, typed on the phone, ends that. */
-export async function useThisDevice(ctx) {
-  const made = await formDialog({
-    title: "Use this device as a phone",
-    intro: "This device becomes one of your treehouse's phones: the rotary phone opens here, rings when a friend calls, and can call out. It stays a phone, and this dashboard stays closed on it, until someone enters your parent code on the phone. You can also disconnect or remove it any time from Home.",
-    submit: "Make this a phone",
-    body: html`${textField({ id: "dev-name", name: "name", label: "Name for this phone", value: "This device", hint: "You'll see this in your call log." })}
-      ${hasParentCode(ctx) ? "" : newCodeFields("dev")}`,
-    onSubmit: async (f) => {
-      if (!hasParentCode(ctx)) await saveNewCode(ctx, f);
-      const made = await post("/api/handsets", { kind: "softphone", name: f.querySelector("[name=name]").value });
-      const c = made.credentials;
-      try {
-        localStorage.setItem(PHONE_KEY, JSON.stringify({ sip_user: c.sip_user, secret: c.secret, server: c.server, ws_url: c.ws_url, realm: c.realm, handset_id: made.handset.id }));
-      } catch {
-        await del(`/api/handsets/${made.handset.id}`);                      // don't leave a phone behind that nothing can use
-        throw new Error("This browser wouldn't save the phone's sign-in, so it can't be used as a phone.");
-      }
-      return made;
-    },
-  });
-  if (!made) return false;
-  location.assign("/phone/");
-  return true;
-}
-
-/** The button that makes this browser a phone. */
-export function deviceButton() {
-  return html`<div class="tl-actions">${button({ label: "Use this device as a phone", size: "sm", attrs: "data-this-device" })}</div>`;
+async function makeThisDeviceAPhone(name) {
+  const made = await post("/api/handsets", { kind: "softphone", name: name || "This device" });
+  const c = made.credentials;
+  try {
+    localStorage.setItem(PHONE_KEY, JSON.stringify({ sip_user: c.sip_user, secret: c.secret, server: c.server, ws_url: c.ws_url, realm: c.realm, handset_id: made.handset.id }));
+  } catch {
+    await del(`/api/handsets/${made.handset.id}`);                      // don't leave a phone behind that nothing can use
+    throw new Error("This browser wouldn't save the phone's sign-in, so it can't be used as a phone.");
+  }
+  return made;
 }
 
 function handsetRow(h, parent = true) {
@@ -136,11 +124,10 @@ export function treehouseSections(ctx, handsets, grown_ups) {
 
   <section class="tl-stack" aria-label="Phones">
     <div class="tl-split"><h2 class="title-lg">Phones</h2>${parent ? button({ label: "Add a phone", size: "sm", icon: "plus", attrs: "data-add-phone" }) : ""}</div>
-    ${parent ? deviceButton() : ""}
     ${handsets.length
       ? html`<div class="tl-card tl-card--list">${handsets.map((h) => handsetRow(h, parent))}</div>
         <p class="tl-card__body tl-measure" style="color:var(--ink-muted)">Use the switch to disconnect a phone for now. A disconnected phone doesn't ring and can't call out; your other phones carry on as usual.</p>`
-      : emptyState({ art: null, title: "No phones yet", body: "Add a softphone, a phone adapter or the Treeline phone. They all ring together when a friend calls.",
+      : emptyState({ art: null, title: "No phones yet", body: "Add a softphone, a phone adapter, the Treeline phone, or this device. They all ring together when a friend calls.",
           action: parent ? button({ label: "Add a phone", variant: "primary", icon: "plus", attrs: "data-add-phone" }) : null })}
   </section>
 
@@ -159,7 +146,6 @@ export function treehouseSections(ctx, handsets, grown_ups) {
 /** The buttons and menus drawn by treehouseSections. */
 export function bindTreehouse(root, ctx, refresh) {
   root.querySelectorAll("[data-add-phone]").forEach((b) => b.addEventListener("click", async () => { if (await addHandsetDialog(ctx)) refresh(); }));
-  root.querySelectorAll("[data-this-device]").forEach((b) => b.addEventListener("click", async () => { if (await useThisDevice(ctx)) refresh(); }));
   bindPhoneSwitches(root, refresh);
   root.querySelector("[data-change-number]")?.addEventListener("click", async () => { if (await changeNumber(ctx)) { await ctx.refreshMe(); refresh(); } });
   root.querySelector("[data-add-grownup]")?.addEventListener("click", async () => { if (await addGrownUp(ctx)) refresh(); });
