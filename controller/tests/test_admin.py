@@ -405,8 +405,10 @@ class StepUp(unittest.TestCase):
         return q
 
     def callback(self, q, cookie_jar=client, **claims):
+        # What Google really sends for this request: no auth_time (SECURITY.md Review 19: a fake that always sent one hid that the
+        # step-up could never pass against the real Google).
         token_claims = {"iss": "https://accounts.google.com", "aud": "cid-test", "exp": self.time.time() + 600, "email": self.a.email,
-                        "email_verified": True, "nonce": q["nonce"][0], "auth_time": int(self.time.time())}
+                        "email_verified": True, "nonce": q["nonce"][0]}
         token_claims.update(claims)
         token_claims = {k: v for k, v in token_claims.items() if v is not None}
         jwt = "e30." + self.b64.urlsafe_b64encode(json.dumps(token_claims).encode()).rstrip(b"=").decode() + ".sig"
@@ -424,9 +426,12 @@ class StepUp(unittest.TestCase):
         self.assertEqual((r.status_code, r.get_json()["code"]), (403, "needs_stepup"))
         self.assertFalse(db.is_admin(central(), target))
 
-    def test_google_is_asked_to_ask_for_the_password_again(self):
+    def test_google_is_asked_with_values_it_supports_for_the_same_account(self):
+        """Review 19: prompt=login and max_age are not Google's (it documents prompt=none, consent, select_account only)."""
         q = self.start()
-        self.assertEqual((q["prompt"][0], q["max_age"][0], q["login_hint"][0]), ("login", "0", self.a.email))
+        self.assertEqual((q["prompt"][0], q["login_hint"][0]), ("select_account", self.a.email))
+        self.assertNotIn("max_age", q)
+        self.assertIn(q["prompt"][0], ("none", "consent", "select_account"))
 
     def test_a_fresh_google_sign_in_confirms_this_session_only_and_makes_no_new_one(self):
         other = make_admin()
@@ -440,13 +445,24 @@ class StepUp(unittest.TestCase):
         self.assertTrue(db.is_admin(central(), "new@example.com"))
         self.assertEqual(db.list_audit(central(), 1)[0]["action"], "admin_add")
 
-    def test_what_does_not_prove_a_fresh_sign_in_is_refused(self):
-        start_t = int(self.time.time())
-        for claims in ({"auth_time": None}, {"auth_time": start_t - 3600}, {"auth_time": "now"}, {"auth_time": start_t + 3600},
-                       {"email": "someone-else@example.com"}):
+    def test_a_token_like_googles_with_no_auth_time_confirms(self):
+        """Review 19: the real Google sends no auth_time here; the old check refused every real step-up."""
+        self.assertTrue(self.callback(self.start(), auth_time=None).endswith("/parent/#/admin/stepup.ok"))
+        self.assertIsNotNone(self.stepped())
+
+    def test_what_does_not_prove_it_is_them_now_is_refused(self):
+        for claims in ({"email": "someone-else@example.com"}, {"nonce": "another-sign-ins-nonce"}, {"email_verified": False}):
             with self.subTest(claims=claims):
-                self.assertTrue(self.callback(self.start(), **claims).endswith("/parent/#/admin/stepup.failed"))
+                loc = self.callback(self.start(), **claims)
+                self.assertNotIn("stepup.ok", loc)
                 self.assertIsNone(self.stepped())
+
+    def test_a_confirmation_works_once(self):
+        q = self.start()
+        self.assertTrue(self.callback(q).endswith("stepup.ok"))
+        central().execute("UPDATE session SET stepped_up_at=NULL, stepup_hash=NULL WHERE token_hash=?", (db.hash_token(self.a.token),))
+        self.assertNotIn("stepup.ok", self.callback(q), "the same Google answer replayed confirms nothing")
+        self.assertIsNone(self.stepped())
 
     def test_the_callback_in_another_browser_confirms_nothing(self):
         q = self.start()
@@ -470,7 +486,7 @@ class StepUp(unittest.TestCase):
         q = self.start()
         import time as _t
         claims = {"iss": "https://accounts.google.com", "aud": "cid-test", "exp": _t.time() + 600, "email": self.a.email,
-                  "email_verified": True, "nonce": q["nonce"][0], "auth_time": int(_t.time())}
+                  "email_verified": True, "nonce": q["nonce"][0]}
         jwt = "e30." + self.b64.urlsafe_b64encode(json.dumps(claims).encode()).rstrip(b"=").decode() + ".sig"
         with self.mock.patch.object(self.google, "post_form", lambda url, fields, timeout=10: {"id_token": jwt}):
             r = client.get(f"/api/auth/google/callback?code=c&state={q['state'][0]}")
