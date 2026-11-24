@@ -258,7 +258,7 @@ export function footer(licenses = "/parent/licenses.html") {
 }
 
 /** The brand mark and name with the tagline under it, for the top of a page that has no app bar. */
-export const TAGLINE = "Safe calls for neighborhood kids";
+export const TAGLINE = "Safe, simple calls.";
 export function brandLine() {
   const mark = BRAND.replace(/^<a class="tl-brand"[^>]*>/, '<span class="tl-brand">').replace(/<\/a>\s*$/, "</span>");
   return html`<div class="tl-brandline">${raw(mark)}<p class="tl-tagline">${TAGLINE}</p></div>`;

@@ -73,7 +73,7 @@ export function pairScreen(root, notice) {
         <div class="tl-stack tl-stack--related"><img src="/ui/logo/treeline-lockup.svg" width="200" alt="Treeline" style="max-width:100%;height:auto"></div>
         <section class="tl-stack">
           <h1 class="display-md">Welcome to Treeline</h1>
-          <p class="body" style="color:var(--ink-muted)">Safe calls for neighborhood kids, with parents holding the keys. Use this device as one of your treehouse's phones, or log in to manage the treehouse.</p>
+          <p class="body" style="color:var(--ink-muted)">Safe, simple calls for kids, with parents holding the keys. Use this device as one of your treehouse's phones, or log in to manage the treehouse.</p>
         </section>
         ${note ? alert({ tone: "info", title: note, id: "notice" }) : ""}
         ${error ? alert({ tone: "danger", title: error }) : ""}

@@ -68,13 +68,13 @@ export async function signIn(ctx) {
   const content = html`<div class="tl-front">
   <div class="tl-front__head">
     <img src="/ui/logo/treeline-lockup.svg" alt="Treeline">
-    <h1 class="display-md">Safe calls for neighborhood kids</h1>
+    <h1 class="display-md">Safe, simple calls.</h1>
   </div>
   <div class="tl-welcome-wrap">${welcome([
     { art: art("treehouse"), title: "Your treehouse", body: "Your home gets its own number. Every phone in the house rings together." },
-    { art: art("connection"), title: "A string to a friend", body: "Both parents say yes before kids can call." },
+    { art: art("connection"), title: "A string to another treehouse", body: "Both parents say yes before kids can call." },
     { art: html`<img src="/ui/illustrations/rotary/rotary-phone-moss-lifted.svg" alt="">`, title: "Kids pick up and dial", body: "On a rotary phone, only to friends you've approved." },
-    { art: html`<svg viewBox="30 60 340 200"><image href="/ui/illustrations/rotary/rotary-part-3-handset.svg" x="0" y="-70" width="400" height="510"/></svg>`, title: "Just a phone call", body: "No texts, no voicemail, no caller ID, no group calls." },
+    { art: html`<svg viewBox="30 60 340 200"><image href="/ui/illustrations/rotary/rotary-part-3-handset.svg" x="0" y="-70" width="400" height="510"/></svg>`, title: "Just a phone call", body: "No texts, no voicemail, no caller ID, no group calls. Never recorded." },
   ])}</div>
   <section class="tl-card tl-login" aria-labelledby="signin-title">
     <div class="tl-login__head"><h2 class="tl-card__title" id="signin-title">Log in to Treeline</h2>${tag("sunbeam", "Closed beta")}</div>

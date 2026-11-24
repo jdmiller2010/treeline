@@ -1,6 +1,6 @@
 // The profile, the settings drawn on Home, privacy and safety, about, the action log, and the two "arrive by link" screens.
 import { api, apiUrl, del, get, patch, post, token } from "/shared/api.js";
-import { alert, button, card, emptyState, html, icon, raw, selectField, tag, textField, toast, NO_911 } from "/shared/ui.js";
+import { alert, button, card, emptyState, html, icon, raw, selectField, tag, textField, toast, NO_911, TAGLINE } from "/shared/ui.js";
 import { time12, when } from "/shared/format.js";
 import { formDialog } from "./dialogs.js";
 import { privacyAccordion } from "./privacy-content.js";
@@ -141,7 +141,7 @@ export async function about(ctx) {
   const content = html`
   <section class="tl-card tl-card--sprig"><div class="tl-stack tl-stack--group">
     <h2 class="tl-card__title">Treeline</h2>
-    <p class="tl-tagline">Safe calls for neighborhood kids</p>
+    <p class="tl-tagline">${TAGLINE}</p>
     <p class="tl-card__body">A house-to-house phone for kids who live near each other, with parents holding the keys.</p>
     <dl class="tl-dl">
       <div class="tl-dl__row"><dt>Made by</dt><dd>Jordan Miller</dd></div>

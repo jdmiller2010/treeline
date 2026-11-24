@@ -1,6 +1,6 @@
 # Welcome
 
-What Treeline is, in four small plates with a few words each: your treehouse, a string to a friend, kids pick up and dial, just a phone call. Read in under 20 seconds, a parent should know what it is and feel it is safe and simple. Only on the sign-in page.
+What Treeline is, in four small plates with a few words each: your treehouse, a string to another treehouse, kids pick up and dial, just a phone call. Read in under 20 seconds, a parent should know what it is and feel it is safe and simple. Only on the sign-in page.
 
 **Consumer provides:** three steps, each `{ art, title, body }`. Build it with `welcome(steps)` from `web/shared/ui.js`.
 
