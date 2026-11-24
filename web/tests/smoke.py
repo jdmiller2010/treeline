@@ -101,8 +101,14 @@ def doodle_check(page, where):
     page.wait_for_timeout(700)
     r = page.evaluate(DOODLE_JS)
     check(not r["bad"] and not r["wide"], f"doodles on {where} stay off text and controls, take no room, and never scroll the page sideways" + (f" ({r['bad'][:2]})" if r["bad"] else ""))
-    painted = page.evaluate("() => [...document.querySelectorAll('.tl-card')].filter(c => /tl-card--(breeze|blossom|oak|fern|seeds|maple)/.test(c.className) && c.offsetParent).length")
-    check(painted <= 1, f"on {where}, at most one painted card (found {painted})")
+    pc = page.evaluate("""() => { const all = [...document.querySelectorAll('.tl-card')].filter(c => c.offsetParent && !c.parentElement.closest('.tl-card'));
+      const is = c => /tl-card--(breeze|blossom|oak|fern|seeds|maple)/.test(c.className);
+      let run = 0, worst = 0; for (const c of all) { run = is(c) ? run + 1 : 0; worst = Math.max(worst, run); }
+      return { n: all.length, painted: all.filter(is).length, run: worst }; }""")
+    check(pc["painted"] <= max(1, pc["n"] // 3) and pc["run"] < 3, f"on {where}, painted cards are reasonable ({pc['painted']} of {pc['n']}, longest run {pc['run']})")
+    inside = page.evaluate("""() => [...document.querySelectorAll('.tl-doodle-layer > *')].filter(d => { const r = d.getBoundingClientRect(), cy = r.top + r.height / 2, cx = r.left + r.width / 2;
+      return [...document.querySelectorAll('.tl-card')].some(c => { const q = c.getBoundingClientRect(); return cx > q.left && cx < q.right && cy > q.top + 6 && cy < q.bottom - 6; }); }).length""")
+    check(inside == 0, f"on {where}, no doodle is drawn inside a card")
     lay = page.evaluate(LAYOUT_JS)
     check(lay["same"] and lay["inTree"] == 0, f"on {where}, every element is exactly where it would be without the doodles, and none are inside the app's own markup")
     check(lay["layers"] <= 1, f"on {where}, there is only ever one doodle layer")

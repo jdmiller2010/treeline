@@ -70,30 +70,6 @@
       if (name === "bee") add(layer, '<svg class="tl-doodle-trail" data-doodle="trail" style="left:' + (x + sx - (flip ? -8 : 78)) + "px;top:" + (y + sy - 10) + 'px;width:70px;height:30px" viewBox="0 0 70 30" aria-hidden="true"><path d="' + (flip ? "M0 8C20 -4 40 24 66 12" : "M68 8C48 -4 28 24 2 12") + '"/></svg>');
       return el;
     }
-    /* Where a card's own content is: text, controls and pictures. Doodles may stand inside a card only in the empty floor beside and below them. */
-    function occupied(card) {
-      var out = [], w = document.createTreeWalker(card, NodeFilter.SHOW_TEXT);
-      while (w.nextNode()) { var n = w.currentNode; if (!n.nodeValue.trim()) continue; var rg = document.createRange(); rg.selectNodeContents(n); [].forEach.call(rg.getClientRects(), function (q) { if (q.width) out.push(q); }); }
-      [].forEach.call(card.querySelectorAll("button,input,select,textarea,a,img,svg,canvas,[role=button],.tl-btn,.tl-tag,.tl-switch"), function (e) { if (e.closest(".tl-doodle-layer")) return; var q = e.getBoundingClientRect(); if (q.width && q.height) out.push(q); });
-      return out;
-    }
-    function placeInside(card) {
-      var cr = card.getBoundingClientRect(), occ = occupied(card), floor = cr.bottom - 9, pad = 8, tries = 8;
-      var names = Object.keys(SET).filter(function (n) { return SET[n][2] === "grounded" && n !== "snail" && n !== "ladybug" && n !== "acorn"; });
-      while (tries--) {
-        var usePaint = rnd() < .4, pn = usePaint ? pick(rnd, Object.keys(PAINT)) : null, name = usePaint ? null : pick(rnd, names);
-        var d = usePaint ? PAINT[pn] : SET[name], sc = usePaint ? .8 : .9 + rnd() * .3, w = d[0] * sc, h = d[1] * sc;
-        if (usePaint && PAINT[pn][2] === "top") continue;
-        if (h > cr.height - 18 || w > cr.width - 36) continue;
-        var cx = cr.left + 18 + w / 2 + rnd() * (cr.width - 36 - w), box = [cx - w / 2 - pad, floor - h - pad, cx + w / 2 + pad, floor + 2];
-        if (occ.some(function (q) { return !(q.right < box[0] || q.left > box[2] || q.bottom < box[1] || q.top > box[3]); })) continue;
-        if (!free(box[0] - cr.left + cr.left, box[2], box[1], box[3])) continue;
-        if (usePaint) add(layer, '<div class="tl-doodle tl-paint" data-doodle="paint-' + pn + '" aria-hidden="true" style="--x:' + (cx + sx) + "px;--y:" + (floor + sy) + "px;--w:" + w + "px;--h:" + h + "px;--l:url('" + d[3] + "');--d:url('" + d[4] + "')" + '"></div>');
-        else add(layer, svg(name, "--x:" + (cx + sx) + "px;--y:" + (floor + sy) + "px;--r:" + ((rnd() - .5) * 5).toFixed(1) + "deg;--s:" + sc.toFixed(2) + ";--fx:" + (rnd() < .5 ? -1 : 1) + ";--dly:-" + (rnd() * 9).toFixed(1) + "s", "tl-doodle--free"));
-        used.push([box[0], box[2], box[1], box[3]]); return true;
-      }
-      return false;
-    }
     var placed = 0;
     // 1. scenes: the cards that have one, up to budget-1 (a page never gets more than two)
     shuffle(rnd, cards.filter(function (c) { return c.dataset.scene && SCENES[c.dataset.scene]; })).slice(0, wide ? 2 : 1).forEach(function (card) {
@@ -119,7 +95,6 @@
     shuffle(rnd, cards).forEach(function (card) {
       if (singlesLeft <= 0 || taken.has(card)) return;
       if (!sprinkle()) return;
-      if (rnd() < .5 && placeInside(card)) { taken.add(card); singlesLeft--; return; }
       var room = roomAbove(card, root) - 6; if (room < 22) return;
       var pool = Object.keys(SET).filter(function (n) { return SET[n][2] === "grounded" && n !== "acorn" && SET[n][1] <= room; });
       if (!pool.length) return;

@@ -49,7 +49,7 @@ export async function account(ctx) {
     <div class="tl-actions">${button({ label: "Save", variant: "primary", type: "submit" })}</div>
   </div></form>` : ""}
 
-  ${parent ? html`<section class="tl-card"><div class="tl-stack tl-stack--group">
+  ${parent ? html`<section class="tl-card tl-card--oak"><div class="tl-stack tl-stack--group">
     <h2 class="tl-card__title">Parent code</h2>
     <p class="tl-card__body">${hasParentCode(ctx)
       ? "A parent code is set. It is what takes a device out of phone mode, so keep it to yourselves."

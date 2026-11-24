@@ -168,8 +168,8 @@ Everything pictorial in Treeline is by the same hand: a patient illustrator with
 | Scale | What | Where | How much |
 | --- | --- | --- | --- |
 | **Plates** | Illustrations, the logo, empty states | Page headers, empty and first-run states | One per page at most |
-| **Painted cards** | Toned cards: breeze, blossom, oak, fern, seeds, maple (and plank, dusk, night as plain washes) | One card whose meaning the painting carries | One per view |
-| **Marginalia** | Doodles, scenes and paintings (the artist's layer) | The edges and empty floor of ordinary cards | A sprinkle: often none |
+| **Painted cards** | Toned cards: breeze, blossom, oak, fern, seeds, maple (and plank, dusk, night as plain washes) | Cards whose meaning the painting carries | At most a third of the cards, never three in a row |
+| **Marginalia** | Doodles, scenes and paintings (the artist's layer) | The edges of ordinary cards and the gaps between them, always outside the cards | A sprinkle: often none |
 
 **The grammar (shared by all three)**
 
@@ -178,8 +178,8 @@ Everything pictorial in Treeline is by the same hand: a patient illustrator with
 3. **Light comes from the top-right.** (A plant that grows from the ground, like the fern, may rise from the bottom-right instead.) Washes pool in the top-right corner and fade out before the middle; shadows fall down and a little left. At least half of any card stays bright `surface`.
 4. **Things are in the world.** A branch or a stem is attached to something; a plant stands on a surface; a butterfly may float. Nothing hovers without a reason.
 5. **Botanical, never mascot.** Leaves, blossoms, acorns, ferns, seeds, maple leaves, small creatures at a glance. No faces, no cartoon characters, no emoji.
-6. **The UI is never the picture.** Art goes in corners, edges and empty floor. It never covers text or a control, and never changes spacing, alignment or size of a component; where a painting needs room, the words keep clear of it.
-7. **Less is the style.** A page earns one painted card and a sprinkle of marginalia. When two pictures compete, the quieter one is removed.
+6. **The UI is never the picture.** Art goes in corners, on edges and in the gaps between cards; the artist's doodles never go inside a card. It never covers text or a control, and never changes spacing, alignment or size of a component; where a painting needs room, the words keep clear of it.
+7. **Less is the style.** A page can have a few painted cards (at most a third of its cards, never three in a row) and a sprinkle of marginalia. When two pictures compete, the quieter one is removed.
 8. **Gentle motion.** A branch sways, a butterfly bobs, a snail inches. Nothing loops fast; everything stops under reduced motion.
 
 **Painted cards: which one, when**
@@ -188,12 +188,12 @@ Everything pictorial in Treeline is by the same hand: a patient illustrator with
 | --- | --- | --- | --- |
 | `breeze` | Good news, play: a friend connected | canopy greens | Home: newly strung |
 | `blossom` | A welcome, a first, a celebration | petal pinks | Available for first-run and milestones |
-| `oak` | Kept safe, kept close | bark browns | Available |
+| `oak` | Kept safe, kept close | bark browns | Settings: Parent code |
 | `fern` | Quiet, calm, nothing needed from you. Grows up from the lower-right corner (ferns come from the ground), the one painted card that is not top-right | teal greens | Settings: Notifications |
 | `seeds` | On its way, in the air, waiting on someone | sky blues | Available for "waiting on them" states |
 | `maple` | The turning of the year, records, memory | sun and amber | Available |
 
-The rule is one painted card per view (a page with a long scroll, like Settings, still gets one), chosen for what the page most needs to say; the others stay plain `surface`. A painted card is the system's hero for its view, so the artist's layer leaves it alone: no doodle is drawn on, in or from a toned card, and a view with a painted card gets the quietest sprinkle. To add a tone, draw it on a 150 × 120 canvas anchored top-right (a stem or branch, five to nine elements, a few loose pieces on the wind), keep the same line weight, give it a pigment trio and a meaning, and add it to the table above before using it.
+The rule: at most a third of a page's cards are painted, never three in a row, and never every card. Choose the ones whose meaning the painting carries; the rest stay plain `surface`. The artist's layer leaves painted cards alone: no doodle is drawn on, in or from a toned card. To add a tone, draw it on a 150 × 120 canvas anchored top-right (a stem or branch, five to nine elements, a few loose pieces on the wind), keep the same line weight, give it a pigment trio and a meaning, and add it to the table above before using it.
 
 ## Nature touches
 
@@ -267,11 +267,11 @@ Some cards have a small scene that fits what the card is about. Mark the card wi
 | `fern` | Free | a fern and a ladybug: quiet |
 | `bloom` | Free | a tulip, grass and a butterfly: a friendship in bloom |
 
-### Inside a card, and paintings
+### Always outside the cards, and paintings
 
-- **Inside a card.** Where a card has empty floor (the corner beside a short row of buttons, the strip under its last line), a doodle may stand there, on the card's bottom edge inside. It only goes where it clears every line of text, control, tag and picture with padding to spare, so it never covers content and never makes the card taller. Doodles inside a card follow the same sprinkle: a free spot usually stays empty.
-- **Paintings.** A scene can be upgraded to a small watercolor painting (`sprout` to a seedling, `forest` to mushrooms, `fern` to a fern, `bloom` to a meadow). The painting stands on the card's top edge and is used only when the room above the card already holds it at 60% of full size or more; otherwise the card keeps its doodle scene. Paintings are drawn from the same hand as the doodles: pencil line, one to three washes, paper showing through. They share the same overlay layer and the same rules, and never add space for themselves.
-- **The test.** The smoke suite measures every element with the doodles shown and hidden and fails on any difference, fails if a doodle is inside the app's own markup, and fails if one covers text.
+- **Outside, always.** Doodles stand on a card's top edge, sit in the gaps between cards, or drift in the margins. They are never drawn inside a card: the card's own surface belongs to its content and, on a painted card, to its painting.
+- **Paintings.** A scene can be upgraded to a small watercolor painting (`sprout` to a seedling, `forest` to mushrooms, `fern` to a fern, `bloom` to a meadow). The painting stands on the card's top edge and is used only when the room above the card already holds it at 60% of full size or more; otherwise the card keeps its doodle scene. Paintings are drawn from the same hand as the doodles. They share the same overlay layer and rules, and never add space for themselves.
+- **The test.** The smoke suite measures every element with the doodles shown and hidden and fails on any difference, fails if a doodle is inside the app's own markup, fails if one covers text, and fails if one sits inside a card.
 
 ### Using it
 

@@ -28,9 +28,9 @@ The whole approach (physics, rules that never bend, different on every load, sce
 | `bluebird` | grounded | good news, perched |
 | `owl` | grounded | watching over, night |
 
-## Inside cards and paintings
+## Always outside cards
 
-Doodles may stand in a card's empty floor space (never over text, controls, tags or pictures; never making the card taller) and a scene may be drawn as a small watercolor painting on the card's top edge when the room above already holds it. Both live in the overlay layer, follow the sprinkle (a free spot usually stays empty), and are covered by the layout-invariance test. See the design system README, "The artist's layer".
+Doodles stand on a card's top edge, sit in the gaps between cards, or drift in the margins, and are never drawn inside a card (a painted card keeps its own painting). A scene can be upgraded to a small watercolor painting on the card's top edge when the room above already holds it. All of it lives in the overlay layer and follows the sprinkle (often none). See the design system README, "The artist's layer".
 
 ## HTML
 
