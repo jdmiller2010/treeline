@@ -233,7 +233,7 @@ def admin_stepup_status():
 @app.post("/api/admin/stepup")
 @admin_required
 def admin_stepup_start():
-    """Where to send the browser to confirm. Google asks for the password again (prompt=login) and the callback marks THIS session
+    """Where to send the browser to confirm: a fresh Google round trip for the same account (google.start) and the callback marks THIS session
     only. The binding cookie ties the callback to this browser, as for a sign-in (R6-1)."""
     if not google.configured():
         raise ApiError("Sign in with Google isn't set up here: use the emailed code (development only).", 404, "no_google")

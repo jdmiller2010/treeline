@@ -519,7 +519,7 @@ def google_callback():
     try:
         email, _gate, binding, stepup = google.finish(request.args.get("code"), request.args.get("state"), signin_cookie())
     except google.GoogleError as err:
-        log.warning("google sign-in refused: %s", err.reason)
+        log.warning("google sign-in refused: %s (%s)", err.reason, getattr(err, "detail", ""))
         if err.reason == "stepup":
             return back_to_admin("stepup.failed")
         return back_to_app("e." + err.reason, clear_cookie=True)

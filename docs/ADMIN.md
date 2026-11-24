@@ -20,7 +20,9 @@ says what is **built** and what is not yet (the "Status" table); do not read a d
 - **An admin sees** a treehouse's name and number, created date, handset count, last check-in and the grown-ups' emails (on the detail page also each grown-up's role, parent or sitter, and each phone by position with its kind and last check-in: removing the right one needs them, and none is a name). Never calls,
   notes, strings, quiet hours, handset names, or anything in a family's file. No impersonation. An admin cannot add a person or a phone.
 - **The admin is the owner's own parent email.** So every admin action needs a young session (12 hours at most), and destructive
-  actions will need a **fresh Google sign-in** (`prompt=login` and an `auth_time` check), built before any destructive action ships.
+  actions need a **fresh Google confirmation**: a round trip to Google in the same browser, for the same account, within 15 minutes
+  (`prompt=select_account` with `login_hint`; Google cannot be made to ask for the password again, so there is no `auth_time`
+  check: SECURITY.md Review 19).
 
 ## Rules the build keeps (each has a test)
 
@@ -41,7 +43,7 @@ says what is **built** and what is not yet (the "Status" table); do not read a d
 | 1 | Central migration (admin tables), the gate on `/api/admin`, `treeline-admin` (first admin over ssh) | built |
 | 2 | The root bridge, safe logs, `install.sh` units (needs one `install.sh` run on the VM: the tools and units are not updated by a deploy) | built |
 | 3 | The admin shell, menu item, Logs, Releases (read-only), Admins and Audit pages | built |
-| 4 | Step-up sign-in (`prompt=login`, `auth_time`) and the destructive-action tier; adding and removing admins from the page | built |
+| 4 | Step-up (a fresh Google confirmation for the same account in the same browser; Review 19) and the destructive-action tier; adding and removing admins from the page | built |
 | 5 | Release install from the page: the bridge `deploy` op (no change to the agent) and the Install button | built |
 | 6 | Treehouse management: archive through every code path, archive, restore, the 14-day erase, remove a grown-up or a phone | built |
 | 7 | Logging cleanup, then the API and controller log sources | not started |

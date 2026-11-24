@@ -37,6 +37,7 @@ class GoogleError(Exception):
     def __init__(self, reason, detail=""):
         super().__init__(f"{reason}: {detail}" if detail else reason)
         self.reason = reason
+        self.detail = detail
 
 
 def auth_url():
@@ -133,9 +134,6 @@ def bound(saved, cookie):
     return bool(cookie) and secrets.compare_digest(saved.get("binding", ""), binding_hash(cookie))
 
 
-STEPUP_SLACK = 5        # seconds: Google's clock against ours, for "the sign-in happened after we asked for it"
-
-
 def start(redirect_uri, gate=None, binding=None, stepup=None):
     """The URL to send the browser to. Remembers the PKCE verifier, the nonce, the gate and the browser binding for the callback.
     `binding` is the hash of a random cookie set on the browser that started; without it, anyone who got hold of the callback URL
@@ -151,9 +149,12 @@ def start(redirect_uri, gate=None, binding=None, stepup=None):
         "scope": "openid email", "state": state, "nonce": nonce, "prompt": "select_account",
         "code_challenge": _b64url(hashlib.sha256(verifier.encode()).digest()), "code_challenge_method": "S256"}
     if stepup:
-        # A step-up (docs/ADMIN.md): Google must ask for the password again (prompt=login), and say when it did (max_age=0 makes the
-        # ID token carry auth_time, which finish() checks). An old Google session in the browser is not enough.
-        fields.update({"prompt": "login", "max_age": "0", "login_hint": stepup["email"]})
+        # A step-up (docs/ADMIN.md, SECURITY.md Review 19): a fresh round trip to Google, in this browser, for the same account.
+        # Google cannot be made to ask for the password again: it supports only prompt=none, consent and select_account (not
+        # login), documents no max_age, and sends auth_time only when asked for and enabled, and then as the original sign-in
+        # time. So what proves the person is that THIS browser (binding cookie) gets Google to vouch for THIS email now (state,
+        # nonce, single use), which a copy of the bearer token elsewhere cannot do.
+        fields.update({"prompt": "select_account", "login_hint": stepup["email"]})
     query = urllib.parse.urlencode(fields)
     return f"{auth_url()}?{query}"
 
@@ -198,8 +199,8 @@ def validate_claims(claims, nonce, client_id, now=None):
 
 
 def finish(code, state, cookie=None, now=None, post=None):
-    """Complete the sign-in. Returns (email, gate, binding, stepup) or raises GoogleError. For a step-up, the token must say the person
-    signed in to Google AFTER we asked (auth_time), and be for the same email. The state is used up even when this fails,
+    """Complete the sign-in. Returns (email, gate, binding, stepup) or raises GoogleError. For a step-up, the token must be for the
+    same email as the session that asked (no time-of-sign-in check: Google does not provide a fresh one). The state is used up even when this fails,
     and nothing is sent to Google unless this browser is the one that started (the binding cookie matches)."""
     saved = take("state", state)
     if saved is None:
@@ -218,9 +219,6 @@ def finish(code, state, cookie=None, now=None, post=None):
     email = validate_claims(claims, saved["nonce"], os.environ["TREELINE_GOOGLE_CLIENT_ID"], now)
     stepup = saved.get("stepup")
     if stepup:
-        at = claims.get("auth_time")
-        if type(at) not in (int, float) or at < stepup["at"] - STEPUP_SLACK or at > (now or time.time()) + 60:
-            raise GoogleError("stepup", "Google did not ask for the password again")
         if email != stepup["email"]:
             raise GoogleError("stepup", "a different Google account")
     return email, saved["gate"], saved["binding"], stepup
