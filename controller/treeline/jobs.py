@@ -141,6 +141,19 @@ def purge_archived(conn, now=None):
     return erased
 
 
+UNFINISHED_HOURS = 24
+
+
+def forget_unfinished_setups(conn, now=None):
+    """Someone who got past the beta code but never made their treehouse: after a day their sign-in is forgotten, and next
+    time they start again from the code. (A grown-up of a treehouse, and a Treeline admin, are never touched.)"""
+    now = now or db.utcnow()
+    conn.execute("DELETE FROM session WHERE created_at IS NOT NULL AND created_at < ? "
+                 "AND email NOT IN (SELECT g.email FROM grown_up g JOIN treehouse t ON t.id=g.treehouse_id WHERE t.left_at IS NULL) "
+                 "AND email NOT IN (SELECT email FROM app_admin WHERE removed_at IS NULL)",
+                 (db.iso(now - dt.timedelta(hours=UNFINISHED_HOURS)),))
+
+
 def purge(conn, now=None):
     """Forget old records. Each family's retention trims only its own file: nobody's setting touches anyone else's
     copy of a call. Notes and the action log age out inside each file too. The central ledger keeps only the last
@@ -161,6 +174,7 @@ def purge(conn, now=None):
     db.prune_ledger(conn, now)
     for table in ("session", "login_code", "pairing"):
         conn.execute(f"DELETE FROM {table} WHERE expires_at < ?", (db.iso(now),))
+    forget_unfinished_setups(conn, now)
     db.prune_pre_migrate(os.path.join(os.path.dirname(db.DB_PATH) or ".", "pre-migrate"), now)
     db.prune_pre_migrate(households.pre_migrate_dir(), now)
 

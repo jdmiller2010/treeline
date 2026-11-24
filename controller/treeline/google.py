@@ -7,7 +7,9 @@ iss, aud, exp, nonce and email_verified. State, nonce and the verifier live in m
 (one gunicorn worker: the same assumption as the rate limits); a restart only means a person tries again.
 
 The beta access code is one shared code, 8 characters, that lets someone CREATE a treehouse. Only its hash and an expiry are
-configured (SSM, then the environment). Grown-ups a parent added sign in with Google alone.
+configured (SSM, then the environment). Grown-ups a parent added sign in with Google alone. Anyone else signs in with Google
+FIRST, and is then asked for the code: until the code is accepted, nothing about them is written down (the Google answer waits
+in memory, as a "pending" sign-in bound to their browser, for fifteen minutes). The same code keeps working until it expires.
 """
 
 import base64
@@ -69,6 +71,13 @@ def alive(kind, key):
     with _lock:
         item = _store.get((kind, str(key or "")))
     return bool(item and item[0] > time.time())
+
+
+def peek(kind, key):
+    """The data for `key` without using it up. None if unknown, used or expired."""
+    with _lock:
+        item = _store.get((kind, str(key or "")))
+    return item[1] if item and item[0] > time.time() else None
 
 
 def _prune():

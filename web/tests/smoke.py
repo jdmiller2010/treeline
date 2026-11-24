@@ -134,8 +134,11 @@ def make_family(browser, email, name, tz="America/Los_Angeles"):
     shoot(page, "setup-step1-390")
     page.fill("#th-name", name)
     page.fill("#th-you", "Pat")
+    check(page.locator("#th-tz").count() == 0, f"{name}: setup doesn't ask for a time zone (it comes from the device)")
     page.click("button[type=submit]")
     page.wait_for_selector("#ack")
+    check(page.evaluate("() => { const acc = document.querySelector('#setup-body .tl-accordion, #setup-body details'); const ack = document.querySelector('#ack'); return !!acc && !!(acc.compareDocumentPosition(ack) & Node.DOCUMENT_POSITION_FOLLOWING); }"),
+          f"{name}: both boxes sit at the bottom, after the privacy answers")
     page.wait_for_timeout(900)
     page.mouse.wheel(0, 500); page.wait_for_timeout(250)
     top = page.evaluate("() => Math.round(document.querySelector('.tl-stepsnav--pinned').getBoundingClientRect().top)")
@@ -151,7 +154,7 @@ def make_family(browser, email, name, tz="America/Los_Angeles"):
     check(page.locator("button[type=submit]").is_disabled(), f"{name}: one box isn't enough, the privacy box is needed too")
     page.click("label[for=consent]")
     page.click("button[type=submit]")
-    page.wait_for_selector("[data-skip]")
+    page.wait_for_selector("#app-title")                            # two steps, then straight to Home
     return ctx, page
 
 
@@ -332,8 +335,10 @@ def main():
         check("tl-btn--secondary" in cls("[data-back-to-email]") and "tl-btn--primary" in cls("#step-code button[type=submit]"),
               "on the sign-in code step, Use a different email is a secondary button beside the one main button")
         page.click("[data-back-to-email]"); page.wait_for_selector("#step-email:not([hidden])")
-        check(page.locator("form#step-email").count() == 1 and page.locator("section.tl-card:has(h1):has(.tl-art):has(#email)").count() == 1,
-              "the picture, the title and the email box are all in one card")
+        check(page.locator("h1").count() == 1 and page.locator(".tl-welcome .tl-welcome__step").count() == 4
+              and page.locator(".tl-welcome .tl-welcome__plate").count() == 4, "the front door: one h1, then four small pictures that say what Treeline is")
+        check(page.locator(".tl-login__head .tl-tag").inner_text() == "Closed beta", "the card says Closed beta, beside its title")
+        check(page.locator("#beta, [data-beta], #new-here").count() == 0, "and there is no box for a beta code on the front door")
         for w, h in ((768, 1024), (1024, 768), (1440, 900)):
             page.set_viewport_size({"width": w, "height": h}); page.wait_for_timeout(250)
             card = page.locator("section.tl-card:has(#email)").bounding_box()
@@ -348,20 +353,58 @@ def main():
         gp = gctx.new_page()
         watch(gp, "google")
         gp.route("**/api/auth/config", lambda r: r.fulfill(json={"google": True, "email_code": False, "dev": False}))
-        gp.route("**/api/auth/beta", lambda r: r.fulfill(status=400, json={"error": "That code didn't work. Check it and try again, or ask whoever gave it to you.", "code": "bad_beta_code"}))
+        gp.route("**/api/auth/pending", lambda r: r.fulfill(json={"email": "newparent@example.com"}))
+        gp.route("**/api/auth/beta", lambda r: r.fulfill(status=400, json={"error": "That code didn't work. Check it and try again.", "code": "bad_beta_code"}))
         gp.goto(f"{BASE}/parent/")
         gp.wait_for_selector("[data-google]")
         check(gp.locator("#email").count() == 0 and gp.locator("#step-email").count() == 0, "with Google on and the emailed code off, there is no email form")
-        check(gp.locator("[data-google]").count() == 1 and gp.locator("button.tl-btn--primary").count() == 1, "one main button: Continue with Google")
-        check(not gp.locator("#step-beta").is_visible(), "the beta code form stays folded away until someone says they are new")
-        gp.click("#new-here summary")
-        gp.fill("#beta", "AAAA-AAAA"); gp.click("#step-beta button[type=submit]")
-        gp.wait_for_selector("#beta-error .tl-alert")
-        check("didn't work" in gp.inner_text("#beta-error"), "a wrong beta code says so and does not leave the page")
+        check(gp.locator("button.tl-google-btn[data-google]").count() == 1 and gp.locator(".tl-google-btn__g").count() == 1
+              and gp.locator("button.tl-btn--primary").count() == 0, "one main action: Google's own Sign in with Google button, with the G")
+        check(gp.evaluate("() => document.querySelector('[data-google]').textContent.trim()") == "Sign in with Google"
+              and gp.get_attribute("[data-google]", "aria-label") == "Sign in with Google", "in Google's own words (on a phone, Google's short \"Sign in\")")
+        fold = gp.evaluate("() => document.querySelector('.tl-login').getBoundingClientRect().bottom")
+        check(fold <= 660, f"on a 390px phone the whole front door, sign-in card included, fits without scrolling ({fold:.0f}px)")
+        lb = gp.locator(".tl-login .tl-actions > *")
+        check(abs(lb.nth(0).bounding_box()["y"] - lb.nth(1).bounding_box()["y"]) < 2, "Sign in and Use as a phone sit side by side on a phone")
+        edges = gp.evaluate("""() => { const r = (s) => document.querySelector(s).getBoundingClientRect(); const b = [...document.querySelectorAll('.tl-login .tl-actions > *')].map((e) => e.getBoundingClientRect());
+          return { left: Math.round(b[0].left - r('.tl-login__head').left), right: Math.round(r('.tl-login__head .tl-tag').right - b[1].right) }; }""")
+        check(abs(edges["left"]) <= 1 and abs(edges["right"]) <= 1, f"the two buttons fill the card's row, lined up with the title on the left and the Closed beta tag on the right ({edges})")
+        check(gp.inner_text(".tl-login .tl-card__title") == "Log in to Treeline", "the card is titled Log in to Treeline")
+        gb, pb = gp.locator("[data-google]").bounding_box(), gp.locator(".tl-login [data-phone-setup]").bounding_box()
+        check("tl-btn--secondary" in (gp.get_attribute(".tl-login [data-phone-setup]", "class") or "") and abs(gb["height"] - pb["height"]) < 1,
+              "Use as a phone is a secondary button, the same height as Google's")
+        plates = gp.evaluate("""() => [...document.querySelectorAll('.tl-welcome__plate')].map((p) => { const a = p.firstElementChild.getBoundingClientRect(), r = p.getBoundingClientRect();
+          return Math.min(a.left - r.left, r.right - a.right, a.top - r.top, r.bottom - a.bottom); })""")
+        check(all(m >= 4 for m in plates), f"no picture touches the edge of its white shape ({[round(m) for m in plates]})")
         no_sideways_scroll(gp, "google sign-in 390")
-        gp.goto(f"{BASE}/parent/#/signin/e.need_code"); gp.reload(); gp.wait_for_selector("#google-box .tl-alert")
-        check("beta code" in gp.inner_text("#google-box"), "coming back from Google without being set up explains what to do")
         shoot(gp, "signin-google-390")
+        gp.set_viewport_size({"width": 1280, "height": 900}); gp.wait_for_timeout(250); shoot(gp, "signin-google-1280")
+        gp.evaluate("() => document.documentElement.dataset.theme = 'dark'"); gp.wait_for_timeout(200); shoot(gp, "signin-google-1280-dark")
+        gp.evaluate("() => document.documentElement.dataset.theme = 'light'"); gp.set_viewport_size({"width": 390, "height": 844})
+        # A new person, back from Google: asked for the invite code, with nothing saved yet. A wrong code turns the box red.
+        gp.goto(f"{BASE}/parent/#/signin/p.waiting-word"); gp.reload(); gp.wait_for_selector("#beta-form")
+        check("newparent@example.com" in gp.inner_text("[data-signed-in-as]") and gp.locator("h1").inner_text() == "Enter your invite code",
+              "the beta screen says whose Google account is waiting and asks for the invite code")
+        gp.fill("#beta", "AAAA-AAAA"); gp.click("#beta-form button[type=submit]")
+        gp.wait_for_selector("#beta-form .tl-textfield.has-error")
+        check("didn't work" in gp.inner_text("#beta-form .tl-textfield__hint") and gp.get_attribute("#beta", "aria-invalid") == "true",
+              "a wrong code turns the box red with a plain message, like a wrong password")
+        check(gp.input_value("#beta") == "AAAA-AAAA" and gp.locator("#beta-form").count() == 1, "and keeps what was typed, on the same page")
+        gp.wait_for_timeout(400); shoot(gp, "beta-challenge-error-390")
+        gp.fill("#beta", "AAAA-AAAB"); gp.wait_for_timeout(100)
+        check(gp.locator("#beta-form .has-error").count() == 0, "typing again clears the red")
+        gp.click("[data-other-account]"); gp.wait_for_selector("[data-google]")
+        check(gp.evaluate("location.hash") == "#/signin", "Use a different account goes back to the front door")
+        gp.goto(f"{BASE}/parent/#/signin/e.need_code"); gp.reload(); gp.wait_for_selector("#signin-title")
+        check("invite only" in gp.inner_text("main").lower(), "coming back from Google without being let in explains what to do")
+        # Set this device up as a phone: a sheet with a QR code a parent's phone scans.
+        gp.goto(f"{BASE}/parent/"); gp.wait_for_selector("[data-phone-setup]")
+        gp.click("[data-phone-setup]"); gp.wait_for_selector(".tl-sheet-scrim:not([hidden]) .tl-qr__svg")
+        sh = ".tl-sheet-scrim:not([hidden])"
+        check(gp.inner_text(f"{sh} .tl-sheet__title") == "Set up this phone" and re.search(r"\d{3} \d{3}", gp.inner_text(sh)) is not None,
+              "Set this device up as a phone opens a sheet with a QR code and its six digits")
+        gp.wait_for_timeout(500); shoot(gp, "phone-setup-sheet-390")
+        gp.click(f"{sh} [data-tl-close]:has-text('Cancel')"); gp.wait_for_selector(sh, state="detached")
         gctx.close()
 
         # ---- the public privacy policy: the link Google's sign-in setup asks for, readable without signing in
@@ -393,15 +436,10 @@ def main():
 
         # ---- two families
         a_ctx, a = make_family(browser, "alex@example.com", "Alex's house")
-        check(a.locator("[aria-label='Kinds of phone'] .tl-row").count() == 3 and a.locator("section.tl-card:has([data-add])").count() == 0,
-              "the add-a-phone step lists the three kinds of phone, and its buttons aren't in a card of their own")
-        check("tl-btn--secondary" in (a.locator("[data-skip]").get_attribute("class") or "") and "tl-btn--quiet" not in (a.locator("[data-skip]").get_attribute("class") or ""),
-              "setup step 3: Skip for now is a secondary button beside the main one")
-        gap3 = a.evaluate("() => Math.round(document.querySelector('#setup-body .tl-actions').getBoundingClientRect().top - document.querySelector('[aria-label=\"Kinds of phone\"]').getBoundingClientRect().bottom)")
-        check(gap3 < 64, f"setup step 3: the buttons sit right under the list they act on, not floating far below it ({gap3}px)")
-        check(a.locator("#setup-body .tl-btn--primary").count() == 1, "setup step 3: one main (canopy) button")
-        shoot(a, "setup-step3-390")
-        a.click("[data-add]")
+        check(a.locator("[data-alert=next-step]").count() == 1 and "add a phone" in a.inner_text("[data-alert=next-step]").lower()
+              and a.locator("[data-alert=next-step] [data-add-phone]").count() == 1, "after setup, Home's top notice says to put a phone in the treehouse")
+        shoot(a, "home-next-phone-390")
+        a.click("[data-alert=next-step] [data-add-phone]")
         a.wait_for_selector(".tl-sheet-scrim:not([hidden])")
         shoot(a, "add-phone-sheet-390")
         a.fill("#hs-name", "Hall phone")
@@ -410,13 +448,9 @@ def main():
         a.wait_for_selector("text=Set up Hall phone")
         check("Password" in a.inner_text(".tl-sheet-scrim:not([hidden])"), "adapter settings dialog shows the password once")
         a.click(".tl-sheet-scrim:not([hidden]) button[type=submit]")
-        a.wait_for_selector("[data-code]")
-        st4 = a.evaluate("""() => { const r = (e) => e.getBoundingClientRect(); const art = r(document.querySelector('.tl-setup-art')), body = r(document.querySelector('#setup-body')), act = r(document.querySelector('#setup-body .tl-actions'));
-          return { artMid: Math.round(art.left + art.width / 2), bodyMid: Math.round(body.left + body.width / 2), artW: Math.round(art.width), gap: Math.round(act.top - art.bottom),
-                   arts: document.querySelectorAll('#setup-body .tl-art').length, primaries: document.querySelectorAll('#setup-body .tl-btn--primary').length }; }""")
-        check(abs(st4["artMid"] - st4["bodyMid"]) < 4 and 160 <= st4["artW"] <= 280 and st4["arts"] == 1 and st4["primaries"] == 1 and st4["gap"] < 64,
-              f"setup step 4: one picture, 160-280px wide and centered, the buttons right under it, one main button ({st4})")
-        a.click("[data-code]")
+        a.wait_for_selector("[data-alert=next-step] [data-make-code]")
+        check("string to a friend" in a.inner_text("[data-alert=next-step]").lower(), "with a phone, the top notice moves on to a first string")
+        a.click("[data-alert=next-step] [data-make-code]")
         sheet = ".tl-sheet-scrim:not([hidden])"
         done_btn = a.locator(f"{sheet} button[data-tl-close]:has-text('Done')")
         a.wait_for_selector(f"{sheet} .tl-qr__svg")
@@ -437,24 +471,22 @@ def main():
         check("their string code" in a.inner_text(f"{sheet} .tl-alert").lower(), "Connect with nothing typed asks for their code")
         done_btn.click()
         a.wait_for_selector("#app-title")
-        check(a.inner_text("#app-title") == "Alex's house" and a.locator(".tl-home-hero").count() == 1, "setup ends on Home, titled with the treehouse")
+        check(a.inner_text("#app-title") == "Alex's house" and a.locator(".tl-home-hero").count() == 1, "the sheet closes back onto Home, titled with the treehouse")
 
         s_ctx, s = make_family(browser, "sam@example.com", "Sam's house")
-        s.click("[data-skip]")
-        s.click("[data-later]")
-        s.wait_for_selector("#app-title")
         s.wait_for_selector(".tl-home-hero")
         check(s.locator("h2:has-text('Phones')").count() == 1 and s.locator("text=Add your first phone").count() == 0,
               "with no phones yet, Home has one Phones section, not a second 'add your first phone' prompt")
         check(s.locator(".tl-art:not(.tl-leafdiv__sprig)").count() == 1 and s.locator(".tl-empty__art").count() == 0,
               "and one picture on the screen: the treehouse at the top")
-        # With a phone but no strings, Home invites a friend's family on a seeds card (a seed on its way), and the text clears the painting.
+        # With a phone but no strings, the notice at the top of Home moves on to a first string.
         s.evaluate("""async () => { await fetch('/api/handsets', { method: 'POST', headers: { 'Content-Type': 'application/json',
           Authorization: 'Bearer ' + localStorage.getItem('treeline.token') }, body: JSON.stringify({ kind: 'ata', name: 'Hall phone' }) }); }""")
-        s.reload(); s.wait_for_selector(".tl-card--seeds [data-make-code]")
-        check(s.locator(".tl-card--seeds .tl-card__title").inner_text() == "Invite a friend's family", "with a phone and no strings, Home invites a friend's family on a seeds card")
+        s.reload(); s.wait_for_selector("[data-alert=next-step] [data-make-code]")
+        check(s.locator("[data-alert=next-step] .tl-alert__title").inner_text() == "Next: string to a friend" and s.locator(".tl-card--seeds").count() == 0,
+              "with a phone and no strings, the top notice suggests a first string (no separate card)")
         s.set_viewport_size({"width": 390, "height": 900}); s.wait_for_timeout(300)
-        shoot(s, "home-invite-seeds-390")
+        shoot(s, "home-next-string-390")
         s.goto(f"{BASE}/parent/#/phonebook"); s.wait_for_selector(".tl-card--blossom")
         shoot(s, "phonebook-blossom-390")
         s.goto(f"{BASE}/parent/#/strings")
@@ -516,7 +548,6 @@ def main():
         a.click("main [data-connect]"); a.wait_for_selector(".tl-sheet-scrim:not([hidden]) .tl-qr__svg")
         scan = a.inner_text(".tl-sheet-scrim:not([hidden]) [data-code]")
         f_ctx, f = make_family(browser, "fern@example.com", "Fern's house")
-        f.click("[data-skip]"); f.click("[data-later]"); f.wait_for_selector("#app-title")
         f.goto(f"{BASE}/parent/#/string/{scan}")
         f.wait_for_selector("main .tl-grove__node[data-state=wait]")
         check(f.evaluate("location.hash") == "#/strings" and f.locator(".tl-toast").count() >= 1, "opening a string link sends the request and lands on Strings")
@@ -628,9 +659,6 @@ def main():
         # ---- a hostile treehouse name must stay text (stored XSS regression)
         evil = 'a" autofocus onfocus="pwned=1'
         e_ctx, e = make_family(browser, "evil@example.com", evil)
-        e.click("[data-skip]")
-        e.click("[data-later]")
-        e.wait_for_selector("#app-title")
         a.goto(f"{BASE}/parent/#/home")
         code2 = None
         a.evaluate("() => 0")

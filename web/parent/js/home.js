@@ -45,13 +45,20 @@ export async function home(ctx) {
   const alerts = [...d.notices].sort((x, y) => (y.kind === "no_911") - (x.kind === "no_911")).map((n) => alert({
     tone: NOTICE_TONE[n.kind] || "info", title: n.title, body: n.body, dismiss: String(n.id), actions: noticeActions(n) }));
 
-  const setupCards = [];
-  // (No "add your first phone" card: the Phones section below says it when there are none. And no picture on these cards:
-  // the treehouse at the top is this screen's one illustration.)
-  if (d.handsets.length && !d.strings.live && !d.strings.waiting_on_me.length && !d.strings.waiting_on_them.length) setupCards.push(html`<section class="tl-card tl-card--seeds" aria-label="Invite a friend's family">
-    <header class="tl-card__head"><div><p class="tl-card__eyebrow">First string</p><h3 class="tl-card__title">Invite a friend's family</h3></div></header>
-    <p class="tl-card__body">Share a string code with a parent you know. Once you both say yes, the kids can call.</p>
-    ${parent ? html`<div class="tl-actions">${button({ label: "New string connection", variant: "primary", icon: "string", attrs: "data-make-code" })}</div>` : ""}</section>`);
+  // What's left after setup (a first phone, then a first string), as a notice at the top: setup itself stays two short steps.
+  const noStrings = !d.strings.live && !d.strings.waiting_on_me.length && !d.strings.waiting_on_them.length;
+  const nextStep = !parent ? null : !d.handsets.length
+    ? alert({ tone: "info", id: "next-step", title: "Next: add a phone",
+      body: "They all ring together.",
+      actions: button({ label: "Add a phone", size: "sm", icon: "plus", attrs: "data-add-phone" }) })
+    : noStrings ? alert({ tone: "info", id: "next-step", title: "Next: string to a friend",
+      body: "Once both families say yes, kids can call.",
+      actions: button({ label: "New string connection", size: "sm", icon: "string", attrs: "data-make-code" }) })
+    : null;
+  // A 911 attempt still goes first: it is the one thing a parent must not miss.
+  const urgent = alerts.filter((_, i) => [...d.notices].sort((x, y) => (y.kind === "no_911") - (x.kind === "no_911"))[i].kind === "no_911");
+  const rest = alerts.slice(urgent.length);
+  const topNotices = [...urgent, ...(nextStep ? [nextStep] : []), ...rest];
 
   const waiting = [...d.strings.waiting_on_me, ...d.strings.waiting_on_them];
   const content = html`
@@ -60,7 +67,7 @@ export async function home(ctx) {
     <p class="tl-home-hero__name" id="home-name" aria-hidden="true">${th.name}</p>
     <p class="tl-home-hero__meta">Joined ${dateText(th.created_at, th.timezone)} · Number <span class="tl-num">${th.number}</span></p>
   </header>
-  ${alerts.length ? html`<div class="tl-stack">${alerts}</div>` : ""}
+  ${topNotices.length ? html`<div class="tl-stack">${topNotices}</div>` : ""}
   ${toned ? html`<div class="tl-grid tl-grid--2">${toned}${today}</div>` : today}
   <section class="tl-card" aria-label="This week"><div class="tl-stats">
     <div class="tl-stat"><span class="tl-stat__label">Calls</span><span class="tl-stat__value">${w.calls}</span><span class="tl-stat__note">This week</span></div>
@@ -68,7 +75,6 @@ export async function home(ctx) {
     <div class="tl-stat"><span class="tl-stat__label">Strings</span><span class="tl-stat__value">${d.strings.live}</span><span class="tl-stat__note">${waiting.length ? `${waiting.length} waiting` : "All set"}</span></div>
   </div></section>
   ${waiting.length ? html`<section class="tl-stack"><h2 class="title-lg">Waiting on families</h2>${waiting.map((s) => approvalCard(s, parent))}</section>` : ""}
-  ${setupCards}
   ${treehouseSections(ctx, d.handsets, grown_ups)}
   ${homeSettings(ctx, push)}
   ${alert({ tone: "info", title: "Treeline can't call 911", body: NO_911 })}`;
