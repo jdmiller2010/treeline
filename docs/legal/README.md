@@ -35,7 +35,7 @@ Search for `TODO(Jordan)` in these files.
 * **Data fields.** Google sign-in asks only for `openid email`. A grown-up's name is optional and typed in at setup. Per phone: name, kind, a generated SIP account (md5 digest only), online and last check-in. The phone book is built from strings and isn't stored.
 * **What other treehouses can see.** `string_json`, `call_json` and `describe_call` in `controller/treeline/api.py`.
 * **Log retention.** journald is memory-only with a 64 MB cap (`deploy/native/systemd/journald-treeline.conf`), Caddy has no access log, and the Asterisk log rotates weekly with 4 kept (about five weeks). There's no fixed day count. For one, add `MaxRetentionSec=` to the journald config.
-* **Leaving and deleting.** Home → "Leave the Treeline" or "Delete everything" (`/api/treehouse/leave`, `DELETE /api/treehouse`).
+* **Leaving and deleting.** Settings → "Leave the Treeline" or "Delete everything" (`/api/treehouse/leave`, `DELETE /api/treehouse`).
 * **Providers.** AWS (Oregon), Amazon SES, Google sign-in, the browsers' push services, GitHub.
 
 Recheck these whenever the code they describe changes.

@@ -160,7 +160,7 @@ Whatever state or country you live in, you can:
 
 * **See** your treehouse's information and call history in the parent app, or ask us for a copy.
 * **Correct** your information in the app, or ask us to correct it.
-* **Delete** your call history (by shortening how long it's kept) or your whole treehouse (Home, then **Delete everything**).
+* **Delete** your call history (by shortening how long it's kept) or your whole treehouse (Settings, then **Delete everything**).
 * **Stop collection** by signing phones out, turning off strings, or leaving Treeline. If you ask us to stop collecting information about your household, your treehouse will be deleted, because Treeline can't connect calls without it.
 * **Ask questions** or **complain** to us, or to your state attorney general or the Federal Trade Commission.
 

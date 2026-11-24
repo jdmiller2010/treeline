@@ -1,4 +1,4 @@
-// The profile, the settings drawn on Home, privacy and safety, about, the action log, and the two "arrive by link" screens.
+// The profile, the Settings page, privacy and safety, about, the action log, and the two "arrive by link" screens.
 import { api, apiUrl, del, get, patch, post, token } from "/shared/api.js";
 import { alert, button, card, emptyState, html, icon, raw, selectField, tag, textField, toast, CONTACT, NO_911, SUPPORT_URL, TAGLINE } from "/shared/ui.js";
 import { time12, when } from "/shared/format.js";
