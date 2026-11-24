@@ -250,5 +250,5 @@ export async function phonebook(ctx) {
   </section>
   <p class="caption" style="color:var(--ink-muted)">${NO_911}</p>
   <div class="tl-actions tl-noprint">${button({ label: "Print", variant: "primary", attrs: "data-print" })}</div>`;
-  return { title: "Phone book", nav: "phonebook", content, mount(root) { root.querySelector("[data-print]")?.addEventListener("click", () => window.print()); } };
+  return { title: "Phone book", nav: "home", back: "#/home", content, mount(root) { root.querySelector("[data-print]")?.addEventListener("click", () => window.print()); } };
 }

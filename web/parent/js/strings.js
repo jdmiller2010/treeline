@@ -32,11 +32,11 @@ async function ownCode() {
  * redeems the code shown here while the sheet is open.
  */
 export function stringConnect(ctx, code = "") {
-  const inviteText = (c) => `Join me on Treeline so our kids can call each other. Open Treeline, go to Strings, and enter this string code: ${c}\n${linkFor(c)}`;
+  const inviteText = (c) => `Join me on Treeline so our kids can call each other. Open this link, or open Treeline and enter this string code: ${c}\n${linkFor(c)}\nNew to Treeline? The same code is your invite: sign in, enter it, and set up your treehouse.`;
   let current = null;
   return formDialog({
     title: "New string connection",
-    intro: "Show this to a parent in the other family. They scan it with their phone's camera, or type your code into Treeline.",
+    intro: "Show this to a parent in the other family. They scan it with their phone's camera, or type your code into Treeline. New to Treeline? It's their invite too: they sign in, enter the code, set up their treehouse, and you approve the string.",
     autofocus: false, submit: "Connect", cancel: "Done",
     body: html`<div class="tl-connect tl-stack tl-stack--group">
       <div data-qr class="tl-connect__qr" aria-live="polite"><div class="tl-qr tl-qr--wait" aria-hidden="true"></div></div>

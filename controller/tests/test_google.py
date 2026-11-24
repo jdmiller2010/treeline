@@ -331,3 +331,144 @@ class Flow(Base):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class StringCodeIsABetaPass(Base):
+    """A family's string code lets one new person into the closed beta, and their treehouse is strung to that family when it's made."""
+
+    def setUp(self):
+        super().setUp()
+        from tests.test_api import make_house
+        self.inviter = make_house("Inviter house")
+        api._hits.clear()
+        self.code = self.inviter.post("/api/ladder-codes").get_json()["code"]
+        api._hits.clear()
+
+    def signed_in(self, code=None, **claims):
+        """A new person back from Google who gets past the beta screen with `code`: their bearer headers and email."""
+        word = self.pending(**claims)
+        email = self.c.post("/api/auth/pending", json={"pending": word}).get_json()["email"]
+        r = self.beta(word, code or self.code)
+        self.assertEqual(r.status_code, 200, r.data)
+        return {"Authorization": "Bearer " + r.get_json()["token"]}, email
+
+    def setup(self, headers, **extra):
+        return self.c.post("/api/treehouse", headers=headers,
+                           json={"name": "Newcomer house", "ack_911": True, "consent": True, **extra})
+
+    def row(self):
+        return db.local_conn().execute("SELECT * FROM ladder_code WHERE code=?", (self.code.replace("-", ""),)).fetchone()
+
+    def test_the_string_code_lets_them_in_and_setup_sends_the_string_request(self):
+        headers, email = self.signed_in(self.code.lower().replace("-", ""))
+        self.assertEqual(self.row()["claimed_by"], email)
+        self.assertIsNone(self.row()["used_at"], "claimed, not used: it is used when the string request goes")
+        r = self.setup(headers)
+        self.assertEqual(r.status_code, 201, r.data)
+        made = r.get_json()["string"]
+        self.assertEqual((made["state"], made["other"]["name"], made["mine_approved"], made["theirs_approved"]),
+                         ("waiting", "Inviter house", True, False))          # the inviting family still approves
+        self.assertTrue(self.row()["used_at"])
+        self.assertEqual((self.row()["claimed_by"], self.row()["claimed_at"]), (None, None), "used: the newcomer's address is not kept on it")
+        theirs = self.inviter.get("/api/home").get_json()
+        self.assertIn("Newcomer house would like to string with you", [n["title"] for n in theirs["notices"]])
+
+    def test_a_claimed_code_is_nobody_elses_pass_or_string_but_the_same_person_can_sign_in_again(self):
+        headers, email = self.signed_in()
+        api._hits.clear()
+        other = self.beta(self.pending(), self.code)
+        self.assertEqual((other.status_code, other.get_json()["code"]), (400, "bad_beta_code"))
+        api._hits.clear()
+        word = self.pending(email=email)                                   # the same person, back after their session lapsed
+        self.assertEqual(self.beta(word, self.code).status_code, 200)
+        from tests.test_api import make_house
+        family = make_house("Someone else")
+        r = family.post("/api/strings/redeem", {"code": self.code})
+        self.assertEqual((r.status_code, r.get_json()["code"]), (400, "bad_ladder"), "an existing family can't take a claimed code")
+
+    def test_used_expired_and_paused_family_codes_read_like_a_wrong_code(self):
+        c = db.local_conn()
+        outcomes = []
+        for change in ("UPDATE ladder_code SET used_at='2026-01-01T00:00:00+00:00' WHERE code=?",
+                       "UPDATE ladder_code SET expires_at='2020-01-01T00:00:00+00:00' WHERE code=?",
+                       None):
+            api._hits.clear()
+            code = self.inviter.post("/api/ladder-codes").get_json()["code"]
+            if change:
+                c.execute(change, (code.replace("-", ""),))
+            else:
+                c.execute("UPDATE treehouse SET archived_at=? WHERE id=?", (db.iso(), self.inviter.house["id"]))
+            api._hits.clear()
+            r = self.beta(self.pending(), code)
+            outcomes.append((r.status_code, r.get_json()["code"], r.get_json()["error"]))
+        c.execute("UPDATE treehouse SET archived_at=NULL WHERE id=?", (self.inviter.house["id"],))
+        api._hits.clear()
+        wrong = self.beta(self.pending(), "AAAA-AAAA")
+        self.assertEqual(set(outcomes), {(400, "bad_beta_code", wrong.get_json()["error"])})
+
+    def test_the_real_beta_code_still_works_and_a_scanned_code_can_come_with_setup(self):
+        headers, _ = self.signed_in(CODE)
+        self.assertIsNone(self.row()["claimed_by"])
+        r = self.setup(headers, string_code=self.code)                     # scanned before signing in: the page kept it
+        self.assertEqual(r.get_json()["string"]["other"]["name"], "Inviter house")
+
+    def test_other_codes_they_claimed_are_let_go_once_their_treehouse_is_made(self):
+        """Security review note: a second claimed code kept the newcomer's address, and stayed unusable, for up to 7 days."""
+        api._hits.clear()
+        other = self.inviter.post("/api/ladder-codes").get_json()["code"]
+        headers, email = self.signed_in()
+        api._hits.clear()
+        word = self.pending(email=email)
+        r = self.beta(word, other)                                              # the same person claims a second code too
+        self.assertEqual(r.status_code, 200)
+        headers = {"Authorization": "Bearer " + r.get_json()["token"]}           # (signing in again starts their session over)
+        self.assertEqual(self.setup(headers).status_code, 201)
+        rows = [db.local_conn().execute("SELECT * FROM ladder_code WHERE code=?", (c.replace("-", ""),)).fetchone() for c in (self.code, other)]
+        self.assertEqual(sorted(bool(r["used_at"]) for r in rows), [False, True], "one of the two is used for the string")
+        self.assertEqual([(r["claimed_by"], r["claimed_at"]) for r in rows], [(None, None)] * 2, "and neither keeps their address")
+
+    def test_setup_still_makes_the_treehouse_when_the_string_cant_be_made(self):
+        headers, _ = self.signed_in()
+        db.local_conn().execute("UPDATE treehouse SET archived_at=? WHERE id=?", (db.iso(), self.inviter.house["id"]))
+        try:
+            r = self.setup(headers)
+        finally:
+            db.local_conn().execute("UPDATE treehouse SET archived_at=NULL WHERE id=?", (self.inviter.house["id"],))
+        self.assertEqual(r.status_code, 201)
+        self.assertTrue(r.get_json()["treehouse"]["number"])
+        self.assertNotIn("string", r.get_json())
+        self.assertIn("didn't work", r.get_json()["string_error"])
+
+
+    def test_a_claim_by_someone_who_never_made_a_treehouse_is_forgotten_after_a_day(self):
+        import datetime as dt
+        from treeline import jobs
+        self.signed_in()
+        jobs.forget_unfinished_setups(db.local_conn(), db.utcnow() + dt.timedelta(hours=23))
+        self.assertIsNotNone(self.row()["claimed_by"], "within the day it stays theirs")
+        jobs.forget_unfinished_setups(db.local_conn(), db.utcnow() + dt.timedelta(hours=25))
+        self.assertEqual((self.row()["claimed_by"], self.row()["claimed_at"], self.row()["used_at"]), (None, None, None),
+                         "after a day: their address is gone and the code is free again")
+        api._hits.clear()
+        self.assertEqual(self.beta(self.pending(), self.code).status_code, 200, "so someone else can use it now")
+
+
+class LadderClaimMigration(unittest.TestCase):
+    """Rule 6 of DATA_LAYER.md for central step 4: a file at version 4, with a string code in it, moved forward."""
+
+    def test_step_4_adds_the_claim_and_keeps_the_codes(self):
+        import tempfile
+        path = os.path.join(tempfile.mkdtemp(prefix="treeline-claim-"), "t.db")
+        c = db.connect(path, migrations=db.MIGRATIONS[:3])                     # the release before step 4
+        self.assertEqual(c.execute("PRAGMA user_version").fetchone()[0], 4)
+        tid = db.create_treehouse(c, "Old house")
+        c.execute("INSERT INTO ladder_code(code,treehouse_id,expires_at) VALUES('ABCD2345',?,'2999-01-01T00:00:00+00:00')", (tid,))
+        c.close()
+        c = db.connect(path)
+        self.assertEqual(c.execute("PRAGMA user_version").fetchone()[0], len(db.MIGRATIONS) + 1)
+        row = c.execute("SELECT * FROM ladder_code").fetchone()
+        self.assertEqual((row["code"], row["treehouse_id"], row["claimed_by"], row["claimed_at"]), ("ABCD2345", tid, None, None))
+        c.close()
+        c = db.connect(path)                                                    # again: nothing to do
+        self.assertEqual(c.execute("PRAGMA user_version").fetchone()[0], len(db.MIGRATIONS) + 1)
+        c.close()

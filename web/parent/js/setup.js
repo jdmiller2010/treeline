@@ -1,8 +1,9 @@
 // First-run setup, two short steps: name your treehouse, then the 911 notice and consent. A first phone and a first string are
 // suggested on Home afterwards. Nothing is created until "Create my treehouse", so leaving before then leaves nothing behind.
 import { post } from "/shared/api.js";
-import { alert, button, checkRow, html, setBusy, steps, textField, NO_911, str } from "/shared/ui.js";
+import { alert, button, checkRow, html, setBusy, steps, textField, toast, NO_911, str } from "/shared/ui.js";
 import { policyLinks, privacyAccordion } from "./privacy-content.js";
+import { forgetInvite, pendingInvite } from "./invite.js";
 
 const NAMES = ["Your treehouse", "No 911"];
 
@@ -81,8 +82,16 @@ export async function setup(ctx) {
           e.preventDefault();
           setBusy(submit, true, "Creating");
           try {
-            ctx.me = await post("/api/treehouse", { name: state.name, your_name: state.yourName, timezone: deviceZone(), ack_911: true, consent: true });
-            ctx.go("#/home");
+            const invite = pendingInvite();
+            const made = await post("/api/treehouse", { name: state.name, your_name: state.yourName, timezone: deviceZone(), ack_911: true, consent: true,
+              ...(invite ? { string_code: invite } : {}) });
+            forgetInvite();
+            ctx.me = made;
+            // Came by a family's string code: the request to them went with setup (the server also remembers a code claimed at the
+            // beta screen). Say so, and show it where it lives.
+            if (made.string) toast(`Request sent to ${made.string.other.name}. Calls connect once they say yes.`, "success");
+            else if (made.string_error) toast(`Your treehouse is ready, but the string didn't go: ${made.string_error}`, "warning");
+            ctx.go(made.string ? "#/strings" : "#/home");
           } catch (err) { error(err.message); setBusy(submit, false); }
         });
       }

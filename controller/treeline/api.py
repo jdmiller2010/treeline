@@ -476,9 +476,15 @@ def auth_beta():
     # Per address only. A limit shared by everyone would let one stranger lock every invited family out for an hour.
     rate_limit(f"beta-ip:{client_ip()}", 10, 3600)
     data = body()
-    pending_signin(data.get("pending"))
+    waiting = pending_signin(data.get("pending"))
     if google.check_code(data.get("code")) != "ok":
-        raise ApiError("That code didn't work. Check it and try again.", 400, "bad_beta_code")
+        # A family's string code is also a way in: it is claimed for this Google address (so nobody else can use it as a pass),
+        # and the string request to that family is sent when this person's treehouse is made (treehouse_create).
+        row = live_ladder_code(data.get("code"), waiting["email"])
+        if not row or conn().execute("UPDATE ladder_code SET claimed_by=?, claimed_at=COALESCE(claimed_at, ?) "
+                                     "WHERE code=? AND (claimed_by IS NULL OR claimed_by=?)",
+                                     (waiting["email"], db.iso(), row["code"], waiting["email"])).rowcount != 1:
+            raise ApiError("That code didn't work. Check it and try again.", 400, "bad_beta_code")
     who = google.take("pending", data.get("pending"))
     if not who:
         raise ApiError("That sign-in took too long. Please sign in again.", 400, "expired_signin")
@@ -706,7 +712,20 @@ def treehouse_create():
     households.log_action(tid, g.email, "treehouse_created", name)
     g.gu = conn().execute("SELECT * FROM grown_up WHERE email=?", (g.email,)).fetchone()
     g.th = db.get_treehouse(conn(), tid)
-    return jsonify(me_json()), 201
+    # Came by a family's string code (scanned before signing in, or claimed at the beta screen): send that string request now.
+    # Best effort: the treehouse is made either way, and the page says what happened.
+    out = me_json()
+    claimed = conn().execute("SELECT code FROM ladder_code WHERE claimed_by=? AND used_at IS NULL ORDER BY claimed_at DESC",
+                             (g.email,)).fetchone()
+    code = data.get("string_code") or (claimed["code"] if claimed else None)
+    if code:
+        try:
+            out["string"] = string_json(request_string(g.th, g.gu["id"], g.email, code), tid)
+        except ApiError as err:
+            out["string_error"] = err.message
+    # Any other code this person claimed is let go: their address isn't kept on another family's code, and that code is free again.
+    conn().execute("UPDATE ladder_code SET claimed_by=NULL, claimed_at=NULL WHERE claimed_by=? AND used_at IS NULL", (g.email,))
+    return jsonify(out), 201
 
 
 RULE_FIELDS = ("name", "timezone", "quiet", "paused", "max_call_minutes", "daily_minutes",
@@ -956,35 +975,51 @@ def ladder_delete(code):
     return jsonify(ok=True)
 
 
-@app.post("/api/strings/redeem")
-@auth(parent=True)
-def string_redeem():
-    rate_limit(f"redeem:{g.email}", 10, 3600)
-    code = str(body().get("code", "")).replace("-", "").replace(" ", "").upper()
+BAD_LADDER = "That string code didn't work. It may have been used or expired. Ask for a new one."
+
+
+def live_ladder_code(code, email=None):
+    """The string code's row if it can still be used by `email`: known, unused, unexpired, its family active (not left, deleted or
+    paused by Treeline), and not claimed by someone else as their way into the beta. Otherwise None, and every reason reads the same."""
+    code = str(code or "").replace("-", "").replace(" ", "").upper()
+    if not re.fullmatch(r"[A-Z0-9]{8}", code):
+        return None
     row = conn().execute("SELECT * FROM ladder_code WHERE code=?", (code,)).fetchone()
-    if not row or row["used_at"] or row["expires_at"] < db.iso():
-        raise ApiError("That string code didn't work. It may have been used or expired. "
-                       "Ask for a new one.", 400, "bad_ladder")
-    them = db.get_treehouse(conn(), row["treehouse_id"])
-    me = g.th
-    if them is None or them["id"] == me["id"]:
+    if not row or row["used_at"] or row["expires_at"] < db.iso() or db.get_treehouse(conn(), row["treehouse_id"]) is None:
+        return None
+    if row["claimed_by"] and row["claimed_by"] != str(email or "").lower():
+        return None
+    return row
+
+
+def request_string(me, gu_id, email, code):
+    """Ask the family whose string code this is to string with `me` (our side approved). Raises ApiError when it can't."""
+    row = live_ladder_code(code, email)
+    if not row or row["treehouse_id"] == me["id"]:
         # word for word the unknown-code answer: a paused family's code must not read differently (docs/ADMIN.md)
-        raise ApiError("That string code didn't work. It may have been used or expired. "
-                       "Ask for a new one.", 400, "bad_ladder")
+        raise ApiError(BAD_LADDER, 400, "bad_ladder")
+    them = db.get_treehouse(conn(), row["treehouse_id"])
     if db.get_string(conn(), me["id"], them["id"]):
         raise ApiError(f"You and {them['name']} already have a string.", 409)
     a, b = db.ordered(me["id"], them["id"])
     mine_col = "a_approved_by" if a == me["id"] else "b_approved_by"
     cur = conn().execute(
         f"INSERT INTO string(a_id,b_id,state,asked_by,{mine_col},created_at,updated_at) "
-        "VALUES(?,?,?,?,?,?,?)", (a, b, "waiting", g.gu["id"], g.gu["id"], db.iso(), db.iso()))
-    conn().execute("UPDATE ladder_code SET used_by=?, used_at=? WHERE code=?",
-                   (me["id"], db.iso(), code))
+        "VALUES(?,?,?,?,?,?,?)", (a, b, "waiting", gu_id, gu_id, db.iso(), db.iso()))
+    # Used: the claim (a newcomer's email, if it was their way in) has done its job and is not kept.
+    conn().execute("UPDATE ladder_code SET used_by=?, used_at=?, claimed_by=NULL, claimed_at=NULL WHERE code=?", (me["id"], db.iso(), row["code"]))
     households.add_notice(them["id"], "string_request", f"{me['name']} would like to string with you",
-                  "Open Strings to approve. Calls connect once both families say yes.")
-    audit("string_requested", them["name"])
-    return jsonify(string_json(conn().execute("SELECT * FROM string WHERE id=?",
-                                              (cur.lastrowid,)).fetchone(), me["id"])), 201
+                          "Open Strings to approve. Calls connect once both families say yes.")
+    households.log_action(me["id"], email, "string_requested", them["name"])
+    return conn().execute("SELECT * FROM string WHERE id=?", (cur.lastrowid,)).fetchone()
+
+
+@app.post("/api/strings/redeem")
+@auth(parent=True)
+def string_redeem():
+    rate_limit(f"redeem:{g.email}", 10, 3600)
+    s = request_string(g.th, g.gu["id"], g.email, body().get("code", ""))
+    return jsonify(string_json(s, g.th["id"])), 201
 
 
 def string_for(sid):

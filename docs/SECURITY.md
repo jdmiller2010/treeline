@@ -63,6 +63,31 @@ Everything not yet fixed, from every review. Move a row to its review's "Remedia
 | R8-2 | The development containers and the `controller unit tests` CI job install `controller/requirements.txt` unpinned, so tests can run on newer versions than the hash-pinned lock production installs | Informational | 2026-11-20 | Open |
 | R8-3 | `main` has no branch protection, and Dependabot alerts and security updates are off (GitHub settings, not repo files) | Low | 2026-11-20 | Open: the owner's checklist in [SUPPLY_CHAIN.md](SUPPLY_CHAIN.md) |
 
+## Review 18: 2026-11-23, a family's string code as a closed-beta pass (branch `settings-invite`; by the change's author, not independent, then read by the `/security-review` recorded in Review 17)
+
+**In plain words.** Until now only the one shared beta code (or being added by a parent) let a new Google account past the beta screen. Now a family's string code does too, so a parent can invite a new family with the same QR code they use to string. This changes who can create an account, so it is recorded here.
+
+**Scope.** `api.auth_beta`, `live_ladder_code`, `request_string`, `string_redeem` and `treehouse_create` in `controller/treeline/api.py`; central step 4 (`db.add_ladder_claim`: `ladder_code.claimed_by`, `claimed_at`); `jobs.forget_unfinished_setups`; `web/parent/js/invite.js`, `signin.js`, `setup.js`, `app.js`. Not reviewed: anything else on the branch (the Settings page and Home buttons, which change no access).
+
+**Method.** Read the code paths above against the existing beta rules (Review 4) and the paused-family rules (Review 16), and wrote tests for each property below. Not run on the real VM or with real Google.
+
+**Result.**
+- **R18-1 (accepted by the owner, Low).** Any parent can now let new people in: up to 5 at a time (a family has at most 5 unused codes), each code for one Google account, for 7 days. Families vouch for whoever they invite; every pass traces to the family that made the code. The owner chose this over showing the shared beta code to parents (which would work for anyone, without limit, until it expires).
+- **R18-2 (fixed, Low, privacy).** A claim keeps the newcomer's email on the code. As first written it was never removed, so the email of someone who never finished setup stayed in the central database, against the promise that an unfinished setup is forgotten after a day. Now the claim is cleared when the code is used, and claims older than a day by anyone without a treehouse are cleared by `forget_unfinished_setups`. Tests: `StringCodeIsABetaPass.test_the_string_code_lets_them_in_and_setup_sends_the_string_request` (cleared on use), `...test_a_claim_by_someone_who_never_made_a_treehouse_is_forgotten_after_a_day`.
+- **R18-3 (fixed, Low, privacy; a note below the `/security-review`'s bar).** A newcomer who claimed more than one family's code kept their address on the unused ones, which stayed unusable, for up to 7 days. Setup now lets go of every other claim of theirs. Test: `StringCodeIsABetaPass.test_other_codes_they_claimed_are_let_go_once_their_treehouse_is_made`.
+- **Dropped (harmless).** A claim written just before a pending sign-in expires outlives that sign-in until the daily job clears it.
+
+**Checked and clean.**
+- A string code that is wrong, used, expired, or from a family that left or is paused reads exactly like a wrong beta code (same status, code and words): `...test_used_expired_and_paused_family_codes_read_like_a_wrong_code`. The beta screen never names the family.
+- One claim per code, and a claimed code is nobody else's pass and can't be redeemed by an existing family; the same person can sign in again with it: `...test_a_claimed_code_is_nobody_elses_pass_or_string_but_the_same_person_can_sign_in_again`. The claim is one conditional `UPDATE` (no race between two newcomers).
+- Guessing: string codes are 8 characters from a 31-symbol alphabet, behind the beta screen's existing limit (10 tries an hour per address).
+- Nothing is saved until a code is accepted: the claim is written at the same moment as the session, as for the beta code.
+- Setup still makes the treehouse when the string can't be made (the inviter left or was paused) and says why: `...test_setup_still_makes_the_treehouse_when_the_string_cant_be_made`. The other family still approves every string.
+- Rule 6 test for central step 4: `LadderClaimMigration.test_step_4_adds_the_claim_and_keeps_the_codes`.
+
+
+**Remediation taken.** R18-2 and R18-3 fixed on this branch, with the tests above. `/security-review` (Review 17): no findings on this branch.
+
 ## Review 17: 2026-11-23, `/security-review` of the agreement records, the agreement gate and the legal pages (branch `legal-pages`; the same review also read branches `doodles` and `settings-invite`, see Review 18)
 
 **In plain words.** Every grown-up now agrees to the Terms, Privacy Policy and Acceptable Use Policy before using Treeline, and the server enforces it; the agreement is recorded in the family's own file; the policies are published as static pages built from `docs/legal/`. **No findings** at the review's bar (a confident, exploitable issue).

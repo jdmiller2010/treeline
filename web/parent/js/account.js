@@ -7,6 +7,7 @@ import { POLICIES, privacyAccordion } from "./privacy-content.js";
 import { disablePush, enablePush, pushState } from "./push.js";
 import { hasParentCode, newCodeFields, parentCodeDialog, saveNewCode } from "./parentcode.js";
 import { redeemCode, strings } from "./strings.js";
+import { forgetInvite } from "./invite.js";
 
 const ZONES = [["America/New_York", "Eastern"], ["America/Chicago", "Central"], ["America/Denver", "Mountain"], ["America/Phoenix", "Arizona"],
   ["America/Los_Angeles", "Pacific"], ["America/Anchorage", "Alaska"], ["Pacific/Honolulu", "Hawaii"]];
@@ -20,7 +21,7 @@ const PUSH_TEXT = {
   off: "Off for this device.",
 };
 
-/** The settings that live on Home: the treehouse's details, the parent code, notifications, records and leaving. */
+/** The Settings page's sections: the treehouse's details, the parent code, notifications, records and leaving. */
 export function homeSettings(ctx, push) {
   const th = ctx.me.treehouse, parent = ctx.isParent();
   const zones = ZONES.map(([v, l]) => [v, `${l} (${v.split("/")[1].replace("_", " ")})`]);
@@ -28,7 +29,7 @@ export function homeSettings(ctx, push) {
   const keep = KEEP.slice();
   if (!KEEP.some(([v]) => v === th.retention_days)) keep.push([th.retention_days, `${th.retention_days} days`]);
   return html`
-  <section class="tl-stack" aria-label="Settings"><h2 class="title-lg">Settings</h2>
+  <section class="tl-stack" aria-label="Settings">
   ${parent ? html`<form class="tl-card" id="house-form" aria-label="Treehouse details" novalidate><div class="tl-stack tl-stack--group">
     <h2 class="tl-card__title">Treehouse</h2>
     ${textField({ id: "set-name", label: "Name", value: th.name, hint: "Families you're strung with see this." })}
@@ -109,6 +110,12 @@ export function bindHomeSettings(root, ctx) {
 }
 
 /** The signed-in person: who they are here, and signing out. The one settings page left. */
+/** Settings: its own page in the nav (the treehouse's details, the parent code, notifications, records, and leaving). */
+export async function settingsPage(ctx) {
+  const push = await pushState().catch(() => "unsupported");
+  return { title: "Settings", nav: "settings", template: "settings", content: homeSettings(ctx, push), mount(root) { bindHomeSettings(root, ctx); } };
+}
+
 export async function profile(ctx) {
   const th = ctx.me.treehouse, me = ctx.me;
   const content = html`
@@ -242,6 +249,7 @@ export async function pairClaim(ctx, params) {
  * Connect. The request is sent right away, then the Strings page shows the new string.
  */
 export async function stringLink(ctx, params) {
+  forgetInvite();                         // this family already has a treehouse: the code is redeemed here, not kept for setup
   const v = await strings(ctx, []);
   const mount = v.mount;
   const code = params[0] || "";

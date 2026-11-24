@@ -240,7 +240,15 @@ def add_treehouse_archive(conn):
     conn.execute("ALTER TABLE treehouse ADD COLUMN archived_by TEXT")
 
 
-MIGRATIONS = [add_admin_tables, add_session_stepup, add_treehouse_archive]
+def add_ladder_claim(conn):
+    """Step 4 (version 4 to 5): a string code doubles as a closed-beta pass. Someone new who signs in with a family's string code
+    claims it for their Google address (claimed_by, claimed_at), so nobody else can use it as a pass, and when their treehouse is
+    made the string request to that family is sent for them. Expand only."""
+    conn.execute("ALTER TABLE ladder_code ADD COLUMN claimed_by TEXT")
+    conn.execute("ALTER TABLE ladder_code ADD COLUMN claimed_at TEXT")
+
+
+MIGRATIONS = [add_admin_tables, add_session_stepup, add_treehouse_archive, add_ladder_claim]
 
 
 class DatabaseRefused(RuntimeError):

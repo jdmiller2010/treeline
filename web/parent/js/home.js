@@ -3,8 +3,6 @@ import { get, patch } from "/shared/api.js";
 import { alert, art, button, emptyState, html, icon, join, presence, raw, toast, NO_911, nextId } from "/shared/ui.js";
 import { dateText, minutesText, plural, time12 } from "/shared/format.js";
 import { bindTreehouse, treehouseSections } from "./house.js";
-import { bindHomeSettings, homeSettings } from "./account.js";
-import { pushState } from "./push.js";
 import { approvalCard, bindStringActions, stringConnect } from "./strings.js";
 
 const NOTICE_TONE = { string_request: "info", string_live: "success", string_ended: "info", number_changed: "info",
@@ -29,7 +27,7 @@ function tonedCard(d, tz) {
 }
 
 export async function home(ctx) {
-  const [d, { grown_ups }, push] = await Promise.all([get("/api/home"), get("/api/grown-ups"), pushState().catch(() => "unsupported")]);
+  const [d, { grown_ups }] = await Promise.all([get("/api/home"), get("/api/grown-ups")]);
   ctx.me.treehouse = d.treehouse;
   ctx.badge = d.strings.waiting_on_me.length;
   const parent = ctx.isParent(), th = d.treehouse;
@@ -52,7 +50,7 @@ export async function home(ctx) {
       body: "They all ring together.",
       actions: button({ label: "Add a phone", size: "sm", icon: "plus", attrs: "data-add-phone" }) })
     : noStrings ? alert({ tone: "info", id: "next-step", title: "Next: string to a friend",
-      body: "Once both families say yes, kids can call.",
+      body: "A family new to Treeline can scan it too. Once both families say yes, kids can call.",
       actions: button({ label: "New string connection", size: "sm", icon: "string", attrs: "data-make-code" }) })
     : null;
   // A 911 attempt still goes first: it is the one thing a parent must not miss.
@@ -66,6 +64,10 @@ export async function home(ctx) {
     ${art("treehouse")}
     <p class="tl-home-hero__name" id="home-name" aria-hidden="true">${th.name}</p>
     <p class="tl-home-hero__meta">Joined ${dateText(th.created_at, th.timezone)} · Number <span class="tl-num">${th.number}</span></p>
+    <div class="tl-home-hero__actions">
+      ${parent ? button({ label: "New string connection", icon: "string", attrs: "data-make-code" }) : ""}
+      ${button({ label: "Phone book", icon: "book", attrs: 'data-href="#/phonebook"' })}
+    </div>
   </header>
   ${topNotices.length ? html`<div class="tl-stack">${topNotices}</div>` : ""}
   ${toned ? html`<div class="tl-grid tl-grid--2">${toned}${today}</div>` : today}
@@ -76,7 +78,6 @@ export async function home(ctx) {
   </div></section>
   ${waiting.length ? html`<section class="tl-stack"><h2 class="title-lg">Waiting on families</h2>${waiting.map((s) => approvalCard(s, parent))}</section>` : ""}
   ${treehouseSections(ctx, d.handsets, grown_ups)}
-  ${homeSettings(ctx, push)}
   ${alert({ tone: "info", title: "Treeline can't call 911", body: NO_911 })}`;
 
   return {
@@ -84,7 +85,6 @@ export async function home(ctx) {
     mount(root) {
       bindStringActions(root, ctx);
       bindTreehouse(root, ctx, () => ctx.render());
-      bindHomeSettings(root, ctx);
       // The name is shown big under the picture. Once that has scrolled up under the title bar, the bar's "Treeline" gives way to it.
       const bar = document.querySelector(".tl-appbar"), big = root.querySelector("#home-name");
       if (bar && big && "IntersectionObserver" in window) {
