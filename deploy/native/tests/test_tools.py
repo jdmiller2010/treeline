@@ -577,6 +577,10 @@ class VmTestKnowsTheRealSchema(unittest.TestCase):
         self.assertEqual(real, len(steps.value.elts) + 1)
         old = re.search(r'MIGRATE = \[\("controller/treeline/db.py", "([^"]+)"', vm).group(1)
         self.assertIn(old, dbsrc, "the text the VM test replaces must be in db.py")
+        hsrc = (root / "controller" / "treeline" / "households.py").read_text()
+        hsteps = next(n for n in ast.parse(hsrc).body if isinstance(n, ast.Assign) and getattr(n.targets[0], "id", "") == "HOUSEHOLD_MIGRATIONS")
+        self.assertEqual(int(re.search(r"^REAL_HOUSEHOLD = (\d+)", vm, re.M).group(1)), len(hsteps.value.elts) + 1,
+                         "the VM test's household version must follow households.HOUSEHOLD_MIGRATIONS too")
 
 
 if __name__ == "__main__":
