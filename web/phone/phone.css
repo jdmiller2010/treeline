@@ -36,6 +36,8 @@
 
 .ph__phone { --ph-w: min(118vw, 700px, 72vh); position: relative; width: var(--ph-w); margin-top: calc(var(--ph-w) * -.2); }
 .ph__phone .tl-rotary { max-width: none; }
+/* The design system's Hint, above the handset with its tail pointing down at it: four digits dialed with the handset down. */
+.ph__hint { position: absolute; left: 50%; top: calc(var(--ph-w) * .16); transform: translateX(-50%); z-index: 3; max-width: min(320px, 90vw); }   /* top: set from the handset when shown */
 .ph__glow { position: absolute; left: 8%; right: 8%; bottom: 4%; height: 12%; border-radius: 50%; background: radial-gradient(ellipse at center, var(--wash-sun) 0%, transparent 70%); pointer-events: none; }
 
 .ph__foot { padding-top: var(--space-2); }
