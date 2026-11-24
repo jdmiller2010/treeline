@@ -346,6 +346,29 @@ def main():
         tablet.keyboard.press("Tab"); tablet.focus(".tl-rotary__svg"); tablet.keyboard.press("3")
         tablet.wait_for_timeout(1500)
         check(tablet.evaluate("document.body.dataset.digits") == "705", "dialing with the handset down adds nothing")
+        # ... but a whole number dialed that way brings up a hint over the handset, and tapping it lifts the handset.
+        hint = tablet.locator("#lift-hint")
+        check(hint.is_hidden(), "one digit with the handset down shows no hint yet")
+        for d in "42":
+            tablet.keyboard.press(d); tablet.wait_for_timeout(1300)
+        check(hint.is_hidden(), "nor do three")
+        tablet.keyboard.press("1"); tablet.wait_for_timeout(1300)
+        check(hint.is_visible() and "Pick up the handset first, then dial" in hint.inner_text() and "tl-hint" in (hint.get_attribute("class") or ""),
+              "four digits with the handset down show the hint over the handset")
+        tablet.screenshot(path=f"{SHOTS}/phone-lift-hint.png", full_page=True)
+        hint.click()
+        tablet.wait_for_timeout(500)
+        check(tablet.get_attribute(".tl-rotary", "data-hook") == "off" and tablet.evaluate("() => __phone.S.hook") == "off" and hint.is_hidden(),
+              "tapping the hint lifts the handset, and the hint goes away")
+        tablet.evaluate("() => __phone.rotary().hangUp()"); tablet.wait_for_timeout(500)
+        tablet.evaluate("() => { __phone.S.phase = 'idle'; __phone.render(); }")
+        for d in "4211":
+            tablet.keyboard.press(d); tablet.wait_for_timeout(1300)
+        check(hint.is_visible(), "the hint comes back the next time")
+        tablet.evaluate("() => __phone.rotary().lift()"); tablet.wait_for_timeout(500)
+        check(hint.is_hidden(), "and lifting the handset by hand puts it away too")
+        tablet.evaluate("() => __phone.rotary().hangUp()"); tablet.wait_for_timeout(500)
+        tablet.evaluate("() => { __phone.S.phase = 'idle'; __phone.render(); }")
 
         # ---- the debug hook never exposes the SIP secret
         check(tablet.evaluate("() => window.__phone.S.creds === undefined"), "the test hook can't read the SIP secret")

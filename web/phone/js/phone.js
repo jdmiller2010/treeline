@@ -80,7 +80,8 @@ function draw() {
       </div>
     </section>
     <section class="ph__stage" aria-label="The phone">
-      <div class="ph__phone"><div class="ph__glow" aria-hidden="true"></div>${raw(ROTARY)}</div>
+      <div class="ph__phone"><div class="ph__glow" aria-hidden="true"></div>${raw(ROTARY)}
+        <button type="button" class="tl-hint tl-hint--down ph__hint" id="lift-hint" hidden>${icon("phone", 20)}<span class="tl-hint__text">Pick up the handset first, then dial</span></button></div>
     </section>
     <div class="ph__cards">${raw(CARDFILE)}</div>
     <div class="ph__notice"></div>
@@ -155,7 +156,9 @@ ${sheet({ id: "leave", title: "For parents", body: html`
     const m = /rotate\(([-\d.]+)/.exec(ui.el.querySelector(".tlp-wheel").getAttribute("transform") || "");
     if (m) tones.dialAngle(Number(m[1]), ui.el.classList.contains("is-dialing"));
   }).observe(el.querySelector(".tlp-wheel"), { attributes: true, attributeFilter: ["transform"] });
-  el.addEventListener("tl-rotary-digit", (e) => { if (e.detail.offHook) onDigit(e.detail.digit); });
+  el.addEventListener("tl-rotary-digit", (e) => { if (e.detail.offHook) onDigit(e.detail.digit); else onHookDigit(); });
+  ui.hint = root.querySelector("#lift-hint");
+  ui.hint.addEventListener("click", () => { hideHint(); if (!ui.api.isOffHook()) ui.api.lift(); });   // lifting goes through tl-rotary-hook, like a tap
   document.addEventListener("keydown", (e) => {
     // The phone dials number keys itself when it has focus; this is for when it doesn't (and the guide isn't open).
     if (e.target.closest?.(".tl-rotary__svg") || !ui.guide.hidden) return;
@@ -350,6 +353,7 @@ function goodbye(where) {
 
 async function lift() {
   S.hook = "off"; S.digits = "";
+  hideHint();
   tones.stop();
   if (S.incoming) { answer(); return; }
   // Use what we knew, then check: the line may have changed since we last asked.
@@ -399,6 +403,32 @@ function hangUp() {
 }
 
 // ------------------------------------------------------------------ dialing
+
+// A whole number dialed with the handset down does nothing on a real phone; here a hint above the handset says what to do, and
+// tapping it lifts the handset. Digits count toward it only while they come close together, as one number would.
+function onHookDigit() {
+  if (S.hook !== "on" || S.phase === "ringing") return;
+  S.onHookDigits = (S.onHookDigits || 0) + 1;
+  later("onHook", INTERDIGIT, () => { S.onHookDigits = 0; });
+  if (S.onHookDigits >= 4) { S.onHookDigits = 0; cancel("onHook"); showHint(); }
+}
+function showHint() {
+  if (!ui || !ui.hint) return;
+  ui.hint.hidden = false;
+  // The phone sits differently on a phone and on a wide screen: put the tail just above the handset, wherever it is drawn.
+  const hand = ui.el.querySelector(".tlp-handset"), box = ui.hint.parentElement;
+  if (hand && box) {
+    const top = hand.getBoundingClientRect().top - box.getBoundingClientRect().top - ui.hint.offsetHeight - 12;
+    ui.hint.style.top = `${Math.round(top)}px`;
+  }
+  ui.reg.textContent = "Pick up the handset first, then dial.";          // the live status line, for screen readers
+  later("hint", 10000, hideHint);
+}
+function hideHint() {
+  cancel("hint");
+  S.onHookDigits = 0;
+  if (ui && ui.hint && !ui.hint.hidden) { ui.hint.hidden = true; showLine(); }
+}
 
 function onDigit(d) {
   if (S.hook !== "off") return;

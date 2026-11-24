@@ -1100,6 +1100,20 @@ body {
 .tl-brandline .tl-tagline { font-size: 13px; line-height: 18px; margin: -2px 0 0 48px; }
 /* <<< Footer */
 
+/* >>> Hint: a small speech bubble pointing at what to do next; tapping it does that thing (components/Hint.md). */
+.tl-hint { position: relative; display: inline-flex; align-items: center; gap: var(--space-2); min-height: 44px; padding: var(--space-2) var(--space-4);
+  background: var(--surface); color: var(--ink); border: var(--border-hair) solid var(--card-edge); border-radius: var(--radius-lg); box-shadow: var(--shadow-md);
+  font: 600 15px/20px var(--font-sans); text-align: left; cursor: pointer; animation: tl-hint-in 200ms ease-out; }
+.tl-hint[hidden] { display: none; }
+.tl-hint .tl-icon { flex: none; }
+.tl-hint::after { content: ""; position: absolute; left: 50%; width: 12px; height: 12px; background: var(--surface); transform: translateX(-50%) rotate(45deg); }
+.tl-hint--down::after, .tl-hint:not(.tl-hint--up)::after { bottom: -7px; border-right: var(--border-hair) solid var(--card-edge); border-bottom: var(--border-hair) solid var(--card-edge); }
+.tl-hint--up::after { top: -7px; bottom: auto; border-left: var(--border-hair) solid var(--card-edge); border-top: var(--border-hair) solid var(--card-edge); border-right: 0; border-bottom: 0; }
+.tl-hint:focus-visible { outline: var(--border-focus) solid var(--focus); outline-offset: 2px; }
+@keyframes tl-hint-in { from { opacity: 0; translate: 0 6px; } }
+@media (prefers-reduced-motion: reduce) { .tl-hint { animation: none; } }
+/* <<< Hint */
+
 /* LogView: machine text shown as it is (the Treeline Admin page's logs). Monospace, long lines wrap, scrolls inside itself (never
    the page sideways), selectable. A quiet sunk panel, not a card: the card around it carries the title and the controls. */
 .tl-logview { margin: 0; box-sizing: border-box; width: 100%; min-width: 0; max-height: min(70vh, 640px); overflow: auto; padding: var(--space-4);
