@@ -117,7 +117,7 @@ The full rules, with tables for spacing, insets, sizing, alignment, responsive b
 
 ## App layout and screen sizes
 
-Every parent screen sits in one shell (`AppShell`): bottom tabs on phones, an icon rail on tablets, a labeled sidebar on desktop, always the same five places (Home, Strings, Calls, Phone book, Quiet hours). The shell follows the **window size** (compact under 768, medium 768–1023, expanded 1024+). Everything inside the page follows its **content size**, the room it actually has (narrow under 600, regular 600–959, wide 960+), so a card grid beside a sidebar behaves like it does on a tablet. Every screen is one of four templates: Overview, List and detail, Settings form, or Focused task (a bottom sheet on phones, a dialog on desktop). The section on spacing, sizing and alignment has the full rules and a phone-versus-desktop table for every component.
+Every parent screen sits in one shell (`AppShell`): bottom tabs on phones, an icon rail on tablets, a labeled sidebar on desktop, always the same five places (Home, Strings, Calls, Quiet hours, Settings). The shell follows the **window size** (compact under 768, medium 768–1023, expanded 1024+). Everything inside the page follows its **content size**, the room it actually has (narrow under 600, regular 600–959, wide 960+), so a card grid beside a sidebar behaves like it does on a tablet. Every screen is one of four templates: Overview, List and detail, Settings form, or Focused task (a bottom sheet on phones, a dialog on desktop). The section on spacing, sizing and alignment has the full rules and a phone-versus-desktop table for every component.
 
 ## Shape
 

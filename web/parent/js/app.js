@@ -12,7 +12,8 @@ import { strings } from "./strings.js";
 import { calls } from "./calls.js";
 import { quiet } from "./quiet.js";
 import { phonebook } from "./house.js";
-import { profile, privacy, about, actionLog, pairClaim, stringLink } from "./account.js";
+import { profile, privacy, about, actionLog, pairClaim, settingsPage, stringLink } from "./account.js";
+import { rememberInvite } from "./invite.js";
 import { carryOverPush, forgetPushQuietly } from "./push.js";
 import { admin } from "./admin.js";
 
@@ -35,13 +36,13 @@ const NAV = [
   ["home", "#/home", "Home", "home"],
   ["strings", "#/strings", "Strings", "users"],
   ["calls", "#/calls", "Calls", "phone"],
-  ["phonebook", "#/phonebook", "Phone book", "book"],
   ["quiet", "#/quiet", "Quiet hours", "clock"],
+  ["settings", "#/settings", "Settings", "settings"],
 ];
 
 const ROUTES = {
   home, strings, calls, quiet, phonebook, profile, privacy, about, actions: actionLog,
-  settings: async () => ({ redirect: "#/home" }),       // (Settings is part of Home now; old links still land somewhere)
+  settings: settingsPage,
   pair: pairClaim, string: stringLink, ladder: stringLink, admin,   // (#/ladder/ is kept so links already sent still work)
 };
 
@@ -147,6 +148,9 @@ async function render() {
   if (lockedToPhone()) { location.replace("/phone/"); return; }      // a phone can't use the dashboard, in any tab, until a parent code is entered on it
   const mine = ++renderToken;
   const { name, params } = parseHash();
+  // A family's string code opened before this person has a treehouse (or is even signed in): keep it, so the beta screen can take
+  // it as their invite and setup can send the string request. A family that already has a treehouse redeems it at once (stringLink).
+  if ((name === "string" || name === "ladder") && params[0]) rememberInvite(params[0]);
   document.body.className = "tl-root";
   try {
     if (!token.get()) {

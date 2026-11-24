@@ -1,6 +1,7 @@
 // The front door: what Treeline is (three small pictures), Sign in with Google, and setting a device up as a phone.
 // A new person signs in with Google first and is then asked for the beta code; nothing about them is saved until it is accepted.
 import { api, get, post, token } from "/shared/api.js";
+import { pendingInvite } from "./invite.js";
 import { alert, art, button, codeInput, codeValue, googleButton, html, raw, setBusy, str, tag, textField, welcome, NO_911 } from "/shared/ui.js";
 import { formDialog } from "./dialogs.js";
 import { savePhone } from "/phone/js/pair.js";
@@ -138,15 +139,18 @@ export async function signIn(ctx) {
 
 /** The beta access challenge: signed in with Google, not yet let in. A wrong code turns the box red and the sign-in keeps waiting. */
 function betaChallenge(ctx, pending, email) {
+  const invite = pendingInvite();          // a family's string code this person opened before signing in: it is also a way in
   const content = html`
   <div class="tl-stack tl-stack--related">${logo}</div>
   <section class="tl-stack">
     <h1 class="display-md">Enter your invite code</h1>
-    <p class="body tl-measure" style="color:var(--ink-muted)">From whoever invited you.</p>
+    <p class="body tl-measure" style="color:var(--ink-muted)">${invite
+      ? "You came with a family's string code, and that works as your invite. Continue, set up your treehouse, and that family will be asked to string with you."
+      : "From whoever invited you. A family's string code works too: you'll be asked to string with them once your treehouse is set up."}</p>
   </section>
   <section class="tl-card"><form class="tl-stack tl-stack--group" id="beta-form" novalidate>
     <p class="caption" data-signed-in-as>Signed in as <strong>${email}</strong> · <a class="tl-footer__link" href="#/signin" data-other-account>Use a different account</a></p>
-    <div data-field>${textField({ id: "beta", label: "Invite code", placeholder: "ABCD-2345", autocomplete: "off" })}</div>
+    <div data-field>${textField({ id: "beta", label: "Invite code", placeholder: "ABCD-2345", autocomplete: "off", value: invite })}</div>
     <div class="tl-actions">${button({ label: "Continue", variant: "primary", type: "submit" })}</div>
   </form></section>
   <p class="caption" style="color:var(--ink-muted)">${NO_911}</p>`;

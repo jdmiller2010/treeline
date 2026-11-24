@@ -48,7 +48,7 @@ By signing in to Treeline, you agree to these terms, our [Privacy Policy](privac
 
 ## Ending your account
 
-1. You can leave Treeline at any time from the parent app's Home page. A parent can choose either:
+1. You can leave Treeline at any time from the parent app's Settings page. A parent can choose either:
    * **Leave the Treeline:** your strings end, the families you were strung with are told, and your phones stop working. Your call records are kept until your call-history setting runs out, then erased.
    * **Delete everything:** the same, and your treehouse, phones, strings, and call records are erased at once.
 

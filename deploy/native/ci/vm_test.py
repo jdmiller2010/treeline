@@ -959,9 +959,9 @@ class E_Production(VmTestCase):
 
 
 # The real list (the admin tables, the step-up columns, the archive columns) and a probe step on top of it.
-MIGRATE = [("controller/treeline/db.py", "MIGRATIONS = [add_admin_tables, add_session_stepup, add_treehouse_archive]",
-            'MIGRATIONS = [add_admin_tables, add_session_stepup, add_treehouse_archive, lambda conn: conn.execute("CREATE TABLE ci_probe(x)")]')]
-REAL_CENTRAL = 4                                    # the central version a fresh machine is at with this code
+MIGRATE = [("controller/treeline/db.py", "MIGRATIONS = [add_admin_tables, add_session_stepup, add_treehouse_archive, add_ladder_claim]",
+            'MIGRATIONS = [add_admin_tables, add_session_stepup, add_treehouse_archive, add_ladder_claim, lambda conn: conn.execute("CREATE TABLE ci_probe(x)")]')]
+REAL_CENTRAL = 5                                    # the central version a fresh machine is at with this code
 REAL_HOUSEHOLD = 2                                  # and the household version (the baseline plus step 1, agreement)
 UNHEALTHY = [("controller/treeline/api.py", "ok = asterisk and behind == 0", "ok = False")]
 SCHEMA2 = {"central": REAL_CENTRAL + 1, "household": REAL_HOUSEHOLD}      # the real central version plus the probe step

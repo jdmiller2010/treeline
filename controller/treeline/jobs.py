@@ -152,6 +152,11 @@ def forget_unfinished_setups(conn, now=None):
                  "AND email NOT IN (SELECT g.email FROM grown_up g JOIN treehouse t ON t.id=g.treehouse_id WHERE t.left_at IS NULL) "
                  "AND email NOT IN (SELECT email FROM app_admin WHERE removed_at IS NULL)",
                  (db.iso(now - dt.timedelta(hours=UNFINISHED_HOURS)),))
+    # The same for a family's string code claimed at the beta screen by someone who never made their treehouse: their address
+    # goes, and the code is free again for whoever the family gives it to.
+    conn.execute("UPDATE ladder_code SET claimed_by=NULL, claimed_at=NULL WHERE claimed_at IS NOT NULL AND claimed_at < ? AND used_at IS NULL "
+                 "AND claimed_by NOT IN (SELECT g.email FROM grown_up g JOIN treehouse t ON t.id=g.treehouse_id WHERE t.left_at IS NULL)",
+                 (db.iso(now - dt.timedelta(hours=UNFINISHED_HOURS)),))
 
 
 def purge(conn, now=None):
