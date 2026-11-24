@@ -4,7 +4,7 @@
 // plain no-911 line, a "How to dial" sheet with the guide's pictures, and the footer.
 import { api, token } from "/shared/api.js";
 import { CARDFILE, ROTARY } from "/shared/assets.js";
-import { alert, brandLine, button, footer, html, icon, presence, raw, setBusy, sheet, steps, str, tag, textField } from "/shared/ui.js";
+import { alert, brandLine, button, footer, html, icon, presence, raw, selectField, setBusy, sheet, steps, str, tag, textField } from "/shared/ui.js";
 import { forgetPhone, pairScreen, savedPhone } from "./pair.js";
 import { loggedIn, registerApp } from "/shared/pwa.js";
 import * as tones from "./tones.js";
@@ -85,7 +85,7 @@ function draw() {
     <div class="ph__cards">${raw(CARDFILE)}</div>
     <div class="ph__notice"></div>
     <div class="ph__bottom">
-      <div class="ph__actions">${button({ label: "How to dial", icon: "phone", attrs: { "data-tl-open": "guide", id: "guide-open" } })}${button({ label: "For parents", icon: "key", attrs: { "data-tl-open": "leave", id: "leave-open" } })}</div>
+      <div class="ph__actions">${button({ label: "How to dial", icon: "phone", attrs: { "data-tl-open": "guide", id: "guide-open" } })}${button({ label: "Test audio", icon: "settings", attrs: { "data-tl-open": "audio", id: "audio-open" } })}${button({ label: "For parents", icon: "key", attrs: { "data-tl-open": "leave", id: "leave-open" } })}</div>
     </div>
   </main>
   <footer class="ph__foot">${footer("/phone/licenses.html")}</footer>
@@ -93,6 +93,8 @@ function draw() {
 </div>
 ${sheet({ id: "guide", title: "How to call a friend", body: html`<div id="guide-step"></div>`,
   actions: html`${button({ label: "Back", attrs: { id: "guide-back" } })}${button({ label: "Next", variant: "primary", iconAfter: "chevron-right", attrs: { id: "guide-next" } })}` })}
+${sheet({ id: "audio", title: "Test audio", body: html`<div class="tl-stack tl-stack--group" id="audio-body"></div>`,
+  actions: button({ label: "Done", variant: "primary", attrs: "data-tl-close" }) })}
 ${sheet({ id: "leave", title: "For parents", body: html`
   <form id="leave-form" class="tl-stack tl-stack--group" novalidate>
     <p class="tl-sheet__body">Enter the parent code to stop using this device as a phone. ${loggedIn() ? "You'll go to the parent dashboard." : "You'll go back to the start screen, where you can add a phone or log in."}</p>
@@ -106,6 +108,11 @@ ${sheet({ id: "leave", title: "For parents", body: html`
     <p class="body" style="margin:0"><a href="#" data-use-code style="color:var(--ink-muted);text-decoration:underline;font-size:14px;display:inline-block;padding:var(--space-2) 0">I have the parent code</a></p>
   </div>`,
   actions: html`${button({ label: "Cancel", attrs: "data-tl-close" })}${button({ label: "Leave phone mode", variant: "primary", type: "submit", attrs: { form: "leave-form", id: "leave-go" } })}` })}
+<div class="ph-wake" id="elsewhere" hidden><div class="tl-card" style="max-width:var(--sheet-max);text-align:center"><div class="tl-stack tl-stack--group">
+  <h2 class="tl-card__title">This phone is open in another tab or window</h2>
+  <p class="tl-card__body">Only one can ring at a time, so this one has stopped. Close it, or use the phone here instead.</p>
+  <div class="tl-actions"><button type="button" class="tl-btn tl-btn--primary tl-btn--lg" id="elsewhere-btn"><span class="tl-btn__label">Use it here</span></button></div>
+</div></div></div>
 <div class="ph-wake" id="wake" hidden><div class="tl-card" style="max-width:var(--sheet-max);text-align:center"><div class="tl-stack tl-stack--group">
   <h2 class="tl-card__title">Tap to turn the phone on</h2>
   <p class="tl-card__body">Your device needs one tap before it can ring.</p>
@@ -122,7 +129,7 @@ ${sheet({ id: "leave", title: "For parents", body: html`
   const el = root.querySelector("[data-tl-rotary]");
   const cardEl = root.querySelector("[data-tl-cardfile]");
   ui = { status: root.querySelector("#status"), sub: root.querySelector("#sub"), name: root.querySelector("#name"), quiet: root.querySelector("#quiet"),
-    reg: root.querySelector("#reg"), wake: root.querySelector("#wake"), guide: root.querySelector("#guide"), el, cardEl,
+    reg: root.querySelector("#reg"), wake: root.querySelector("#wake"), elsewhere: root.querySelector("#elsewhere"), guide: root.querySelector("#guide"), el, cardEl,
     hookButton: el.querySelector(".tl-rotary__hook"), number: el.querySelector(".tl-rotary__number"),
     api: window.TreelineUI.rotary(el), cards: window.TreelineUI.cardfile(cardEl), strings: "", step: 0 };
   S.dial = (d) => ui.api.dial(d);
@@ -178,6 +185,8 @@ ${sheet({ id: "leave", title: "For parents", body: html`
     try { await signOutDevice(); } catch (err) { oops("#forgot-error", err.message || "That didn't work. Try again."); setBusy(btn, false); }
   });
   ui.wake.querySelector("#wake-btn").addEventListener("click", async () => { await tones.unlock(); ui.wake.hidden = true; });
+  ui.elsewhere.querySelector("#elsewhere-btn").addEventListener("click", async () => { await tones.unlock(); useHere(); });
+  mountAudioTest(root.querySelector("#audio"), root.querySelector("#audio-open"));
   showLine();
   render();
 }
@@ -464,7 +473,7 @@ function hookAudio(session) {
 }
 
 function callOptions(extra = {}) {
-  return { mediaConstraints: { audio: true, video: false }, pcConfig: { iceServers: S.iceServers }, rtcOfferConstraints: { offerToReceiveAudio: true },
+  return { mediaConstraints: { audio: micConstraints(), video: false }, pcConfig: { iceServers: S.iceServers }, rtcOfferConstraints: { offerToReceiveAudio: true },
     sessionTimersExpires: 3600, ...extra };
 }
 
@@ -551,6 +560,154 @@ function answer() {
   try { session.answer(callOptions()); } catch { ended(); }
 }
 
+// ------------------------------------------------------------------ microphone and speaker
+// Which microphone and speaker this phone uses, chosen in "Test audio" and kept on this device. "" means the system's default.
+// The microphone is asked for as `ideal`, so a call still connects through the default if the chosen one was unplugged. The
+// speaker needs setSinkId (Chrome and Edge; not Safari): elsewhere the phone plays through the system's default output.
+const AUDIO_KEY = "treeline.audio";
+export function audioPrefs() {
+  try { const v = JSON.parse(localStorage.getItem(AUDIO_KEY) || "{}"); return { input: String(v.input || ""), output: String(v.output || "") }; }
+  catch { return { input: "", output: "" }; }
+}
+function saveAudioPrefs(p) { try { localStorage.setItem(AUDIO_KEY, JSON.stringify(p)); } catch { /* used for this visit only */ } }
+export function micConstraints(prefs = audioPrefs()) { return prefs.input ? { deviceId: { ideal: prefs.input } } : true; }
+const canChooseSpeaker = () => typeof remoteAudio.setSinkId === "function";
+
+/** Send the call's audio and the phone's tones to the chosen speaker. Applying it again also re-opens it, which follows a system
+ *  default that changed (a headset plugged in, the computer's sound settings changed) instead of staying silent until the next call. */
+async function applySpeaker(id = audioPrefs().output) {
+  if (canChooseSpeaker()) {
+    try { await remoteAudio.setSinkId(id); }
+    catch { if (id) { try { await remoteAudio.setSinkId(""); } catch { /* keep going */ } } }
+  }
+  await tones.setSink(id);
+}
+
+/** The microphones and speakers the system has. Their names are hidden until the page may use the microphone. */
+async function devices() {
+  const all = await navigator.mediaDevices.enumerateDevices().catch(() => []);
+  const named = (kind, fallback) => all.filter((d) => d.kind === kind && d.deviceId && d.deviceId !== "default" && d.deviceId !== "communications")
+    .map((d, i) => [d.deviceId, d.label || `${fallback} ${i + 1}`]);
+  return { inputs: named("audioinput", "Microphone"), outputs: named("audiooutput", "Speaker") };
+}
+
+/** The "Test audio" sheet: pick the microphone and speaker, watch the microphone's level, play a test sound. */
+function mountAudioTest(sheetEl, opener) {
+  const body = sheetEl.querySelector("#audio-body");
+  let stream = null, meterCtx = null, frame = 0, open = false;
+  const stopMeter = () => {
+    cancelAnimationFrame(frame); frame = 0;
+    stream?.getTracks().forEach((t) => t.stop()); stream = null;
+    meterCtx?.close().catch(() => {}); meterCtx = null;
+  };
+  const note = (text, tone) => { body.querySelector("#mic-note").innerHTML = tone ? str(alert({ tone, title: text })) : str(html`<p class="tl-sheet__body" style="margin:0">${text}</p>`); };
+  async function listen() {
+    stopMeter();
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { note("This page can't use a microphone here. Open the phone from its secure (https) address.", "warning"); return; }
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: micConstraints(), video: false });
+    } catch (err) {
+      note(err && err.name === "NotAllowedError"
+        ? "The browser isn't allowed to use the microphone. Allow it in the site settings (the icon beside the address), then open Test audio again."
+        : "No microphone was found. Plug one in, or choose another below.", "warning");
+      return;
+    }
+    if (!open) { stopMeter(); return; }
+    const AC = window.AudioContext || window.webkitAudioContext;
+    meterCtx = new AC();
+    const analyser = meterCtx.createAnalyser(); analyser.fftSize = 1024;
+    meterCtx.createMediaStreamSource(stream).connect(analyser);
+    const data = new Float32Array(analyser.fftSize), fill = body.querySelector("#mic-fill"), track = body.querySelector("#mic-track");
+    const tick = () => {
+      analyser.getFloatTimeDomainData(data);
+      let sum = 0; for (let i = 0; i < data.length; i++) sum += data[i] * data[i];
+      const level = Math.min(100, Math.round(Math.sqrt(sum / data.length) * 400));      // speech at a normal distance fills about half
+      fill.style.width = `${level}%`; track.setAttribute("aria-valuenow", String(level));
+      frame = requestAnimationFrame(tick);
+    };
+    tick();
+    note("Say something: the bar should move. If it doesn't, choose another microphone.");
+    await fillChoices();                                // now that the page may use the microphone, the devices have their names
+  }
+  async function fillChoices() {
+    const prefs = audioPrefs(), { inputs, outputs } = await devices();
+    const inSel = body.querySelector("#audio-in"), outSel = body.querySelector("#audio-out");
+    const opts = (list, value) => str(html`${[["", "System default"], ...list].map(([v, t]) => html`<option value="${v}" ${v === value ? raw("selected") : ""}>${t}</option>`)}`);
+    inSel.innerHTML = opts(inputs, prefs.input);
+    if (outSel) outSel.innerHTML = opts(outputs, prefs.output);
+  }
+  function draw() {
+    const prefs = audioPrefs();
+    body.innerHTML = str(html`
+      <p class="tl-sheet__body" style="margin:0">Check that the phone can hear you and that you can hear it, and choose which microphone and speaker it uses. The choice stays on this device.</p>
+      ${selectField({ id: "audio-in", label: "Microphone", options: [["", "System default"]], value: prefs.input })}
+      <div class="tl-progress">
+        <div class="tl-progress__head"><span>Microphone level</span></div>
+        <div class="tl-progress__track" id="mic-track" role="meter" aria-label="Microphone level" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="tl-progress__fill" id="mic-fill" style="width:0%"></div></div>
+      </div>
+      <div id="mic-note"></div>
+      ${canChooseSpeaker()
+        ? selectField({ id: "audio-out", label: "Speaker", options: [["", "System default"]], value: prefs.output })
+        : html`<p class="tl-sheet__body" style="margin:0">This browser plays through the computer's default speaker. To change it, use the computer's sound settings.</p>`}
+      <div class="tl-actions">${button({ label: "Play a test sound", icon: "bell", attrs: { id: "audio-play", type: "button" } })}</div>`);
+    body.querySelector("#audio-in").addEventListener("change", (e) => { saveAudioPrefs({ ...audioPrefs(), input: e.target.value }); listen(); });
+    body.querySelector("#audio-out")?.addEventListener("change", async (e) => { saveAudioPrefs({ ...audioPrefs(), output: e.target.value }); await applySpeaker(e.target.value); });
+    body.querySelector("#audio-play").addEventListener("click", async () => {
+      await tones.unlock(); await applySpeaker();
+      if (S.phase !== "idle" || S.hook !== "on") return;            // never over a call or a dial tone
+      tones.play("bell"); later("audioTest", 2500, () => { if (tones.playing() === "bell" && S.phase === "idle") tones.stop(); });
+    });
+  }
+  opener.addEventListener("click", () => { open = true; draw(); fillChoices(); listen(); });
+  // The sheet closes with Done, the backdrop or Escape: whichever way, stop listening to the microphone.
+  new MutationObserver(() => { if (sheetEl.hidden && open) { open = false; stopMeter(); } }).observe(sheetEl, { attributes: true, attributeFilter: ["hidden"] });
+}
+
+// ------------------------------------------------------------------ one phone per browser
+// Every tab or window of this browser that opens the phone signs in with the same account, and Asterisk keeps only the newest
+// sign-in: a call would ring whichever copy signed in last, maybe one nobody is looking at (the bell plays there; the page in
+// front stays still and can't answer). So the newest copy takes the phone and any older one steps aside, saying so. Web Locks
+// where the browser has them (a stolen lock tells the old holder), and a broadcast between tabs as well.
+const PHONE_LOCK = "treeline-phone";
+const thisPage = Math.random().toString(36).slice(2);
+const tabs = "BroadcastChannel" in window ? new BroadcastChannel("treeline-phone") : null;
+tabs?.addEventListener("message", (e) => { if (e.data && e.data.claim && e.data.claim !== thisPage) stepAside(); });
+
+/** This page is the phone now: take the lock from any other tab (which then steps aside) and tell the others. A page claims again
+ *  when it is paired again or after "Use it here": only its latest claim counts, and it lets go of its own earlier one first, so a
+ *  page never steals from itself and steps aside from its own phone. */
+let claims = 0;
+function claimPhone() {
+  S.elsewhere = false;
+  const mine = ++claims;
+  if (S.releaseLock) { const release = S.releaseLock; S.releaseLock = null; release(); }
+  if (navigator.locks && navigator.locks.request) {
+    navigator.locks.request(PHONE_LOCK, { steal: true }, () => new Promise((release) => { if (mine === claims) S.releaseLock = release; else release(); }))
+      .catch((err) => { if (err && err.name === "AbortError" && mine === claims) stepAside(); });
+  }
+  tabs?.postMessage({ claim: thisPage });
+}
+
+/** Another tab took the phone: stop ringing, stop being signed in, and say where the phone went. */
+function stepAside() {
+  if (S.elsewhere || !S.creds) return;
+  S.elsewhere = true;
+  try { S.session?.terminate(); } catch { /* over */ }
+  try { S.incoming?.terminate({ status_code: 486 }); } catch { /* over */ }
+  S.session = null; S.incoming = null;
+  tones.stop(); stopRemoteAudio(); stopUa();
+  S.registered = false; S.phase = "idle"; S.lineLight = "off";
+  if (ui) { ui.elsewhere.hidden = false; showLine(); render(); }
+}
+
+/** "Use it here": take the phone back from the other tab. */
+function useHere() {
+  if (ui) ui.elsewhere.hidden = true;
+  claimPhone();
+  clearTimeout(S.timers.lineLost); S.timers.lineLost = 0; S.lineLight = "connecting";
+  stopUa(); startUa(); setRegistration(); refreshLine();
+}
+
 // ------------------------------------------------------------------ SIP
 
 function stopUa() { try { S.ua?.stop(); } catch { /* ignore */ } S.ua = null; }
@@ -577,6 +734,10 @@ async function start(creds) {
   draw();
   say(...idleWords());
   if (S.insecure) say("This device can't use its microphone", "Open the phone from a secure (https) address. See docs/DEPLOY.md.");   // for the grown-up setting it up
+  claimPhone();
+  applySpeaker();
+  // A headset plugged in or out, or the computer's default speaker changed: go to the chosen speaker again (or the new default).
+  navigator.mediaDevices?.addEventListener?.("devicechange", () => applySpeaker(), { signal: life.signal });
   stopUa(); clearTimeout(S.timers.lineLost); S.timers.lineLost = 0; startUa(); setRegistration();
   refreshLine();
   S.timers.refresh = setInterval(() => { if (S.hook === "on") refreshLine(); }, 15000);
@@ -618,7 +779,7 @@ if (location.search.includes("debug=1")) {
 // A hook for the browser tests, on this machine only, and without the SIP secret.
 if (location.search.includes("test=1") && ["localhost", "127.0.0.1"].includes(location.hostname)) {
   const view = new Proxy(S, { get: (t, k) => (k === "creds" ? undefined : t[k]), set: (t, k, v) => { t[k] = v; return true; } });
-  window.__phone = { isSlow, setLite, cadenceSamples: tones.cadenceSamples, hookAudio, playRemote, stopRemoteAudio, audioState, S: view, render: () => render(), cards: () => ui.cards, tonesLevel: () => tones.effectiveLevel(), lift: () => (ui.api.isOffHook() ? ui.api.hangUp() : ui.api.lift()), dial: (d) => S.dial?.(d), rotary: () => ui.api, tones,
+  window.__phone = { audioPrefs, micConstraints, isSlow, setLite, cadenceSamples: tones.cadenceSamples, hookAudio, playRemote, stopRemoteAudio, audioState, S: view, render: () => render(), cards: () => ui.cards, tonesLevel: () => tones.effectiveLevel(), lift: () => (ui.api.isOffHook() ? ui.api.hangUp() : ui.api.lift()), dial: (d) => S.dial?.(d), rotary: () => ui.api, tones,
     async stats() { const pc = S.session?.connection; if (!pc) return null; const r = await pc.getStats(); let rx = 0, tx = 0; r.forEach((x) => { if (x.type === "inbound-rtp" && x.kind === "audio") rx += x.bytesReceived; if (x.type === "outbound-rtp" && x.kind === "audio") tx += x.bytesSent; }); return { rx, tx }; } };
 }
 

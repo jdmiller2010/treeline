@@ -6,6 +6,7 @@ let toneBus = null;       // every tone goes through here, so one number sets ho
 let mechBus = null;       // the sounds of the dial's mechanism
 let current = null;       // the tone playing now: { stop() }
 let wanted = null;        // the tone someone asked for while the sound was still locked
+let sink = "";            // the speaker the tones go to ("" = the system's default), where the browser can choose
 
 /** How loud things are. The dial tone was too loud, so the tones sit about 6 dB lower than they did. */
 export const LEVELS = { master: 0.5, toneBus: 0.7, mechBus: 1.1, dual: 0.13, bell: 0.16, howler: 0.22 };
@@ -14,6 +15,17 @@ export const LEVELS = { master: 0.5, toneBus: 0.7, mechBus: 1.1, dual: 0.13, bel
 export const effectiveLevel = (kind = "dual") => LEVELS.master * LEVELS.toneBus * LEVELS[kind];
 
 export function audioReady() { return !!ctx && ctx.state === "running"; }
+
+/** Can this browser send the tones to a speaker of our choosing? (AudioContext.setSinkId: Chrome and Edge 110+.) */
+export const canChooseSpeaker = () => typeof (window.AudioContext && window.AudioContext.prototype.setSinkId) === "function";
+
+/** Send the tones to this speaker ("" for the system's default). Kept and applied when the sound starts, if it hasn't yet.
+ *  Applying the same speaker again also re-opens it, which picks up a system default that changed under us. */
+export async function setSink(id) {
+  sink = id || "";
+  if (!ctx || typeof ctx.setSinkId !== "function") return false;
+  try { await ctx.setSinkId(sink); return true; } catch { if (sink) { sink = ""; try { await ctx.setSinkId(""); } catch { /* keep going */ } } return false; }
+}
 
 /** Browsers only allow sound after a tap, so call this from one. */
 export async function unlock() {
@@ -26,6 +38,7 @@ export async function unlock() {
     master.connect(ctx.destination);
     toneBus = ctx.createGain(); toneBus.gain.value = LEVELS.toneBus; toneBus.connect(master);
     mechBus = ctx.createGain(); mechBus.gain.value = LEVELS.mechBus; mechBus.connect(master);
+    if (sink) await setSink(sink);
   }
   if (ctx.state !== "running") { try { await ctx.resume(); } catch { /* not yet */ } }
   const ok = ctx.state === "running";
