@@ -115,7 +115,7 @@ def main():
 
         # ---- what's on the screen: an ordinary Treeline page around the design system's phone and card file
         check(tablet.locator(".tl-desk").count() == 0 and tablet.locator(".tl-root .ph").count() == 1, "the phone is a normal app page, not the old room")
-        check(tablet.locator(".ph__head .tl-brand").count() == 1 and tablet.inner_text(".ph__head .tl-tagline").strip() == "Safe calls for neighborhood kids",
+        check(tablet.locator(".ph__head .tl-brand").count() == 1 and tablet.inner_text(".ph__head .tl-tagline").strip() == "Safe, simple calls.",
               "the brand and tagline are at the top")
         check(tablet.locator(".ph__head a").count() == 0, "the brand isn't a link a kid could wander off through")
         check(tablet.locator(".tl-rotary .tlp-wheel").count() == 1 and tablet.locator(".tl-rotary .tlp-handset").count() == 1 and tablet.locator(".tlp-wheel").count() == 1, "the design system's wheel and handset are there, once")

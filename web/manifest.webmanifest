@@ -2,7 +2,7 @@
   "id": "/",
   "name": "Treeline",
   "short_name": "Treeline",
-  "description": "Safe calls for neighborhood kids, with parents holding the keys: the rotary phone and the parent dashboard in one app.",
+  "description": "Safe, simple calls for kids, with parents holding the keys: the rotary phone and the parent dashboard in one app.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
