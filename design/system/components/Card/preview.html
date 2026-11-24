@@ -1,4 +1,4 @@
-<!-- @dsCard group="Containers" height=400 -->
+<!-- @dsCard group="Containers" height=900 -->
 <!doctype html>
 <html lang="en">
 <head><meta charset="utf-8"><title>Card — Treeline</title></head>
@@ -10,6 +10,11 @@
   render(h('div', {className:'tl-demo', style:{alignItems:'stretch', gap:'24px'}},
     h(T.Card, {eyebrow:'Today', title:'3 calls, 42 minutes', action:h(T.IconButton, {icon:'chevron-right', label:'Open call log', size:'sm'}), className:'', }, h('p', {style:{margin:0, color:'var(--ink-muted)', maxWidth:'240px'}}, 'Sam talked with Alex and Grandma. No blocked calls.')),
     h(T.Card, {tone:'breeze', eyebrow:'Good news', title:'Alex is in the treehouse'}, h('p', {className:'tl-card__body', style:{maxWidth:'240px'}}, 'Both families approved. Speed dial 1.')),
+    h(T.Card, {tone:'blossom', eyebrow:'Welcome', title:'Your first string'}, h('p', {className:'tl-card__body', style:{maxWidth:'240px'}}, 'Sam and you are connected. Say hello.')),
+    h(T.Card, {tone:'oak', eyebrow:'Kept safe', title:'Parent code'}, h('p', {className:'tl-card__body', style:{maxWidth:'240px'}}, 'Only grown-ups can change who is on the line.')),
+    h(T.Card, {tone:'fern', eyebrow:'Quiet', title:'Notifications'}, h('p', {className:'tl-card__body', style:{maxWidth:'240px'}}, 'We only nudge you when a grown-up needs to answer.')),
+    h(T.Card, {tone:'seeds', eyebrow:'On its way', title:'Waiting on a friend'}, h('p', {className:'tl-card__body', style:{maxWidth:'240px'}}, 'It goes live when they answer.')),
+    h(T.Card, {tone:'maple', eyebrow:'This season', title:'Records'}, h('p', {className:'tl-card__body', style:{maxWidth:'240px'}}, 'Every change a grown-up makes is written down.')),
     h(T.Card, {tone:'dusk', eyebrow:'Quiet hours', title:'8:00 pm – 7:00 am'}, h('p', {style:{margin:0, color:'var(--ink)', maxWidth:'240px'}}, 'Calls wait until morning.')),
     h(T.Card, {tone:'plank', eyebrow:'Your house', title:'Parents: Jordan and Alex'}, h('p', {className:'tl-card__body', style:{maxWidth:'240px'}}, 'Two kids, two phones, five approved friends.')),
     h(T.Card, {tone:'night', eyebrow:'Tonight', title:'Sam’s phone is sleeping'}, h('p', {className:'tl-card__body', style:{maxWidth:'240px'}}, 'Calls wait until 7:00 am.'))

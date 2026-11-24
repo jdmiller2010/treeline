@@ -75,7 +75,7 @@ const PAGES = [
 /** The page a session that is too old to use admin pages gets (the server says so); never a sign-in loop. */
 function signInAgain(ctx) {
   return {
-    title: "Treeline Admin", back: "#/settings", nav: null, template: "settings", noDoodles: true,
+    title: "Treeline Admin", back: "#/home", nav: null, template: "settings", noDoodles: true,
     content: html`${alert({ tone: "warning", title: "Sign in again to use the admin page",
       body: "Admin pages need a sign-in from the last 12 hours. Sign out, then sign in again.",
       actions: button({ label: "Sign out and sign in again", size: "sm", attrs: "data-resignin" }) })}`,
@@ -99,7 +99,7 @@ function overview() {
   <p class="body">For running Treeline. Nothing here shows a family's calls, strings or settings, and nothing here can add a person or a phone.</p>
   <div class="tl-card tl-card--list">${PAGES.map(([key, label, desc, ic]) => html`<div class="tl-row is-clickable" role="link" tabindex="0" data-href="#/admin/${key}">
     ${icon(ic, 24)}<div class="tl-row__main"><div class="tl-row__title">${label}</div><div class="tl-row__meta"><span>${desc}</span></div></div>${icon("chevron-right")}</div>`)}</div>`;
-  return { title: "Treeline Admin", back: "#/settings", nav: null, template: "settings", noDoodles: true, content };
+  return { title: "Treeline Admin", back: "#/home", nav: null, template: "settings", noDoodles: true, content };
 }
 
 async function logsPage() {

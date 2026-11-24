@@ -1,6 +1,6 @@
-// Quiet hours, call limits and pause: the Settings form template.
+// Quiet hours and call limits: the Settings form template.
 import { get, patch } from "/shared/api.js";
-import { alert, checkRow, html, icon, raw, selectField, str, switchRow, timeField, toast } from "/shared/ui.js";
+import { alert, checkRow, html, icon, raw, selectField, str, timeField, toast } from "/shared/ui.js";
 import { DAY_LETTERS, DAY_NAMES, daysSummary, minutesText, time12 } from "/shared/format.js";
 
 const LENGTHS = [5, 10, 15, 20, 30, 45, 60, 90, 120];
@@ -32,7 +32,7 @@ export async function quiet(ctx) {
   if (th.daily_minutes && !DAILY.includes(th.daily_minutes)) dailyOpts.push([th.daily_minutes, minutesText(th.daily_minutes)]);
 
   const content = html`
-  ${!parent ? alert({ tone: "info", title: "You can turn quiet hours on or off", body: "You can also pause the line. Only a parent can change the times, nights and limits." }) : ""}
+  ${!parent ? alert({ tone: "info", title: "You can turn quiet hours on or off", body: "Only a parent can change the times, nights and limits." }) : ""}
   <h2 class="title-lg">Quiet hours</h2>
   <div id="qh-banner">${banner(th)}</div>
   ${quietPreview(q)}
@@ -54,11 +54,7 @@ export async function quiet(ctx) {
       ${selectField({ id: "daily", label: "Minutes per day", options: dailyOpts, value: th.daily_minutes ?? "", hint: "Counts calls in both directions. Resets at midnight." })}
     </div>
     ${parent ? html`<p class="tl-card__body tl-measure" style="color:var(--ink-muted)" id="qh-note">Changes are saved as you make them.</p>` : ""}</section>
-  </form>
-
-  <section class="tl-card"><div class="tl-stack tl-stack--group">
-    ${switchRow({ id: "pause", label: "Pause calls", on: th.paused, desc: "No calls in or out until you turn this off." })}
-  </div></section>`;
+  </form>`;
 
   return {
     title: "Quiet hours", nav: "quiet", template: "settings", content,
@@ -108,12 +104,6 @@ export async function quiet(ctx) {
       form.addEventListener("submit", (e) => e.preventDefault());
       enabled.addEventListener("tl-change", () => soon(0));
 
-      root.querySelector("#pause").addEventListener("tl-change", async (e) => {
-        try {
-          ctx.me.treehouse = await patch("/api/treehouse", { paused: e.detail.checked });
-          toast(e.detail.checked ? "Calls are paused" : "Calls are back on", e.detail.checked ? "neutral" : "success");
-        } catch (err) { window.TreelineUI?.setSwitch(e.target.closest(".tl-switch"), !e.detail.checked); toast(err.message, "warning"); }
-      });
     },
   };
 }

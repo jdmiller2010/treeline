@@ -67,6 +67,7 @@ All of this lives in `components/bundle.css` as named recipes built from the was
 | `--tl-bloom-mist` | Warm neutral haze | Skeletons, waiting states |
 | `--tl-dusk` | Sky at the top warming to petal at the bottom | Quiet hours |
 | `.tl-card--breeze` | A watercolor leafy branch swaying in from the corner, loose leaves on the wind, warm light behind | Good news, play, a friend connected |
+| `.tl-card--blossom` · `--oak` · `--fern` · `--seeds` · `--maple` | The same painted corner as breeze, in petal, bark, teal, sky or amber pigments | See "Art direction: one hand, three scales" |
 | `.tl-card--night` | Deep night sky, crescent moon and a few stars | It's night for the kid right now |
 | `--tl-fade-line` | A hairline that fades in and out | Dividers between rows |
 | `--tl-canopy-fill` | `canopy-light` to `canopy` | Primary buttons, switches on, checkmarks |
@@ -116,7 +117,7 @@ The full rules, with tables for spacing, insets, sizing, alignment, responsive b
 
 ## App layout and screen sizes
 
-Every parent screen sits in one shell (`AppShell`): bottom tabs on phones, an icon rail on tablets, a labeled sidebar on desktop, always the same four places (Home, Friends, Calls, Quiet hours). The shell follows the **window size** (compact under 768, medium 768–1023, expanded 1024+). Everything inside the page follows its **content size**, the room it actually has (narrow under 600, regular 600–959, wide 960+), so a card grid beside a sidebar behaves like it does on a tablet. Every screen is one of four templates: Overview, List and detail, Settings form, or Focused task (a bottom sheet on phones, a dialog on desktop). The section on spacing, sizing and alignment has the full rules and a phone-versus-desktop table for every component.
+Every parent screen sits in one shell (`AppShell`): bottom tabs on phones, an icon rail on tablets, a labeled sidebar on desktop, always the same five places (Home, Strings, Calls, Phone book, Quiet hours). The shell follows the **window size** (compact under 768, medium 768–1023, expanded 1024+). Everything inside the page follows its **content size**, the room it actually has (narrow under 600, regular 600–959, wide 960+), so a card grid beside a sidebar behaves like it does on a tablet. Every screen is one of four templates: Overview, List and detail, Settings form, or Focused task (a bottom sheet on phones, a dialog on desktop). The section on spacing, sizing and alignment has the full rules and a phone-versus-desktop table for every component.
 
 ## Shape
 
@@ -159,6 +160,40 @@ Things fade in like pigment soaking into paper, and fade away rather than snappi
 - Sheets: slide up 240ms ease-out; fade the `scrim` in over 160ms.
 - Ringing: a gentle `shadow-glow` that breathes every 1.6s. No shaking.
 - Respect `prefers-reduced-motion`: drop transitions, arrivals and the glow entirely.
+
+## Art direction: one hand, three scales
+
+Everything pictorial in Treeline is by the same hand: a patient illustrator with a soft pencil and a small box of watercolors, working at a kitchen table. There are three scales of work, and they obey one grammar so they always sit well together.
+
+| Scale | What | Where | How much |
+| --- | --- | --- | --- |
+| **Plates** | Illustrations, the logo, empty states | Page headers, empty and first-run states | One per page at most |
+| **Painted cards** | Toned cards: breeze, blossom, oak, fern, seeds, maple (and plank, dusk, night as plain washes) | Cards whose meaning the painting carries | At most a third of the cards, never three in a row |
+| **Marginalia** | Doodles, scenes and paintings (the artist's layer) | The edges of ordinary cards and the gaps between them, always outside the cards | A sprinkle: often none |
+
+**The grammar (shared by all three)**
+
+1. **Pencil line, then wash.** A soft graphite line (`ink-muted`, 1.2 to 1.5px, round caps) with one to three watercolor washes laid slightly off the line, as if painted without looking. Never a hard fill, never an outline in a bright color.
+2. **Pigments come from the tokens.** Greens (`canopy`), warm browns (`bark`), sun yellows (`sun`), sky blues (`sky`), petal pinks (`petal`, `berry`). Nothing outside the palette; each tone has a pigment trio (a dark, a light, a wash) that flips for dark mode.
+3. **Light comes from the top-right.** (A plant that grows from the ground, like the fern or the dandelion, rises from the bottom-right instead.) Washes pool in the top-right corner and fade out before the middle; shadows fall down and a little left. At least half of any card stays bright `surface`.
+4. **Things are in the world.** A branch or a stem is attached to something; a plant stands on a surface; a butterfly may float. Nothing hovers without a reason.
+5. **Drawn from life.** Plants are drawn as the plant really is: an oak leaf has rounded lobes and a midrib with side veins, an acorn a scaled cap and a pointed nut, a dandelion seed a tiny achene under a fan of fine rays, a fern pinnae that shrink toward the tip. If it could be any leaf, redraw it. **Botanical, never mascot.** Leaves, blossoms, acorns, ferns, seeds, maple leaves, small creatures at a glance. No faces, no cartoon characters, no emoji.
+6. **The UI is never the picture.** Art goes in corners, on edges and in the gaps between cards; the artist's doodles never go inside a card. It never covers text or a control, and never changes spacing, alignment or size of a component; where a painting needs room, the words keep clear of it.
+7. **Less is the style.** A page can have a few painted cards (at most a third of its cards, never three in a row) and a sprinkle of marginalia. When two pictures compete, the quieter one is removed.
+8. **Gentle motion.** A branch sways, a butterfly bobs, a snail inches. Nothing loops fast; everything stops under reduced motion.
+
+**Painted cards: which one, when**
+
+| Tone | The meaning | Pigments | Used in the app |
+| --- | --- | --- | --- |
+| `breeze` | Good news, play: a friend connected | canopy greens | Home: newly strung |
+| `blossom` | A welcome, a first, a celebration | petal pinks | Phone book: the header card (a directory of neighbors is a welcome). Also first-run and milestones |
+| `oak` | Kept safe, kept close. A white-oak twig: lobed leaves with veins, acorns with scaled caps | bark browns | Home: Parent code |
+| `fern` | Quiet, calm, nothing needed from you. Grows up from the lower-right corner (ferns come from the ground), the one painted card that is not top-right | teal greens | Home: Notifications |
+| `seeds` | On its way, in the air, waiting on someone. A dandelion rooted at the lower-right, its seeds (a tiny achene under a fan of fine rays) floating up and away; the second painted card that grows from the bottom | sky blues | Home: Invite a friend's family (a first string on its way). Also "waiting on them" states |
+| `maple` | The turning of the year, records, memory | sun and amber | Available |
+
+The rule: at most a third of a page's cards are painted, never three in a row, and never every card. Choose the ones whose meaning the painting carries; the rest stay plain `surface`. The artist's layer leaves painted cards alone: no doodle is drawn on, in or from a toned card. To add a tone, draw it on a 150 × 120 canvas anchored top-right (a stem or branch, five to nine elements, a few loose pieces on the wind), keep the same line weight, give it a pigment trio and a meaning, and add it to the table above before using it.
 
 ## Nature touches
 
@@ -212,7 +247,7 @@ The interface already has a light from above (its shadows fall straight down). D
 1. **Never over text or a control.** A doodle never covers a heading, body text, button, field, link or tag. Surfaces are chosen so it sits in the empty space around them.
 2. **Takes no room.** Lives in the overlay layer (`.tl-doodle-layer`), never inside a component; adds no padding, margin or reflow; never makes the page scroll sideways. Scenes appear only where room already exists and are skipped otherwise; never add space for a doodle.
 3. **Inert.** `aria-hidden`, no pointer events, no focus. Hidden when printed.
-4. **Few, and a sprinkle.** Usually one or two on a phone, two or three on a wide screen, sometimes fewer. A spot that could take a doodle usually does not get one: the fun is in not knowing where, or whether. Quiet beats busy.
+4. **Few, and a sprinkle.** Far between: often none, at most one on a phone, one or two on a wide screen, and many pages have none. Never on or inside a toned card. A spot that could take a doodle usually does not get one: the fun is in not knowing where, or whether. Quiet beats busy.
 5. **Still when asked.** Under reduced motion nothing moves. Otherwise motion is tiny and slow: a bob of a few pixels, a snail that inches along over minutes.
 6. **Fits or skips.** A doodle only appears where its surface has room for it. It is never shrunk to fit and never squeezed in.
 
@@ -227,16 +262,16 @@ Some cards have a small scene that fits what the card is about. Mark the card wi
 | `data-scene` | Where | What |
 |---|---|---|
 | `sprout` | Setup, name your treehouse | a seedling with a butterfly above |
-| `acorn` | Parent code | acorns and a sprout: kept safe, will grow |
-| `forest` | Records | mushroom, grass tuft, pebbles: the forest floor |
-| `fern` | Notifications | a fern and a ladybug: quiet |
-| `bloom` | A live string | a tulip, grass and a butterfly: a friendship in bloom |
+| `acorn` | Free (the app's Parent code is an `oak` card) | acorns and a sprout: kept safe, will grow |
+| `forest` | Free | mushroom, grass tuft, pebbles: the forest floor |
+| `fern` | Free | a fern and a ladybug: quiet |
+| `bloom` | Free | a tulip, grass and a butterfly: a friendship in bloom |
 
-### Inside a card, and paintings
+### Always outside the cards, and paintings
 
-- **Inside a card.** Where a card has empty floor (the corner beside a short row of buttons, the strip under its last line), a doodle may stand there, on the card's bottom edge inside. It only goes where it clears every line of text, control, tag and picture with padding to spare, so it never covers content and never makes the card taller. Doodles inside a card follow the same sprinkle: a free spot usually stays empty.
-- **Paintings.** A scene can be upgraded to a small watercolor painting (`sprout` to a seedling, `forest` to mushrooms, `fern` to a fern, `bloom` to a meadow). The painting stands on the card's top edge and is used only when the room above the card already holds it at 60% of full size or more; otherwise the card keeps its doodle scene. Paintings are drawn from the same hand as the doodles: pencil line, one to three washes, paper showing through. They share the same overlay layer and the same rules, and never add space for themselves.
-- **The test.** The smoke suite measures every element with the doodles shown and hidden and fails on any difference, fails if a doodle is inside the app's own markup, and fails if one covers text.
+- **Outside, always.** Doodles stand on a card's top edge, sit in the gaps between cards, or drift in the margins. They are never drawn inside a card: the card's own surface belongs to its content and, on a painted card, to its painting.
+- **Paintings.** A scene can be upgraded to a small watercolor painting (`sprout` to a seedling, `forest` to mushrooms, `fern` to a fern, `bloom` to a meadow). The painting stands on the card's top edge and is used only when the room above the card already holds it at 60% of full size or more; otherwise the card keeps its doodle scene. Paintings are drawn from the same hand as the doodles. They share the same overlay layer and rules, and never add space for themselves.
+- **The test.** The smoke suite measures every element with the doodles shown and hidden and fails on any difference, fails if a doodle is inside the app's own markup, fails if one covers text, and fails if one sits inside a card.
 
 ### Using it
 

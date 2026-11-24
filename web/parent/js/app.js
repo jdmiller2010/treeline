@@ -12,7 +12,7 @@ import { strings } from "./strings.js";
 import { calls } from "./calls.js";
 import { quiet } from "./quiet.js";
 import { phonebook } from "./house.js";
-import { account, privacy, about, actionLog, pairClaim, stringLink } from "./account.js";
+import { profile, privacy, about, actionLog, pairClaim, stringLink } from "./account.js";
 import { carryOverPush, forgetPushQuietly } from "./push.js";
 import { admin } from "./admin.js";
 
@@ -35,11 +35,13 @@ const NAV = [
   ["home", "#/home", "Home", "home"],
   ["strings", "#/strings", "Strings", "users"],
   ["calls", "#/calls", "Calls", "phone"],
+  ["phonebook", "#/phonebook", "Phone book", "book"],
   ["quiet", "#/quiet", "Quiet hours", "clock"],
 ];
 
 const ROUTES = {
-  home, strings, calls, quiet, phonebook, account, privacy, about, actions: actionLog,
+  home, strings, calls, quiet, phonebook, profile, privacy, about, actions: actionLog,
+  settings: async () => ({ redirect: "#/home" }),       // (Settings is part of Home now; old links still land somewhere)
   pair: pairClaim, string: stringLink, ladder: stringLink, admin,   // (#/ladder/ is kept so links already sent still work)
 };
 
@@ -55,7 +57,7 @@ function accountMenu() {
   <button type="button" class="tl-avatar-btn" aria-label="Account" aria-haspopup="menu" aria-expanded="false" aria-controls="account-menu" data-tl-menu="account-menu">${avatar(who, "sm")}</button>
   <div class="tl-menu__panel" id="account-menu" role="menu" hidden aria-label="Account">
     <div class="tl-menu__head"><span class="tl-menu__name">${who}</span><span class="tl-menu__meta">${me.treehouse.name}</span></div>
-    ${[["#/phonebook", "Phone book", "phone"], ["#/settings", "Settings", "settings"],
+    ${[["#/profile", "Profile", "users"],
        ["#/privacy", "Privacy and safety", "shield-check"], ["#/about", "About Treeline", "info"]].map(([href, label, ic]) =>
       html`<a role="menuitem" href="${href}" class="tl-menu__item">${icon(ic)}<span>${label}</span></a>`)}
     ${me.admin ? html`<a role="menuitem" href="#/admin" class="tl-menu__item" data-admin-link>${icon("key")}<span>Treeline Admin</span></a>` : ""}
@@ -74,7 +76,7 @@ function navBar(current, badge) {
     key === "strings" && badge
       ? html`<span class="tl-badge-anchor">${icon(ic, 24)}<span class="tl-badge" aria-hidden="true">${badge}</span><span class="tl-sr">${plural(badge, "approval")} waiting</span></span>`
       : icon(ic, 24)}<span class="tl-nav__label">${label}</span></a></li>`)}</ul>
-  <div class="tl-nav__foot"><div class="tl-split"><div class="tl-stack tl-stack--tight"><span class="tl-nav__house">${th.name}</span><span class="tl-nav__meta">Number ${th.number}</span></div>${iconButton({ label: "Settings", name: "settings", size: "sm", attrs: 'data-href="#/settings"' })}</div></div>
+  <div class="tl-nav__foot"><div class="tl-split"><div class="tl-stack tl-stack--tight"><span class="tl-nav__house">${th.name}</span><span class="tl-nav__meta">Number ${th.number}</span></div></div></div>
 </div></nav>`;
 }
 
@@ -160,7 +162,7 @@ async function render() {
     if (ctx.me.archived) return show(pausedByTreeline(ctx), mine);
     if (!ctx.me.treehouse) return show(await setup(ctx), mine);
     if (name === "setup") return ctx.go("#/home");
-    const route = ROUTES[name === "settings" ? "account" : name];
+    const route = ROUTES[name];
     if (!route) return ctx.go("#/home");
     document.body.className = "";
     show(await route(ctx, params), mine);

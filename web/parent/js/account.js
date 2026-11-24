@@ -1,4 +1,4 @@
-// Settings, privacy and safety, about, the action log, and the two "arrive by link" screens.
+// The profile, the settings drawn on Home, privacy and safety, about, the action log, and the two "arrive by link" screens.
 import { api, apiUrl, del, get, patch, post, token } from "/shared/api.js";
 import { alert, button, card, emptyState, html, icon, raw, selectField, tag, textField, toast, NO_911 } from "/shared/ui.js";
 import { time12, when } from "/shared/format.js";
@@ -20,26 +20,16 @@ const PUSH_TEXT = {
   off: "Off for this device.",
 };
 
-export async function account(ctx) {
-  const th = ctx.me.treehouse, me = ctx.me, parent = ctx.isParent();
-  const push = await pushState().catch(() => "unsupported");
+/** The settings that live on Home: the treehouse's details, the parent code, notifications, records and leaving. */
+export function homeSettings(ctx, push) {
+  const th = ctx.me.treehouse, parent = ctx.isParent();
   const zones = ZONES.map(([v, l]) => [v, `${l} (${v.split("/")[1].replace("_", " ")})`]);
   if (!ZONES.some(([v]) => v === th.timezone)) zones.unshift([th.timezone, th.timezone.replace("_", " ")]);
   const keep = KEEP.slice();
   if (!KEEP.some(([v]) => v === th.retention_days)) keep.push([th.retention_days, `${th.retention_days} days`]);
-
-  const content = html`
-  <section class="tl-card"><div class="tl-stack tl-stack--group">
-    <h2 class="tl-card__title">You</h2>
-    <dl class="tl-dl">
-      <div class="tl-dl__row"><dt>Email</dt><dd>${me.email}</dd></div>
-      <div class="tl-dl__row"><dt>Role</dt><dd>${me.grown_up.role === "parent" ? "Parent" : "Sitter"}</dd></div>
-      <div class="tl-dl__row"><dt>Treehouse</dt><dd>${th.name}, number <span class="tl-num">${th.number}</span></dd></div>
-    </dl>
-    <div class="tl-actions">${button({ label: "Sign out", attrs: "data-sign-out-btn" })}</div>
-  </div></section>
-
-  ${parent ? html`<form class="tl-card tl-card--sprig" id="house-form" novalidate><div class="tl-stack tl-stack--group">
+  return html`
+  <section class="tl-stack" aria-label="Settings"><h2 class="title-lg">Settings</h2>
+  ${parent ? html`<form class="tl-card" id="house-form" aria-label="Treehouse details" novalidate><div class="tl-stack tl-stack--group">
     <h2 class="tl-card__title">Treehouse</h2>
     ${textField({ id: "set-name", label: "Name", value: th.name, hint: "Families you're strung with see this." })}
     ${selectField({ id: "set-tz", label: "Time zone", options: zones, value: th.timezone, hint: "Quiet hours and daily minutes follow it." })}
@@ -49,7 +39,7 @@ export async function account(ctx) {
     <div class="tl-actions">${button({ label: "Save", variant: "primary", type: "submit" })}</div>
   </div></form>` : ""}
 
-  ${parent ? html`<section class="tl-card" data-scene="acorn"><div class="tl-stack tl-stack--group">
+  ${parent ? html`<section class="tl-card tl-card--oak"><div class="tl-stack tl-stack--group">
     <h2 class="tl-card__title">Parent code</h2>
     <p class="tl-card__body">${hasParentCode(ctx)
       ? "A parent code is set. It is what takes a device out of phone mode, so keep it to yourselves."
@@ -57,17 +47,18 @@ export async function account(ctx) {
     <div class="tl-actions">${button({ label: hasParentCode(ctx) ? "Change parent code" : "Set a parent code", variant: hasParentCode(ctx) ? "secondary" : "primary", attrs: "data-parent-code" })}</div>
   </div></section>` : ""}
 
-  <section class="tl-card" data-scene="fern"><div class="tl-stack tl-stack--group">
+  <section class="tl-card tl-card--fern"><div class="tl-stack tl-stack--group">
     <h2 class="tl-card__title">Notifications</h2>
     <p class="tl-card__body">We email you when a string needs an answer, a phone goes offline, or someone dials numbers that aren't strung. ${PUSH_TEXT[push]}</p>
     ${push === "on" || push === "off" ? html`<div class="tl-actions">${push === "on" ? button({ label: "Turn off on this device", attrs: "data-push-off" }) : button({ label: "Turn on for this device", attrs: "data-push-on" })}</div>` : ""}
   </div></section>
 
-  ${parent ? html`<section class="tl-card" data-scene="forest"><div class="tl-stack tl-stack--group">
+  ${parent ? html`<section class="tl-card"><div class="tl-stack tl-stack--group">
     <h2 class="tl-card__title">Records</h2>
     <p class="tl-card__body">Every change a grown-up makes is written to the action log, so you can see who changed what.</p>
     <div class="tl-actions">${button({ label: "Action log", attrs: 'data-href="#/actions"' })}</div>
   </div></section>` : ""}
+  </section>
 
   ${parent ? html`<section class="tl-card"><div class="tl-stack tl-stack--group">
     <h2 class="tl-card__title">Leave Treeline</h2>
@@ -77,45 +68,63 @@ export async function account(ctx) {
       ${button({ label: "Delete everything", variant: "danger", attrs: "data-delete" })}
     </div>
   </div></section>` : ""}`;
+}
 
+/** The buttons and form drawn by homeSettings. */
+export function bindHomeSettings(root, ctx) {
+  const th = ctx.me.treehouse;
+  root.querySelector("[data-parent-code]")?.addEventListener("click", async () => { if (await parentCodeDialog(ctx)) ctx.render(); });
+  root.querySelector("[data-push-on]")?.addEventListener("click", async () => {
+    try { await enablePush(); toast("Notifications are on for this device", "success"); ctx.render(); } catch (e) { toast(e.message, "warning"); }
+  });
+  root.querySelector("[data-push-off]")?.addEventListener("click", async () => {
+    try { await disablePush(); toast("Notifications are off for this device", "neutral"); ctx.render(); } catch (e) { toast(e.message, "warning"); }
+  });
+  // Shortening how long records are kept deletes the older ones now, so say so before it is saved.
+  root.querySelector("#set-keep")?.addEventListener("change", (e) => {
+    const days = Number(e.target.value), warn = root.querySelector("[data-keep-warning]");
+    warn.querySelector("[data-keep-n]").textContent = String(days);
+    warn.hidden = !(days < ctx.me.treehouse.retention_days);
+  });
+  root.querySelector("#house-form")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try {
+      ctx.me.treehouse = await patch("/api/treehouse", { name: root.querySelector("#set-name").value, timezone: root.querySelector("#set-tz").value,
+        retention_days: Number(root.querySelector("#set-keep").value) });
+      toast("Saved", "success"); ctx.render();
+    } catch (err) { toast(err.message, "warning"); }
+  });
+  const typed = (what, verb, run, body) => async () => {
+    const ok = await formDialog({
+      title: `${verb}?`, intro: body, submit: verb, danger: true,
+      body: textField({ id: "confirm-name", name: "confirm", label: `Type "${th.name}" to confirm`, attrs: 'autocomplete="off"' }),
+      onSubmit: (f) => run({ confirm: f.querySelector("[name=confirm]").value }),
+    });
+    if (ok) { token.clear(); ctx.me = null; toast(what, "neutral"); ctx.go("#/signin"); }
+  };
+  root.querySelector("[data-leave]")?.addEventListener("click", typed("You left the Treeline", "Leave the Treeline",
+    (b) => post("/api/treehouse/leave", b), "Your strings end, those families are told, and your phones stop working."));
+  root.querySelector("[data-delete]")?.addEventListener("click", typed("Everything was deleted", "Delete everything",
+    (b) => del("/api/treehouse", b), "This erases your treehouse, phones, strings and call records for good."));
+}
+
+/** The signed-in person: who they are here, and signing out. The one settings page left. */
+export async function profile(ctx) {
+  const th = ctx.me.treehouse, me = ctx.me;
+  const content = html`
+  <section class="tl-card"><div class="tl-stack tl-stack--group">
+    <h2 class="tl-card__title">You</h2>
+    <dl class="tl-dl">
+      <div class="tl-dl__row"><dt>Name</dt><dd>${me.grown_up.name || "Not set"}</dd></div>
+      <div class="tl-dl__row"><dt>Email</dt><dd>${me.email}</dd></div>
+      <div class="tl-dl__row"><dt>Role</dt><dd>${me.grown_up.role === "parent" ? "Parent" : "Sitter"}</dd></div>
+      <div class="tl-dl__row"><dt>Treehouse</dt><dd>${th.name}, number <span class="tl-num">${th.number}</span></dd></div>
+    </dl>
+    <div class="tl-actions">${button({ label: "Sign out", attrs: "data-sign-out-btn" })}</div>
+  </div></section>`;
   return {
-    title: "Settings", back: "#/home", nav: null, template: "settings", content,
-    mount(root) {
-      root.querySelector("[data-sign-out-btn]").addEventListener("click", () => root.querySelector("[data-sign-out]").click());
-      root.querySelector("[data-parent-code]")?.addEventListener("click", async () => { if (await parentCodeDialog(ctx)) ctx.render(); });
-      root.querySelector("[data-push-on]")?.addEventListener("click", async () => {
-        try { await enablePush(); toast("Notifications are on for this device", "success"); ctx.render(); } catch (e) { toast(e.message, "warning"); }
-      });
-      root.querySelector("[data-push-off]")?.addEventListener("click", async () => {
-        try { await disablePush(); toast("Notifications are off for this device", "neutral"); ctx.render(); } catch (e) { toast(e.message, "warning"); }
-      });
-      // Shortening how long records are kept deletes the older ones now, so say so before it is saved.
-      root.querySelector("#set-keep")?.addEventListener("change", (e) => {
-        const days = Number(e.target.value), warn = root.querySelector("[data-keep-warning]");
-        warn.querySelector("[data-keep-n]").textContent = String(days);
-        warn.hidden = !(days < th.retention_days);
-      });
-      root.querySelector("#house-form")?.addEventListener("submit", async (e) => {
-        e.preventDefault();
-        try {
-          ctx.me.treehouse = await patch("/api/treehouse", { name: root.querySelector("#set-name").value, timezone: root.querySelector("#set-tz").value,
-            retention_days: Number(root.querySelector("#set-keep").value) });
-          toast("Saved", "success"); ctx.render();
-        } catch (err) { toast(err.message, "warning"); }
-      });
-      const typed = (what, verb, run, body) => async () => {
-        const ok = await formDialog({
-          title: `${verb}?`, intro: body, submit: verb, danger: true,
-          body: textField({ id: "confirm-name", name: "confirm", label: `Type "${th.name}" to confirm`, attrs: 'autocomplete="off"' }),
-          onSubmit: (f) => run({ confirm: f.querySelector("[name=confirm]").value }),
-        });
-        if (ok) { token.clear(); ctx.me = null; toast(what, "neutral"); ctx.go("#/signin"); }
-      };
-      root.querySelector("[data-leave]")?.addEventListener("click", typed("You left the Treeline", "Leave the Treeline",
-        (b) => post("/api/treehouse/leave", b), "Your strings end, those families are told, and your phones stop working."));
-      root.querySelector("[data-delete]")?.addEventListener("click", typed("Everything was deleted", "Delete everything",
-        (b) => del("/api/treehouse", b), "This erases your treehouse, phones, strings and call records for good."));
-    },
+    title: "Profile", back: "#/home", nav: null, template: "settings", content,
+    mount(root) { root.querySelector("[data-sign-out-btn]").addEventListener("click", () => root.querySelector("[data-sign-out]").click()); },
   };
 }
 
@@ -190,7 +199,7 @@ export async function actionLog(ctx) {
     <div class="tl-row__main"><div class="tl-row__title">${(ACTIONS[a.action] || (() => a.action.replaceAll("_", " ")))(a)}</div>
     <div class="tl-row__meta"><span>${a.email || "Treeline"}</span><span>${when(a.at, tz)}</span></div></div></div>`)}</div>`
     : emptyState({ art: "sprig", title: "Nothing yet", body: "Changes you make, like approving a string or setting quiet hours, show up here." })}`;
-  return { title: "Action log", back: "#/settings", nav: null, content };
+  return { title: "Action log", back: "#/home", nav: null, content };
 }
 
 /** Arrive from a QR code or link on a softphone: add it to this treehouse. */
