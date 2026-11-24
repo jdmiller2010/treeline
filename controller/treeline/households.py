@@ -96,7 +96,18 @@ CREATE TABLE parent_action (
 );
 """
 
-HOUSEHOLD_MIGRATIONS = []
+
+
+def add_agreement(c):
+    """Step 1 (version 1 to 2): who in the family agreed to Treeline's terms and policies (docs/legal/), to which version, and when.
+    `meta.consent_at`/`consent_version` say only that someone agreed when the file was made; this names the grown-up, and has a
+    row per agreement so a later version, or another grown-up, can be added. Kept while the family is (never trimmed by
+    retention), erased with the file. Expand only."""
+    c.execute("CREATE TABLE agreement (id INTEGER PRIMARY KEY, email TEXT NOT NULL, version TEXT NOT NULL, "
+              "ack_911 INTEGER NOT NULL DEFAULT 0, agreed_at TEXT NOT NULL)")
+
+
+HOUSEHOLD_MIGRATIONS = [add_agreement]
 
 
 class HouseholdGone(LookupError):
@@ -240,8 +251,8 @@ def transaction(tid):
 
 # ------------------------------------------------------------- create and remove
 
-def create(tid, retention_days=DEFAULT_RETENTION_DAYS, ack_911=False, consent_at=None, consent_version=None):
-    """Make a household's file, with its consent and 911 acknowledgement. Replaces any file already at
+def create(tid, retention_days=DEFAULT_RETENTION_DAYS, ack_911=False, consent_at=None, consent_version=None, agreed_by=None):
+    """Make a household's file, with its consent and 911 acknowledgement (and, given `agreed_by`, the grown-up who agreed). Replaces any file already at
     this id (a rolled-back create gives the id out again, and so does a central database restored from
     a backup; the leftover is not this household's)."""
     remove(tid)
@@ -260,7 +271,20 @@ def create(tid, retention_days=DEFAULT_RETENTION_DAYS, ack_911=False, consent_at
         remove(tid)
         raise
     _remember(p, c, _identity(p))
+    if agreed_by:
+        record_agreement(c, agreed_by, consent_version, ack_911, consent_at)
     return c
+
+
+def record_agreement(conn, email, version, ack_911, at=None):
+    """A grown-up agreed to the terms and policies at `version` (after the file's migrations: the table arrives with step 1)."""
+    conn.execute("INSERT INTO agreement(email,version,ack_911,agreed_at) VALUES(?,?,?,?)",
+                 (str(email).strip().lower(), str(version), int(bool(ack_911)), at or db.iso()))
+
+
+def agreements(tid):
+    """Every agreement recorded for this household, oldest first."""
+    return conn(tid).execute("SELECT email, version, ack_911, agreed_at FROM agreement ORDER BY id").fetchall()
 
 
 def remove(tid):
@@ -513,7 +537,7 @@ def reconcile(conn_, now=None):
     """Repair what a crash or a restore from backup can leave between the two kinds of file
     (docs/DATA_LAYER.md, "Reconcile"). Safe to run at any time, as often as you like."""
     now = now or db.utcnow()
-    done = {"orphans": [], "recreated": [], "logged": 0, "left": []}
+    done = {"orphans": [], "recreated": [], "logged": 0, "left": [], "former": 0}
     rows = {r["id"]: r for r in conn_.execute("SELECT id, left_at, deleted_at, system FROM treehouse")}
     # 1. files with no treehouse, or one that was deleted. A new treehouse's file is made inside the API's
     # still-open central transaction, so for a moment it has no row we can see: only files that have sat
@@ -547,7 +571,23 @@ def reconcile(conn_, now=None):
             log.exception("could not copy call %s into its households; will try again", call["id"])
     # 4. households that left and are now past retention
     done["left"] = purge_left(conn_, now)
+    # 5. agreements of grown-ups no longer in the family (removed by a parent, or by Treeline staff, whose page never opens a
+    # household file): a former member's address is not kept. The parent's own "remove" does this at once; this catches the rest.
+    for tid, r in rows.items():
+        if r["left_at"] or r["deleted_at"] or r["system"] or not exists(tid):
+            continue
+        members = [m["email"] for m in conn_.execute("SELECT email FROM grown_up WHERE treehouse_id=?", (tid,))]
+        try:
+            done["former"] += forget_former_members(tid, members)
+        except Exception:
+            log.exception("could not tidy the agreements of household %s; will try again", tid)
     return done
+
+
+def forget_former_members(tid, members):
+    """Delete the agreements of anyone not in `members` (the family's grown-ups now). Returns how many went."""
+    marks = ",".join("?" * len(members)) or "''"
+    return conn(tid).execute(f"DELETE FROM agreement WHERE email NOT IN ({marks})", [m.lower() for m in members]).rowcount
 
 
 ORPHAN_GRACE = dt.timedelta(hours=1)

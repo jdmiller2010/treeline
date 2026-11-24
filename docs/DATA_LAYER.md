@@ -62,6 +62,7 @@ local backups and S3: `central/<timestamp>.db` and `households/<id>/<timestamp>.
 | `call_event` | the events of those calls, primary key = the ledger's event id, `ON DELETE CASCADE` from `call_log`. Gains `theirs` (the event was the other family's handset; its id is not stored). |
 | `notice` | notes for the parents (alerts, requests). Pruned at 90 days. |
 | `parent_action` | the audit log of what grown-ups changed. Pruned at 365 days. |
+| `agreement` | who agreed to the terms and policies (docs/legal/), the version, the 911 acknowledgement and when (household step 1). Not pruned by retention; a grown-up's rows go when they leave the family (`reconcile` step 5), and all of them with the file. |
 
 Moving `notice` and `parent_action` here means a family's personal records are in one deletable file.
 Other families still cause notices (a string request, "approved", "number changed"): that is a single

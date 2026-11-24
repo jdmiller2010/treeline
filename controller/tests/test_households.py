@@ -53,12 +53,12 @@ class Creating(HouseholdTest):
         self.assertEqual(oct(os.stat(self.dir).st_mode & 0o777), "0o700")
         raw = sqlite3.connect(p)
         self.assertEqual(raw.execute("PRAGMA application_id").fetchone()[0], db.HOUSEHOLD_APP_ID)
-        self.assertEqual(raw.execute("PRAGMA user_version").fetchone()[0], 1)
+        self.assertEqual(raw.execute("PRAGMA user_version").fetchone()[0], len(households.HOUSEHOLD_MIGRATIONS) + 1)
         meta = raw.execute("SELECT treehouse_id, retention_days, ack_911, consent_version FROM meta").fetchall()
         self.assertEqual(meta, [(7, 30, 1, "v1")])
         tables = {r[0] for r in raw.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         self.assertTrue({"meta", "call_log", "call_event", "notice", "parent_action"} <= tables)
-        self.assertNotIn("grown_up", tables)                # the household never holds an email or a lookup key
+        self.assertNotIn("grown_up", tables)                # no way to find a family from an outside key: that is central's job
         self.assertEqual(households.ids(), [7])
 
     def test_an_id_can_never_be_a_path(self):
@@ -220,6 +220,14 @@ def add_column(c):
 
 
 class Migrating(HouseholdTest):
+    """The runner, with test-only steps on top of the baseline (the real steps are tested in Steps below)."""
+
+    def setUp(self):
+        super().setUp()
+        patcher = mock.patch.object(households, "HOUSEHOLD_MIGRATIONS", [])
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def test_a_household_below_the_current_version_is_migrated_on_first_open_after_a_backup(self):
         households.create(1)
         households.conn(1).execute("INSERT INTO notice(kind,title,created_at) VALUES('x','keep',?)", (db.iso(),))
@@ -293,6 +301,63 @@ class Migrating(HouseholdTest):
             for t in threads:
                 t.join()
         self.assertEqual((errors, len(ran)), ([], 1))
+
+
+class Steps(HouseholdTest):
+    """Rule 6 of DATA_LAYER.md for each real household step: a file at the PREVIOUS schema, with data, moved forward."""
+
+    def baseline(self, tid):
+        """A household file as version 1 made it (the release before step 1), with a call, a note and an action in it."""
+        with mock.patch.object(households, "HOUSEHOLD_MIGRATIONS", []):
+            c = households.create(tid, ack_911=True, consent_at="2026-11-01T00:00:00+00:00", consent_version="2026-11")
+            self.assertEqual(c.execute("PRAGMA user_version").fetchone()[0], 1)
+            c.execute("INSERT INTO call_log(id,started_at,talk_sec,result) VALUES(7,?,42,'connected')", (db.iso(),))
+            c.execute("INSERT INTO notice(kind,title,created_at) VALUES('x','keep',?)", (db.iso(),))
+            c.execute("INSERT INTO parent_action(at,email,action) VALUES(?,'p@example.com','treehouse_created')", (db.iso(),))
+        households.forget_all()
+
+    def test_step_1_adds_the_agreement_table_and_keeps_everything(self):
+        self.baseline(1)
+        self.assertEqual(households.behind(), [1])
+        c = households.conn(1)                                                  # the real list: migrates on first open
+        self.assertEqual(c.execute("PRAGMA user_version").fetchone()[0], len(households.HOUSEHOLD_MIGRATIONS) + 1)
+        self.assertEqual(tuple(c.execute("SELECT id, talk_sec FROM call_log").fetchone()), (7, 42))
+        self.assertEqual(c.execute("SELECT title FROM notice").fetchone()[0], "keep")
+        self.assertEqual(c.execute("SELECT action FROM parent_action").fetchone()[0], "treehouse_created")
+        meta = households.meta(1)
+        self.assertEqual((meta["consent_version"], meta["ack_911"]), ("2026-11", 1))
+        self.assertEqual(households.agreements(1), [])                          # an old family: nobody is named after the fact
+        households.record_agreement(c, "P@Example.com", "2026-11-23", True)
+        self.assertEqual(tuple(households.agreements(1)[0])[:3], ("p@example.com", "2026-11-23", 1))
+        households.forget_all()
+        households.conn(1)                                                      # a second open changes nothing
+        self.assertEqual(households.behind(), [])
+        copies = os.listdir(households.pre_migrate_dir())
+        self.assertEqual(len(copies), 1)                                        # the copy a rollback restores is version 1
+        old = sqlite3.connect(os.path.join(households.pre_migrate_dir(), copies[0]))
+        self.assertEqual(old.execute("PRAGMA user_version").fetchone()[0], 1)
+        self.assertIsNone(old.execute("SELECT 1 FROM sqlite_master WHERE name='agreement'").fetchone())
+        old.close()
+
+    def test_step_1_killed_half_way_leaves_version_1_and_a_rerun_finishes(self):
+        self.baseline(1)
+
+        def dies(c):
+            households.add_agreement(c)
+            raise KeyboardInterrupt("the process stopped mid-step")
+        with mock.patch.object(households, "HOUSEHOLD_MIGRATIONS", [dies]), self.assertRaises(KeyboardInterrupt):
+            households.conn(1)
+        households.forget_all()
+        raw = sqlite3.connect(households.path(1))
+        self.assertEqual(raw.execute("PRAGMA user_version").fetchone()[0], 1)
+        self.assertIsNone(raw.execute("SELECT 1 FROM sqlite_master WHERE name='agreement'").fetchone())
+        raw.close()
+        self.assertEqual(households.conn(1).execute("PRAGMA user_version").fetchone()[0], len(households.HOUSEHOLD_MIGRATIONS) + 1)
+
+    def test_a_new_family_records_who_agreed(self):
+        households.create(3, ack_911=True, consent_at="2026-11-23T10:00:00+00:00", consent_version="2026-11-23", agreed_by="Pat@Example.com")
+        rows = [tuple(r) for r in households.agreements(3)]
+        self.assertEqual(rows, [("pat@example.com", "2026-11-23", 1, "2026-11-23T10:00:00+00:00")])
 
 
 if __name__ == "__main__":

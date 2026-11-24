@@ -6,7 +6,7 @@ import { lockedToPhone, onInstallChange, registerApp } from "/shared/pwa.js";
 import { installAvailable, installSteps, runInstall } from "/shared/install.js";
 import { infoDialog } from "./dialogs.js";
 import { signIn } from "./signin.js";
-import { setup } from "./setup.js";
+import { agree, setup } from "./setup.js";
 import { home } from "./home.js";
 import { strings } from "./strings.js";
 import { calls } from "./calls.js";
@@ -161,6 +161,7 @@ async function render() {
     }
     if (ctx.me.archived) return show(pausedByTreeline(ctx), mine);
     if (!ctx.me.treehouse) return show(await setup(ctx), mine);
+    if (ctx.me.agreed === false) return show(await agree(ctx), mine);     // a grown-up added later, or the documents changed
     if (name === "setup") return ctx.go("#/home");
     const route = ROUTES[name];
     if (!route) return ctx.go("#/home");
@@ -168,6 +169,8 @@ async function render() {
     show(await route(ctx, params), mine);
   } catch (e) {
     if (e instanceof ApiError && e.status === 401) { ctx.me = null; return render(); }
+    // The documents changed while this app was open (or a parent just added this grown-up): ask again, here, before anything else.
+    if (e instanceof ApiError && e.code === "agreement_needed") { ctx.me = null; return render(); }
     root.innerHTML = str(barePage({ content: alert({ tone: "danger", title: "That didn't load", body: e.message,
       actions: button({ label: "Try again", size: "sm", attrs: "data-retry" }) }) }));
     root.querySelector("[data-retry]")?.addEventListener("click", () => render());

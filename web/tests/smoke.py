@@ -152,6 +152,9 @@ def make_family(browser, email, name, tz="America/Los_Angeles"):
     check(page.locator("button[type=submit]").is_disabled(), f"{name}: can't continue without the 911 box")
     page.click("label[for=ack]")
     check(page.locator("button[type=submit]").is_disabled(), f"{name}: one box isn't enough, the privacy box is needed too")
+    for href in ("/legal/terms/", "/legal/privacy/", "/legal/acceptable-use/"):
+        check(page.locator(f"#setup-body a[href='{href}'][target=_blank]").count() == 1,
+              f"{name}: setup links the full {href} in a new tab, next to the box that agrees to it")
     page.click("label[for=consent]")
     page.click("button[type=submit]")
     page.wait_for_selector("#app-title")                            # two steps, then straight to Home
@@ -419,8 +422,24 @@ def main():
             check(words in body, f"the privacy policy covers: {words}")
         check(pp.locator("#policy details").count() == 0, "on the public page every answer is open, not folded away")
         check(pp.locator(".tl-footer a[href='/privacy/']").count() == 1, "its footer links back to it, with the contact address")
+        check(pp.locator("#full a[href='/legal/terms/']").count() == 1, "it links the full Terms, Privacy Policy and Acceptable Use Policy")
         no_sideways_scroll(pp, "privacy 390")
         shoot(pp, "privacy-390")
+        # ---- the full documents (docs/legal/, generated into web/legal/): public, one h1, the 911 statement, the credit
+        for slug, title in (("terms", "Terms of Service"), ("privacy", "Privacy Policy"), ("acceptable-use", "Acceptable Use Policy")):
+            for width in (360, 1280):
+                pp2 = pctx.new_page()
+                pp2.set_viewport_size({"width": width, "height": 844})
+                watch(pp2, f"legal {slug}")
+                pp2.goto(f"{BASE}/legal/{slug}/")
+                pp2.wait_for_selector(".tl-footer")                     # the shared footer, added by /legal/legal.js
+                text = pp2.inner_text("main")
+                check(pp2.locator("h1").count() == 1 and title in pp2.inner_text("h1"), f"/legal/{slug}/ opens without signing in, one h1 ({width})")
+                check("911" in text and "Basecamp" in text and "TODO" not in text, f"/legal/{slug}/ says no 911, keeps the credit, shows no owner notes")
+                no_sideways_scroll(pp2, f"legal {slug} {width}")
+                if width == 360:
+                    shoot(pp2, f"legal-{slug}-360")
+                pp2.close()
         pctx.close()
         # The green fill is a design token (--tl-canopy-fill). A stray character in treeline.css once made the
         # browser drop the whole block of --tl-* variables, and every green button, switch and checkbox became
@@ -692,6 +711,9 @@ def main():
                     a.wait_for_selector("#app-title")
                     a.evaluate(f"document.documentElement.setAttribute('data-theme','{theme}')")
                     no_sideways_scroll(a, f"{name} {width} {theme}")
+                    if name in ("privacy", "about") and theme == "light" and width == 390:
+                        for href in ("/legal/terms/", "/legal/privacy/", "/legal/acceptable-use/"):
+                            check(a.locator(f"main a[href='{href}']").count() == 1, f"{name} links the full {href}")
                     if theme == "light" and width in (390, 1280):
                         hb = a.evaluate("""() => ({ name: document.querySelector('#app-title').textContent, pause: document.querySelectorAll('.tl-appbar [data-pause]').length,
                           avatar: document.querySelectorAll('.tl-appbar .tl-avatar-btn').length, avatarH: Math.round(document.querySelector('.tl-appbar .tl-avatar-btn .tl-avatar').getBoundingClientRect().height), pauseH: Math.round(document.querySelector('.tl-appbar [data-pause]').getBoundingClientRect().height), h1s: document.querySelectorAll('h1').length, h1w: document.querySelector('h1').getBoundingClientRect().width,
@@ -779,7 +801,20 @@ def main():
           if (!r.ok) throw new Error(await r.text()); }""")
         sit_ctx = browser.new_context(viewport={"width": 1280, "height": 900}); sit = sit_ctx.new_page(); watch(sit, "sitter")
         sign_in(sit, "sitter@example.com")
-        sit.wait_for_selector(".tl-home-hero"); sit.wait_for_selector("[data-handset-switch]")
+        # A grown-up added later never saw setup: they read and agree first, and nothing else opens until they do.
+        sit.wait_for_selector("form #consent")
+        check(sit.locator("h1").count() == 1 and "911" in sit.inner_text("h1"), "an added grown-up is asked to agree first, under the no-911 heading")
+        check(all(sit.locator(f"main a[href='/legal/{d}/'][target=_blank]").count() == 1 for d in ("terms", "privacy", "acceptable-use")),
+              "the agree screen links the full documents")
+        sit.goto(f"{BASE}/parent/#/calls"); sit.wait_for_selector("form #consent")
+        check(sit.locator(".tl-appbar").count() == 0, "no other page opens before agreeing")
+        check(sit.locator("button[type=submit]").is_disabled(), "it can't be skipped without both boxes")
+        sit.click("label[for=ack]"); sit.click("label[for=consent]"); sit.click("button[type=submit]")
+        sit.wait_for_selector("text=Call log")
+        check(sit.evaluate("() => location.hash") == "#/calls", "after agreeing they land where they were going (here the call log), not always Home")
+        sit.goto(f"{BASE}/parent/#/home"); sit.wait_for_selector(".tl-home-hero"); sit.wait_for_selector("[data-handset-switch]")
+        sit.reload(); sit.wait_for_selector(".tl-home-hero")
+        check(sit.locator("form #consent").count() == 0, "agreeing is remembered: it isn't asked again")
         n = lambda sel: sit.locator(sel).count()
         check(n("[data-add-phone]") == 0 and n("[data-this-device]") == 0 and n("[data-change-number]") == 0 and n("[data-add-grownup]") == 0,
               "a sitter's Home has no Add a phone, Use this device, Change number or Add a grown-up")

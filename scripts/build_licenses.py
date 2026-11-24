@@ -31,7 +31,7 @@ PAGE = """<!doctype html>
   <h1 class="display-md">Open-source licenses</h1>
 </div>
 {body}
-<p class="caption" style="color:var(--ink-muted)">© 2026 Jordan Miller · <a href="mailto:jdmiller2010@gmail.com" style="color:inherit">jdmiller2010@gmail.com</a> · <a href="https://buymeacoffee.com/REPLACE-ME" style="color:inherit">Support Treeline</a> · Open-source licenses</p>
+<p class="caption" style="color:var(--ink-muted)">© 2026 Jordan Miller · <a href="mailto:jdmiller2010@gmail.com" style="color:inherit">jdmiller2010@gmail.com</a> · <a href="https://buymeacoffee.com/jdmiller" style="color:inherit">Support Treeline</a> · Open-source licenses</p>
 </div>
 </main>
 </body>

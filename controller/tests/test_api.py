@@ -52,6 +52,13 @@ class Person:
         return client.delete(path, headers=self.h(), json=json or {})
 
 
+def joined(email):
+    """A grown-up a parent added, signed in and past the agree screen (everyone added later agrees before anything else)."""
+    p = Person(email)
+    assert p.post("/api/agreement", {"ack_911": True, "consent": True}).status_code == 200
+    return p
+
+
 PIN = "2468"
 
 
@@ -142,6 +149,7 @@ class Treehouse(unittest.TestCase):
         self.assertEqual((r.status_code, r.get_json()["code"]), (400, "ack_911"))
 
     def test_setup_requires_agreeing_to_the_privacy_notes_and_records_when(self):
+        """And who: the agreeing grown-up, the version of docs/legal/ and the 911 acknowledgement, in the family's own file."""
         p = Person()
         r = p.post("/api/treehouse", {"name": "Pine house", "ack_911": True})
         self.assertEqual((r.status_code, r.get_json()["code"]), (400, "consent"))
@@ -149,8 +157,73 @@ class Treehouse(unittest.TestCase):
         self.assertEqual(r.status_code, 201)
         meta = households.meta(r.get_json()["treehouse"]["id"])          # consent lives in the household's own file
         self.assertTrue(meta["consent_at"])
-        self.assertEqual(meta["consent_version"], api.PRIVACY_VERSION)
+        self.assertEqual(meta["consent_version"], api.AGREEMENT_VERSION)
         self.assertEqual(meta["ack_911"], 1)
+        rows = [dict(r) for r in households.agreements(r.get_json()["treehouse"]["id"])]
+        self.assertEqual(len(rows), 1)
+        self.assertEqual((rows[0]["email"], rows[0]["version"], rows[0]["ack_911"]), (p.email, api.AGREEMENT_VERSION, 1))
+        self.assertEqual(rows[0]["agreed_at"], meta["consent_at"])
+        self.assertIsNone(db.local_conn().execute(                         # never in central: it is the family's own record
+            "SELECT 1 FROM sqlite_master WHERE name='agreement'").fetchone())
+
+    def test_a_grown_up_added_later_is_asked_to_agree_and_their_agreement_is_recorded(self):
+        """Code review: only the parent who made the treehouse used to be recorded; a co-parent or sitter never saw the terms."""
+        parent = make_house()
+        tid = parent.house["id"]
+        self.assertIs(parent.get("/api/me").get_json()["agreed"], True)              # agreed at setup
+        for email, role in ((new_email(), "parent"), (new_email(), "sitter")):
+            parent.post("/api/grown-ups", {"email": email, "role": role})
+            them = Person(email)
+            self.assertIs(them.get("/api/me").get_json()["agreed"], False)
+            for path in ("/api/home", "/api/calls", "/api/grown-ups"):                 # the server refuses, not only the app's screens
+                r = them.get(path)
+                self.assertEqual((r.status_code, r.get_json()["code"]), (403, "agreement_needed"), path)
+            r = them.post("/api/agreement", {"ack_911": True})
+            self.assertEqual((r.status_code, r.get_json()["code"]), (400, "consent"))
+            r = them.post("/api/agreement", {"consent": True})
+            self.assertEqual((r.status_code, r.get_json()["code"]), (400, "ack_911"))
+            r = them.post("/api/agreement", {"ack_911": True, "consent": True})
+            self.assertEqual(r.status_code, 200)
+            self.assertIs(r.get_json()["agreed"], True)
+            self.assertEqual(them.get("/api/home").status_code, 200)
+            them.post("/api/agreement", {"ack_911": True, "consent": True})          # twice records it once
+            rows = [r for r in households.agreements(tid) if r["email"] == email]
+            self.assertEqual([(r["version"], r["ack_911"]) for r in rows], [(api.AGREEMENT_VERSION, 1)])
+        self.assertEqual(len(households.agreements(tid)), 3)
+
+    def test_a_former_members_agreement_is_not_kept(self):
+        """Code review: a removed sitter's email stayed in the family's file for as long as the family did."""
+        parent = make_house()
+        tid = parent.house["id"]
+        emails = []
+        for _ in range(2):
+            e = new_email()
+            parent.post("/api/grown-ups", {"email": e, "role": "sitter"})
+            joined(e)
+            emails.append(e)
+        ids = {g["email"]: g["id"] for g in parent.get("/api/grown-ups").get_json()["grown_ups"]}
+        parent.delete(f"/api/grown-ups/{ids[emails[0]]}")                       # a parent removes one: gone at once
+        self.assertNotIn(emails[0], [r["email"] for r in households.agreements(tid)])
+        db.local_conn().execute("DELETE FROM grown_up WHERE email=?", (emails[1],))   # removed another way (Treeline staff)
+        self.assertIn(emails[1], [r["email"] for r in households.agreements(tid)])
+        households.reconcile(db.local_conn())                                   # the hourly repair catches it
+        self.assertEqual([r["email"] for r in households.agreements(tid)], [parent.email])
+
+    def test_everyone_is_asked_again_when_the_documents_change(self):
+        parent = make_house()
+        with mock.patch.object(api, "AGREEMENT_VERSION", "2999-01-01"):
+            self.assertIs(parent.get("/api/me").get_json()["agreed"], False)
+            self.assertEqual(parent.get("/api/home").get_json()["code"], "agreement_needed")
+            self.assertEqual(parent.post("/api/treehouse/leave", {"confirm": "wrong name"}).get_json()["code"], "confirm",
+                             "leaving (and deleting) still works without agreeing: a family can always end things")
+            parent.post("/api/agreement", {"ack_911": True, "consent": True})
+            self.assertIs(parent.get("/api/me").get_json()["agreed"], True)
+        self.assertEqual([r["version"] for r in households.agreements(parent.house["id"])], [api.AGREEMENT_VERSION, "2999-01-01"])
+
+    def test_someone_without_a_treehouse_has_nothing_to_agree_to_yet(self):
+        p = Person()
+        self.assertIs(p.get("/api/me").get_json()["agreed"], True)                 # setup asks
+        self.assertEqual(p.post("/api/agreement", {"ack_911": True, "consent": True}).status_code, 403)
 
     def test_setup_gives_a_number_and_safe_defaults(self):
         p = make_house()
@@ -212,7 +285,7 @@ class Treehouse(unittest.TestCase):
     def test_sitters_can_pause_but_not_change_things(self):
         parent = make_house()
         parent.post("/api/grown-ups", {"email": "sitter@example.com", "role": "sitter"})
-        sitter = Person("sitter@example.com")
+        sitter = joined("sitter@example.com")
         self.assertEqual(sitter.get("/api/home").status_code, 200)
         self.assertEqual(sitter.patch("/api/treehouse", {"paused": True}).status_code, 200)
         self.assertEqual(sitter.patch("/api/treehouse", {"max_call_minutes": 5}).status_code, 403)
@@ -225,7 +298,7 @@ class Treehouse(unittest.TestCase):
     def test_sitters_can_turn_quiet_hours_on_and_off_and_nothing_else_about_them(self):
         parent = make_house()
         parent.post("/api/grown-ups", {"email": "sitter-q@example.com", "role": "sitter"})
-        sitter = Person("sitter-q@example.com")
+        sitter = joined("sitter-q@example.com")
         before = parent.get("/api/home").get_json()["treehouse"]["quiet"]
         # the switch: on and off
         self.assertEqual(sitter.patch("/api/treehouse", {"quiet": {"enabled": False}}).status_code, 200)
@@ -248,7 +321,7 @@ class Treehouse(unittest.TestCase):
         other = make_house("Friends")
         string_up(parent, other)
         parent.post("/api/grown-ups", {"email": "sitter-c@example.com", "role": "sitter"})
-        sitter = Person("sitter-c@example.com")
+        sitter = joined("sitter-c@example.com")
         c = helpers.db.connect()
         old = (db.utcnow() - dt.timedelta(days=3))
         for when, talk in ((old, 60), (db.utcnow(), 120)):
@@ -388,7 +461,7 @@ class History(unittest.TestCase):
             raw = households.conn(tid)
             self.assertEqual({r[0] for r in raw.execute("SELECT treehouse_id FROM meta")}, {tid})
             self.assertEqual({r[0] for r in raw.execute("SELECT name FROM sqlite_master WHERE type='table'")},
-                             {"meta", "call_log", "call_event", "notice", "parent_action"})
+                             {"meta", "call_log", "call_event", "notice", "parent_action", "agreement"})
 
     def test_lowering_retention_removes_older_calls_at_once_and_only_for_that_family(self):
         old, recent = self.call(days_ago=30), self.call(days_ago=2)
@@ -513,7 +586,7 @@ class History(unittest.TestCase):
             api._behind["at"] = 0
             api._hits.clear()
             self.assertEqual(client.get("/api/health").get_json()["households_behind"], 0)
-            with mock.patch.object(households, "HOUSEHOLD_MIGRATIONS", [step]):
+            with mock.patch.object(households, "HOUSEHOLD_MIGRATIONS", [*households.HOUSEHOLD_MIGRATIONS, step]):
                 api._behind["at"] = 0
                 api._hits.clear()
                 r = client.get("/api/health")
@@ -649,7 +722,7 @@ class Handsets(unittest.TestCase):
         self.assertEqual(b.patch(f"/api/handsets/{hid}", {"disabled": True}).status_code, 404)        # only your own treehouse's
         self.assertEqual(b.post(f"/api/handsets/{hid}/ring-test").status_code, 404)
         a.post("/api/grown-ups", {"email": "sit2@example.com", "role": "sitter"})
-        sitter = Person("sit2@example.com")
+        sitter = joined("sit2@example.com")
         self.assertEqual(sitter.get("/api/handsets").status_code, 200)
         self.assertEqual(sitter.patch(f"/api/handsets/{hid}", {"disabled": True}).status_code, 200)    # disconnect...
         self.assertEqual(sitter.post(f"/api/handsets/{hid}/ring-test").status_code, 409)               # ... a disconnected phone can't ring (not "parents only")
@@ -1229,6 +1302,7 @@ class ParentCode(unittest.TestCase):
         sitter = Person("pin-sitter@example.com")
         self.age(sitter)
         p.post("/api/grown-ups", {"email": sitter.email, "name": "Sit", "role": "sitter"})
+        sitter.post("/api/agreement", {"ack_911": True, "consent": True})
         self.assertEqual(sitter.put("/api/treehouse/parent-code", {"code": "9999", "current": "1111"}).status_code, 403)
 
     def test_leaving_phone_mode_takes_the_code_and_removes_the_handset(self):
