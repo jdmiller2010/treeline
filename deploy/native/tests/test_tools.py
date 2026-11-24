@@ -316,7 +316,7 @@ class Releases(unittest.TestCase):
         for dev in ("docker-compose", "Caddyfile.dev", "env.example", "testphones", "/web/site/tests/", "LOCAL_HTTPS", ".override."):
             self.assertFalse([n for n in names if dev in n], dev)
         self.assertEqual(info["version"], "v0.0.1")
-        self.assertEqual(info["schema"], {"central": 4, "household": 2})      # central: the baseline plus three steps (admin, step-up, archive); household: plus step 1 (agreement)
+        self.assertEqual(info["schema"], {"central": 5, "household": 2})      # central: the baseline plus four steps (admin, step-up, archive, string-code claim); household: plus step 1 (agreement)
         self.assertFalse([n for n in names if n.startswith("./deploy/native/ci") or n.startswith("./deploy/native/tests")])
 
     def test_the_build_is_reproducible(self):
