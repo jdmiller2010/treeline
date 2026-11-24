@@ -3,6 +3,8 @@ import { get, patch } from "/shared/api.js";
 import { alert, art, button, emptyState, html, icon, join, presence, raw, toast, NO_911, nextId } from "/shared/ui.js";
 import { dateText, minutesText, plural, time12 } from "/shared/format.js";
 import { bindTreehouse, treehouseSections } from "./house.js";
+import { bindHomeSettings, homeSettings } from "./account.js";
+import { pushState } from "./push.js";
 import { approvalCard, bindStringActions, showStringCode } from "./strings.js";
 
 const NOTICE_TONE = { string_request: "info", string_live: "success", string_ended: "info", number_changed: "info",
@@ -27,7 +29,7 @@ function tonedCard(d, tz) {
 }
 
 export async function home(ctx) {
-  const [d, { grown_ups }] = await Promise.all([get("/api/home"), get("/api/grown-ups")]);
+  const [d, { grown_ups }, push] = await Promise.all([get("/api/home"), get("/api/grown-ups"), pushState().catch(() => "unsupported")]);
   ctx.me.treehouse = d.treehouse;
   ctx.badge = d.strings.waiting_on_me.length;
   const parent = ctx.isParent(), th = d.treehouse;
@@ -46,9 +48,10 @@ export async function home(ctx) {
   const setupCards = [];
   // (No "add your first phone" card: the Phones section below says it when there are none. And no picture on these cards:
   // the treehouse at the top is this screen's one illustration.)
-  if (d.handsets.length && !d.strings.live && !d.strings.waiting_on_me.length && !d.strings.waiting_on_them.length) setupCards.push(emptyState({
-    art: null, title: "Invite a friend's family", body: "Share a string code with a parent you know. Once you both say yes, the kids can call.",
-    action: parent ? button({ label: "Make a string code", variant: "primary", icon: "plus", attrs: "data-make-code" }) : null }));
+  if (d.handsets.length && !d.strings.live && !d.strings.waiting_on_me.length && !d.strings.waiting_on_them.length) setupCards.push(html`<section class="tl-card tl-card--seeds" aria-label="Invite a friend's family">
+    <header class="tl-card__head"><div><p class="tl-card__eyebrow">First string</p><h3 class="tl-card__title">Invite a friend's family</h3></div></header>
+    <p class="tl-card__body">Share a string code with a parent you know. Once you both say yes, the kids can call.</p>
+    ${parent ? html`<div class="tl-actions">${button({ label: "Make a string code", variant: "primary", icon: "plus", attrs: "data-make-code" })}</div>` : ""}</section>`);
 
   const waiting = [...d.strings.waiting_on_me, ...d.strings.waiting_on_them];
   const content = html`
@@ -64,9 +67,10 @@ export async function home(ctx) {
     <div class="tl-stat"><span class="tl-stat__label">Talk time</span><span class="tl-stat__value">${w.minutes}<span class="tl-stat__unit">min</span></span><span class="tl-stat__note">This week</span></div>
     <div class="tl-stat"><span class="tl-stat__label">Strings</span><span class="tl-stat__value">${d.strings.live}</span><span class="tl-stat__note">${waiting.length ? `${waiting.length} waiting` : "All set"}</span></div>
   </div></section>
-  ${treehouseSections(ctx, d.handsets, grown_ups)}
   ${waiting.length ? html`<section class="tl-stack"><h2 class="title-lg">Waiting on families</h2>${waiting.map((s) => approvalCard(s, parent))}</section>` : ""}
   ${setupCards}
+  ${treehouseSections(ctx, d.handsets, grown_ups)}
+  ${homeSettings(ctx, push)}
   ${alert({ tone: "info", title: "Treeline can't call 911", body: NO_911 })}`;
 
   return {
@@ -74,6 +78,7 @@ export async function home(ctx) {
     mount(root) {
       bindStringActions(root, ctx);
       bindTreehouse(root, ctx, () => ctx.render());
+      bindHomeSettings(root, ctx);
       // The name is shown big under the picture. Once that has scrolled up under the title bar, the bar's "Treeline" gives way to it.
       const bar = document.querySelector(".tl-appbar"), big = root.querySelector("#home-name");
       if (bar && big && "IntersectionObserver" in window) {

@@ -2,6 +2,7 @@
 export const ICONS = {
  "alert": "<path d=\"M10.3 4.6a2 2 0 0 1 3.4 0l7.4 12.9A2 2 0 0 1 19.4 20.5H4.6a2 2 0 0 1-1.7-3z\"/><path d=\"M12 9.5v4.5\"/><path d=\"M12 17v.01\"/>",
  "bell": "<path d=\"M6 16v-5a6 6 0 0 1 12 0v5l2 2H4z\"/><path d=\"M10 20a2 2 0 0 0 4 0\"/>",
+ "book": "<path d=\"M6 3.5h11.5a1.5 1.5 0 0 1 1.5 1.5v14.5H7.5A1.5 1.5 0 0 1 6 18V3.5Z\"/><path d=\"M6 18a1.5 1.5 0 0 1 1.5-1.5H19\"/><path d=\"M10 8h5\"/>",
  "check": "<path d=\"M5 12.5l4.5 4.5L19 7.5\"/>",
  "chevron-down": "<path d=\"M6 9l6 6 6-6\"/>",
  "chevron-right": "<path d=\"M9 6l6 6-6 6\"/>",

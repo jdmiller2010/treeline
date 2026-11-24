@@ -237,7 +237,7 @@ async function addGrownUp(ctx) {
 export async function phonebook(ctx) {
   const book = await get("/api/phonebook");
   const content = html`
-  <section class="tl-card tl-card--plank">
+  <section class="tl-card tl-card--blossom">
     <header class="tl-card__head"><div><p class="tl-card__eyebrow">Phone book</p><h2 class="tl-card__title">${book.treehouse}</h2></div></header>
     <dl class="tl-dl"><div class="tl-dl__row"><dt>Our number</dt><dd class="tl-num"><strong>${book.number}</strong></dd></div></dl>
   </section>
@@ -250,5 +250,5 @@ export async function phonebook(ctx) {
   </section>
   <p class="caption" style="color:var(--ink-muted)">${NO_911}</p>
   <div class="tl-actions tl-noprint">${button({ label: "Print", variant: "primary", attrs: "data-print" })}</div>`;
-  return { title: "Phone book", back: "#/home", nav: null, content, mount(root) { root.querySelector("[data-print]")?.addEventListener("click", () => window.print()); } };
+  return { title: "Phone book", nav: "phonebook", content, mount(root) { root.querySelector("[data-print]")?.addEventListener("click", () => window.print()); } };
 }

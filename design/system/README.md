@@ -117,7 +117,7 @@ The full rules, with tables for spacing, insets, sizing, alignment, responsive b
 
 ## App layout and screen sizes
 
-Every parent screen sits in one shell (`AppShell`): bottom tabs on phones, an icon rail on tablets, a labeled sidebar on desktop, always the same four places (Home, Friends, Calls, Quiet hours). The shell follows the **window size** (compact under 768, medium 768–1023, expanded 1024+). Everything inside the page follows its **content size**, the room it actually has (narrow under 600, regular 600–959, wide 960+), so a card grid beside a sidebar behaves like it does on a tablet. Every screen is one of four templates: Overview, List and detail, Settings form, or Focused task (a bottom sheet on phones, a dialog on desktop). The section on spacing, sizing and alignment has the full rules and a phone-versus-desktop table for every component.
+Every parent screen sits in one shell (`AppShell`): bottom tabs on phones, an icon rail on tablets, a labeled sidebar on desktop, always the same five places (Home, Strings, Calls, Phone book, Quiet hours). The shell follows the **window size** (compact under 768, medium 768–1023, expanded 1024+). Everything inside the page follows its **content size**, the room it actually has (narrow under 600, regular 600–959, wide 960+), so a card grid beside a sidebar behaves like it does on a tablet. Every screen is one of four templates: Overview, List and detail, Settings form, or Focused task (a bottom sheet on phones, a dialog on desktop). The section on spacing, sizing and alignment has the full rules and a phone-versus-desktop table for every component.
 
 ## Shape
 
@@ -187,10 +187,10 @@ Everything pictorial in Treeline is by the same hand: a patient illustrator with
 | Tone | The meaning | Pigments | Used in the app |
 | --- | --- | --- | --- |
 | `breeze` | Good news, play: a friend connected | canopy greens | Home: newly strung |
-| `blossom` | A welcome, a first, a celebration | petal pinks | Available for first-run and milestones |
-| `oak` | Kept safe, kept close. A white-oak twig: lobed leaves with veins, acorns with scaled caps | bark browns | Settings: Parent code |
-| `fern` | Quiet, calm, nothing needed from you. Grows up from the lower-right corner (ferns come from the ground), the one painted card that is not top-right | teal greens | Settings: Notifications |
-| `seeds` | On its way, in the air, waiting on someone. A dandelion rooted at the lower-right, its seeds (a tiny achene under a fan of fine rays) floating up and away; the second painted card that grows from the bottom | sky blues | Available for "waiting on them" states |
+| `blossom` | A welcome, a first, a celebration | petal pinks | Phone book: the header card (a directory of neighbors is a welcome). Also first-run and milestones |
+| `oak` | Kept safe, kept close. A white-oak twig: lobed leaves with veins, acorns with scaled caps | bark browns | Home: Parent code |
+| `fern` | Quiet, calm, nothing needed from you. Grows up from the lower-right corner (ferns come from the ground), the one painted card that is not top-right | teal greens | Home: Notifications |
+| `seeds` | On its way, in the air, waiting on someone. A dandelion rooted at the lower-right, its seeds (a tiny achene under a fan of fine rays) floating up and away; the second painted card that grows from the bottom | sky blues | Home: Invite a friend's family (a first string on its way). Also "waiting on them" states |
 | `maple` | The turning of the year, records, memory | sun and amber | Available |
 
 The rule: at most a third of a page's cards are painted, never three in a row, and never every card. Choose the ones whose meaning the painting carries; the rest stay plain `surface`. The artist's layer leaves painted cards alone: no doodle is drawn on, in or from a toned card. To add a tone, draw it on a 150 × 120 canvas anchored top-right (a stem or branch, five to nine elements, a few loose pieces on the wind), keep the same line weight, give it a pigment trio and a meaning, and add it to the table above before using it.

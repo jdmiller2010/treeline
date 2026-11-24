@@ -168,7 +168,7 @@ Phone (compact)          Tablet (medium)              Desktop (expanded)
 ```
 
 - Use `AppShell` (or its markup) for every signed-in parent screen. It holds `AppBar`, `NavBar`, the main area and an `overlay` slot for sheets.
-- **Navigation** is the same four places in the same order everywhere: Home, Friends, Calls, Quiet hours. Settings sits behind the avatar on phones and in the sidebar footer on desktop. Nothing else goes in the nav.
+- **Navigation** is the same five places in the same order everywhere: Home, Strings, Calls, Phone book, Quiet hours. There is no Settings page: the treehouse's settings (details, notifications, parent code, records, leaving) are sections at the bottom of Home, and Profile (the signed-in person) sits behind the avatar. Nothing else goes in the nav.
 - **One `h1` per screen**, in the AppBar. Pages start with their first card or section heading (`title-lg`, as `h2`).
 - **Scrolling:** the page scrolls; the AppBar and bottom tabs stay put. On desktop the sidebar stays put and the page scrolls beside it. Nothing inside a card scrolls on its own.
 - **Safe areas:** bottom tabs and bottom sheets add `env(safe-area-inset-bottom)`. Add `viewport-fit=cover` to the page's viewport meta tag.

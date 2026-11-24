@@ -442,6 +442,15 @@ def main():
               "with no phones yet, Home has one Phones section, not a second 'add your first phone' prompt")
         check(s.locator(".tl-art:not(.tl-leafdiv__sprig)").count() == 1 and s.locator(".tl-empty__art").count() == 0,
               "and one picture on the screen: the treehouse at the top")
+        # With a phone but no strings, Home invites a friend's family on a seeds card (a seed on its way), and the text clears the painting.
+        s.evaluate("""async () => { await fetch('/api/handsets', { method: 'POST', headers: { 'Content-Type': 'application/json',
+          Authorization: 'Bearer ' + localStorage.getItem('treeline.token') }, body: JSON.stringify({ kind: 'ata', name: 'Hall phone' }) }); }""")
+        s.reload(); s.wait_for_selector(".tl-card--seeds [data-make-code]")
+        check(s.locator(".tl-card--seeds .tl-card__title").inner_text() == "Invite a friend's family", "with a phone and no strings, Home invites a friend's family on a seeds card")
+        s.set_viewport_size({"width": 390, "height": 900}); s.wait_for_timeout(300)
+        shoot(s, "home-invite-seeds-390")
+        s.goto(f"{BASE}/parent/#/phonebook"); s.wait_for_selector(".tl-card--blossom")
+        shoot(s, "phonebook-blossom-390")
         s.goto(f"{BASE}/parent/#/strings")
         s.wait_for_selector("text=No strings yet")
         s.click("main [data-redeem]")
@@ -480,12 +489,12 @@ def main():
         # picture-with-text, centered). Scrolled up under the title bar, the name moves into the title bar instead.
         a.goto(f"{BASE}/parent/#/home"); a.wait_for_selector(".tl-home-hero")
         r = doodle_check(a, "Home"); shoot(a, "doodles-home-390")
-        a.goto(f"{BASE}/parent/#/settings"); a.wait_for_selector("h2:has-text('Parent code')")
+        a.goto(f"{BASE}/parent/#/quiet"); a.wait_for_selector("#quiet-form")
         sigs = set()
         for _ in range(8):
-            a.reload(); a.wait_for_selector("h2:has-text('Parent code')"); r = doodle_check(a, "Settings"); sigs.add(r["sig"])
+            a.reload(); a.wait_for_selector("#quiet-form"); r = doodle_check(a, "Quiet hours"); sigs.add(r["sig"])
         check(len(sigs) > 1, "the doodles are drawn differently on each load of the same page")
-        shoot(a, "doodles-settings-390")
+        shoot(a, "doodles-quiet-390")
         a.goto(f"{BASE}/parent/#/home"); a.wait_for_selector(".tl-home-hero")
         a.set_viewport_size({"width": 390, "height": 700}); a.wait_for_timeout(400)
         check(a.locator(".tl-home-hero .tl-art").count() == 1 and a.inner_text("#home-name") == "Alex's house", "Home opens with the treehouse picture and its name under it")
@@ -591,7 +600,7 @@ def main():
 
         # ---- every screen, every width, both themes
         screens = {"home": "#/home", "strings": "#/strings", "calls": "#/calls", "quiet": "#/quiet",
-                   "phonebook": "#/phonebook", "settings": "#/settings", "privacy": "#/privacy", "about": "#/about", "actions": "#/actions"}
+                   "phonebook": "#/phonebook", "profile": "#/profile", "privacy": "#/privacy", "about": "#/about", "actions": "#/actions"}
         for width in WIDTHS:
             a.set_viewport_size({"width": width, "height": 900})
             for theme in ("light", "dark"):
@@ -628,11 +637,11 @@ def main():
                     if width in (390, 1280) or (name in ("home", "strings") and width in (360, 768, 1024, 1440)):
                         shoot(a, f"{name}-{width}-{theme}")
                 # the AppBar title lines up with the first card at wide widths
-        # ---- Settings: the parent code
-        a.goto(f"{BASE}/parent/#/settings"); a.wait_for_selector("[data-parent-code]")
+        # ---- Home's parent code card
+        a.goto(f"{BASE}/parent/#/home"); a.wait_for_selector("[data-parent-code]")
         pc = a.locator("section.tl-card:has([data-parent-code])")
         check("A parent code is set" in pc.inner_text() and pc.locator(".tl-card__title").inner_text() == "Parent code" and pc.locator("[data-parent-code]").inner_text() == "Change parent code"
-              and "tl-btn--primary" not in pc.locator("[data-parent-code]").get_attribute("class"), "Settings has a Parent code card that says the code is set, with a Change button")
+              and "tl-btn--primary" not in pc.locator("[data-parent-code]").get_attribute("class"), "Home has a Parent code card that says the code is set, with a Change button")
         pc.locator("[data-parent-code]").click(); a.wait_for_selector(".tl-sheet-scrim:not([hidden]) #pc-current")
         a.fill("#pc-current", "0000"); a.fill("#pc-new", "135790"); a.fill("#pc-again", "135790")
         a.click(".tl-sheet-scrim:not([hidden]) button[type=submit]")
@@ -644,6 +653,15 @@ def main():
         check(True, "with the current code it changes")
         check(a.locator(".tl-sheet-scrim:not([hidden])").count() == 0, "and the dialog closes")
         shoot(a, "settings-parent-code-390")
+        # ---- Settings is part of Home: the old address lands there, the quiet hours page has no pause switch, the phone book has a tab
+        a.goto(f"{BASE}/parent/#/settings"); a.wait_for_function("() => location.hash === '#/home'", timeout=5000)
+        check(a.locator("#house-form").count() == 1, "the old Settings address goes to Home, which now holds the treehouse settings")
+        a.goto(f"{BASE}/parent/#/quiet"); a.wait_for_selector("#quiet-form")
+        check(a.locator("#pause").count() == 0, "the quiet hours page has no pause switch (the title bar has the pause button)")
+        a.goto(f"{BASE}/parent/#/phonebook"); a.wait_for_selector("text=Phone book")
+        check(a.locator(".tl-nav a[aria-current=page]").inner_text().strip() == "Phone book", "the phone book is a tab in the main navigation")
+        a.goto(f"{BASE}/parent/#/profile"); a.wait_for_selector("h2:has-text('You')")
+        check(a.locator("[data-parent-code], #house-form").count() == 0 and a.locator("[data-sign-out-btn]").count() == 1, "the profile page is only about the signed-in person")
         # ---- the account menu offers to install the app, once the browser says it can
         a.click("[data-tl-menu='account-menu']")
         check(not a.locator("[data-install-app]").is_visible(), "the account menu has no Install the app while the browser hasn't offered it")
@@ -659,7 +677,7 @@ def main():
             check(True, "after it is installed the item goes away")
         a.keyboard.press("Escape")
         # A released number is free to claim again at once, so nothing should talk about it resting.
-        a.goto(f"{BASE}/parent/#/settings"); a.wait_for_selector("text=Leave Treeline")
+        a.goto(f"{BASE}/parent/#/home"); a.wait_for_selector("text=Leave Treeline")
         # Shortening how long call records are kept deletes the older ones at once, so the page says so before it is saved.
         a.wait_for_selector("#set-keep")
         warn = a.locator("[data-keep-warning]")
@@ -704,8 +722,8 @@ def main():
             sit.click("#qh-enabled")
         sit.goto(f"{BASE}/parent/#/calls"); sit.wait_for_selector("text=Call log")
         check(n("input[name=calls-range]") == 0 and n("[data-export]") == 0 and "today's calls" in sit.inner_text("main").lower(), "a sitter's call log is today only: no range choice, no export")
-        sit.goto(f"{BASE}/parent/#/settings"); sit.wait_for_selector("text=Notifications")
-        check("Action log" not in sit.inner_text("main"), "a sitter's Settings has no action log")
+        sit.goto(f"{BASE}/parent/#/home"); sit.wait_for_selector("text=Notifications")
+        check("Action log" not in sit.inner_text("main") and sit.locator("#house-form, [data-parent-code], [data-leave]").count() == 0, "a sitter's Home has no action log, treehouse form, parent code or leave button")
         sit.goto(f"{BASE}/parent/#/actions"); sit.wait_for_function("() => location.hash === '#/home'", timeout=5000)
         check(True, "and the action log's address goes to Home")
         sit_ctx.close()
