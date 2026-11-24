@@ -169,7 +169,7 @@ Everything pictorial in Treeline is by the same hand: a patient illustrator with
 | --- | --- | --- | --- |
 | **Plates** | Illustrations, the logo, empty states, and the Grove map (your house, strings and the families around it, drawn live: houses are the `treehouse` plate in miniature, strings are pencil lines on a wash) | Page headers, empty and first-run states, the Strings page, the sign-in page's `Welcome` (three small plates, read as one) | One per page at most |
 | **Painted cards** | Toned cards: breeze, blossom, oak, fern, seeds, maple (and plank, dusk, night as plain washes) | Cards whose meaning the painting carries | At most a third of the cards, never three in a row |
-| **Marginalia** | Doodles, scenes and paintings (the artist's layer) | The edges of ordinary cards and the gaps between them, always outside the cards | A sprinkle: often none |
+| **Marginalia** | Doodles and scenes (the artist's layer) | The top edge of an ordinary card, in the gap above it; never over the card's own surface | A sprinkle: often none |
 
 **The grammar (shared by all three)**
 
@@ -206,7 +206,7 @@ Treeline is a treehouse, and the interface says so quietly. Two layers do it, an
 
 Treeline's interface is ordinary and calm. On top of it, an artist has been through the pages with a pencil and a little watercolor, drawing as if the screen were paper: a snail crawling along the top of a card, a bluebird on its edge, a butterfly drifting in the gap between two cards. The artist is not bound by the interface's rules (they cross a card's border, hang over a corner, trail a dotted path between two cards), but is bound by how the physical world works.
 
-**The UI never changes.** A doodle is decoration laid over the page. It takes no room, moves nothing, and the product works exactly the same without it. This is enforced, not hoped for: doodles are drawn into one overlay layer at the end of `<body>` (placed by page coordinates), never inside the app's own markup, and the smoke test checks that every element sits exactly where it would without them.
+**The UI never changes.** A doodle is decoration on the page. It takes no room, moves nothing, and the product works exactly the same without it. This is enforced by construction, not by measuring: a doodle is drawn only on the top edge of a card that stands in a sections stack (`.tl-stack--sections`) with something above it, so the room above the card is that stack's fixed gap (`--space-12`, 48px), and every doodle is drawn to fit it. It is pinned there with CSS (an absolutely placed `.tl-doodle-spot` inside the card, so it takes no room), and placed across the card by percentage. Nothing is measured, so a change elsewhere on the page (a longer footer, a font loading, a resize) can neither move a doodle onto text nor make one appear or vanish. The smoke test still checks that every element sits exactly where it would without them.
 
 ### The set
 
@@ -237,27 +237,27 @@ Eighteen pieces in one hand (pencil `ink-muted` line, one to three washes, paper
 
 The interface already has a light from above (its shadows fall straight down). Doodles live in the same world.
 
-- **Grounded** doodles stand or crawl on a surface: a card's top edge, a row divider, a button. They are anchored by their feet to that exact point, stay level (a few degrees of tilt at most), and cast a tight shadow straight down.
-- **Air** doodles fly or drift through empty space: the gap between cards, the margin. They never touch a surface, bob very slowly, and cast a faint shadow far below to show how high they are. A bee leaves a dotted flight path.
+- **Grounded** doodles stand or crawl on a surface: a card's top edge. They are anchored by their feet to that exact point, stay level (a few degrees of tilt at most), and cast a tight shadow straight down.
+- **Air** doodles fly or drift through empty space: the gap above a card. They never touch a surface, bob very slowly, and cast a faint shadow far below to show how high they are. A bee leaves a dotted flight path.
 - **Cling** doodles grow from or hang on an edge, attached at one end (a blossom twig over a card's corner).
 - A doodle may be hidden by what is in front of it (an owl behind a card shows only its head), and may overhang an edge. That is the point of the layer.
 
 ### Rules that never bend
 
 1. **Never over text or a control.** A doodle never covers a heading, body text, button, field, link or tag. Surfaces are chosen so it sits in the empty space around them.
-2. **Takes no room.** Lives in the overlay layer (`.tl-doodle-layer`), never inside a component; adds no padding, margin or reflow; never makes the page scroll sideways. Scenes appear only where room already exists and are skipped otherwise; never add space for a doodle.
+2. **Takes no room.** Lives in a `.tl-doodle-spot`, absolutely placed on a card's top edge and filling only the sections gap above it; adds no padding, margin or reflow; never makes the page scroll sideways. Only cards with that gap above them (read from the markup) get one; never add space for a doodle.
 3. **Inert.** `aria-hidden`, no pointer events, no focus. Hidden when printed.
-4. **Few, and a sprinkle.** Far between: often none, at most one on a phone, one or two on a wide screen, and many pages have none. Never on or inside a toned card. A spot that could take a doodle usually does not get one: the fun is in not knowing where, or whether. Quiet beats busy.
+4. **Few, and a sprinkle.** Far between: often none, at most one on a phone, one or two on a wide screen (the second spot is hidden below 600px), and many pages have none on a given day. Never on or inside a toned card. A spot that could take a doodle usually does not get one: the fun is in not knowing where, or whether. Quiet beats busy.
 5. **Still when asked.** Under reduced motion nothing moves. Otherwise motion is tiny and slow: a bob of a few pixels, a snail that inches along over minutes.
-6. **Fits or skips.** A doodle only appears where its surface has room for it. It is never shrunk to fit and never squeezed in.
+6. **Fits or skips.** A doodle only appears where its surface has room for it: its height (plus its lift, if it flies) is at most 46px, the 48px gap less 2px. One that doesn't fit is skipped, never shrunk.
 
-### Alive: different every load
+### Alive: different every day
 
-Placement is drawn at random every time the page loads, within the rules above: which doodles, which cards they stand on, where along the edge, which way they face, how big (a little). It stays put while you use the page (a re-render does not move them) and changes on reload and between pages. `TLDoodles.scatter(root, key)` does it; the seed is per page load, mixed with the page key.
+Placement is drawn at random within the rules above: which doodles, which cards they stand on, where along the edge, which way they face, how big (a little). The seed is the page and the day, so a page looks the same all day (reloading or coming back changes nothing) and different tomorrow, and different pages differ. `TLDoodles.scatter(root, key)` does it; it is safe to call again after a re-render. Tests and previews pin the day with `window.TL_DOODLE_DAY = "2026-01-01"`.
 
 ### Scenes: a doodle that belongs to its card
 
-Some cards have a small scene that fits what the card is about. Mark the card with `data-scene` and the artist draws that scene on its top edge when there is room, still within the rules. A page shows at most one scene on a phone and two on a wide screen (picked at random among its scened cards), so it never becomes a pattern.
+Some cards have a small scene that fits what the card is about. Mark the card with `data-scene` and the artist draws that scene on its top edge when the card has the sections gap above it, still within the rules (every piece of a scene fits the 46px room at its own scale). A page shows at most one scene on a phone and two on a wide screen (picked at random among its scened cards), so it never becomes a pattern.
 
 | `data-scene` | Where | What |
 |---|---|---|
@@ -267,17 +267,17 @@ Some cards have a small scene that fits what the card is about. Mark the card wi
 | `fern` | Free | a fern and a ladybug: quiet |
 | `bloom` | Free | a tulip, grass and a butterfly: a friendship in bloom |
 
-### Always outside the cards, and paintings
+### Never over the card, and no paintings in this layer
 
-- **Outside, always.** Doodles stand on a card's top edge, sit in the gaps between cards, or drift in the margins. They are never drawn inside a card: the card's own surface belongs to its content and, on a painted card, to its painting.
-- **Paintings.** A scene can be upgraded to a small watercolor painting (`sprout` to a seedling, `forest` to mushrooms, `fern` to a fern, `bloom` to a meadow). The painting stands on the card's top edge and is used only when the room above the card already holds it at 60% of full size or more; otherwise the card keeps its doodle scene. Paintings are drawn from the same hand as the doodles. They share the same overlay layer and rules, and never add space for themselves.
-- **The test.** The smoke suite measures every element with the doodles shown and hidden and fails on any difference, fails if a doodle is inside the app's own markup, fails if one covers text, and fails if one sits inside a card.
+- **Off the card's surface.** Doodles stand on a card's top edge or fly in the gap above it. In the markup the spot is inside the card (so it moves with the card and needs no measuring), but nothing is ever drawn over the card's own surface: that belongs to its content and, on a painted card, to its painting.
+- **Paintings.** The small watercolor paintings (`assets/Paintings/`) are about 60px tall and do not fit the 48px gap, so this layer no longer draws them. They remain in the asset library for plates and future use.
+- **The test.** The smoke suite fails if a doodle covers text, if any element moves when the doodles are hidden, if a doodle reaches over a card's surface, if a page's doodles change between two loads on the same day, or if a page never gets any across a month of days.
 
 ### Using it
 
-- **App (HTML):** include `/ui/js/doodles.js`; call `TLDoodles.scatter(mainElement, pageKey)` after rendering a page. Add `data-scene="..."` to cards that have a scene. Nothing else.
+- **App (HTML):** include `/ui/js/doodles.js`; call `TLDoodles.scatter(mainElement, pageKey)` after rendering a page. Put the page's sections in a `.tl-stack--sections` (cards with the gap above them are the places a doodle can go). Add `data-scene="..."` to cards that have a scene. Nothing else.
 - **React:** `<Doodle name="snail" kind="grounded" x={120} />` for a hand-placed one (design pages, docs). Props: `name`, `x`, `y`, `rotate`, `scale`, `flip`.
-- **Adding a doodle:** draw it in the same hand (viewBox ~24 to 52 wide, a ground line at the bottom for grounded ones, 1.3 line, washes from `wash-*` tokens), give it a role (grounded, air or cling) and a meaning, add the SVG to `assets/Doodles/`, to `ui/js/doodles.js` and to the `Doodle` component, then list it in the table above.
+- **Adding a doodle:** draw it in the same hand (viewBox ~24 to 52 wide, at most 46 tall, a ground line at the bottom for grounded ones, 1.3 line, washes from `wash-*` tokens), give it a role (grounded, air or cling) and a meaning, add the SVG to `assets/Doodles/`, to `ui/js/doodles.js` and to the `Doodle` component, then list it in the table above.
 - **Adding a scene:** add an entry to `SCENES` in `ui/js/doodles.js` and list it above. Name it for the card's meaning, not its look.
 - **What not to do:** no doodles on forms the person is filling in, on error or safety copy (911, delete, danger), or on the phone screen. Do not add one to "fill space". Do not animate beyond a bob.
 

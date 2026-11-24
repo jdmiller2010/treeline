@@ -177,12 +177,11 @@ async function render() {
   }
 }
 
-/** The artist's layer: doodles drawn on the page, different on every load. Purely decoration: with the script missing, nothing changes. */
+/** The artist's layer: doodles on the top edge of a few cards, the same all day for a page. Purely decoration: with the script missing,
+ *  nothing changes. Nothing is measured, so there is nothing to redo when fonts load or the window resizes. */
 function decorate(v) {
-  if (v.noDoodles) { document.querySelectorAll(".tl-doodle-layer").forEach((n) => n.remove()); return; }   // working screens (Treeline Admin)
-  const draw = () => window.TLDoodles?.scatter(root.querySelector(".tl-app__main") || root.querySelector("main"), (v.title || "") + location.hash);
-  draw();
-  document.fonts?.ready.then(draw);
+  if (v.noDoodles) return;                    // working screens (Treeline Admin)
+  window.TLDoodles?.scatter(root.querySelector(".tl-app__main") || root.querySelector("main"), (v.title || "") + location.hash);
 }
 
 function show(v, mine) {

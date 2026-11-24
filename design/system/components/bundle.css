@@ -1054,10 +1054,15 @@ body {
 @keyframes tl-bob { from { translate: 0 -2px; } to { translate: 3px 3px; } }
 .tl-doodle--air { animation: tl-bob 7s ease-in-out infinite alternate; animation-delay: var(--dly, 0s); }
 @media (prefers-reduced-motion: reduce) { .tl-doodle--air { animation: none; } }
-.tl-doodle-layer { position: absolute; left: 0; top: 0; width: 0; height: 0; overflow: visible; pointer-events: none; z-index: 1; }
-.tl-paint { position: absolute; left: var(--x); top: var(--y); width: var(--w); height: var(--h); transform: translate(-50%, calc(-100% + 3px)); background: var(--l) no-repeat center bottom / contain; pointer-events: none; z-index: 1; }
-[data-theme="dark"] .tl-paint { background-image: var(--d); }
-@media print { .tl-paint { display: none; } }
+/* The artist's layer (TLDoodles.scatter): a spot on a card's top edge, filling the --space-12 gap of the sections stack above it.
+   scatter only uses a card that has that gap above it (read from the markup), and every doodle is drawn to fit it, so nothing is
+   measured: the spot is absolutely placed (takes no room, moves nothing) and each doodle sits across the card by percentage,
+   kept --space-6 in from both edges. */
+.tl-doodle-spot { position: absolute; left: 0; right: 0; bottom: 100%; height: var(--space-12); pointer-events: none; z-index: 1; }
+.tl-doodle-spot > .tl-doodle { position: absolute; bottom: calc(var(--lift, 0px) - 2px); left: clamp(calc(var(--space-6) + var(--hw, 0px)), var(--at, 50%), calc(100% - var(--space-6) - var(--hw, 0px)));
+  transform: translateX(-50%) rotate(var(--r, 0deg)) scaleX(var(--fx, 1)); transform-origin: 50% 100%; }
+@media (max-width: 599px) { .tl-doodle-spot--wide { display: none; } }
+@media print { .tl-doodle-spot { display: none; } }
 .tl-doodle { display: block; pointer-events: none; opacity: .9; }
 .tl-doodle--card-top { position: absolute; bottom: calc(100% - 2px); right: calc(var(--space-5) + var(--seed, .3) * 42%); z-index: 1; }
 .tl-doodle--row { position: absolute; bottom: calc(100% - 1px); right: calc(var(--space-4) + var(--seed, .3) * 30%); z-index: 1; }
