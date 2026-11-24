@@ -72,7 +72,7 @@ export async function signIn(ctx) {
   </div>
   <div class="tl-welcome-wrap">${welcome([
     { art: art("treehouse"), title: "Your treehouse", body: "Your home gets its own number. Every phone in the house rings together." },
-    { art: art("connection"), title: "A string to a friend", body: "Both parents say yes before kids can call." },
+    { art: art("connection"), title: "A string to another treehouse", body: "Both parents say yes before kids can call." },
     { art: html`<img src="/ui/illustrations/rotary/rotary-phone-moss-lifted.svg" alt="">`, title: "Kids pick up and dial", body: "On a rotary phone, only to friends you've approved." },
     { art: html`<svg viewBox="30 60 340 200"><image href="/ui/illustrations/rotary/rotary-part-3-handset.svg" x="0" y="-70" width="400" height="510"/></svg>`, title: "Just a phone call", body: "No texts, no voicemail, no caller ID, no group calls. Never recorded." },
   ])}</div>
