@@ -69,6 +69,21 @@ class Jobs(unittest.TestCase):
     def calls_in(self, tid):
         return households.conn(tid).execute("SELECT count(*) FROM call_log").fetchone()[0]
 
+    def test_an_unfinished_setup_is_forgotten_after_a_day_and_nobody_else_is(self):
+        t0 = db.utcnow()
+        old, fresh = db.iso(t0 - dt.timedelta(hours=25)), db.iso(t0 - dt.timedelta(hours=2))
+        far = db.iso(t0 + dt.timedelta(days=30))
+        self.c.execute("INSERT INTO grown_up(email,name,treehouse_id,role,created_at) VALUES(?,?,?,?,?)",
+                       ("parent@example.com", "Pat", self.tid, "parent", db.iso()))
+        self.c.execute("INSERT INTO app_admin(email,added_by,created_at) VALUES(?,?,?)", ("staff@example.com", "ssh:test", db.iso()))
+        rows = [("t-left", "left@example.com", old), ("t-new", "new@example.com", fresh), ("t-parent", "parent@example.com", old),
+                ("t-staff", "staff@example.com", old), ("t-legacy", "legacy@example.com", None)]
+        for tok, email, created in rows:
+            self.c.execute("INSERT INTO session(token_hash,email,expires_at,created_at) VALUES(?,?,?,?)", (tok, email, far, created))
+        jobs.purge(self.c, t0)
+        left = {r["token_hash"] for r in self.c.execute("SELECT token_hash FROM session")}
+        self.assertEqual(left, {"t-new", "t-parent", "t-staff", "t-legacy"})
+
     def test_purge_keeps_each_treehouses_retention(self):
         old = db.iso(db.utcnow() - dt.timedelta(days=100))
         other = helpers.house(self.c, "Alex's", number="2002", retention_days=200)

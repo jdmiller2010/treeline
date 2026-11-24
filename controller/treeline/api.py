@@ -450,14 +450,43 @@ def back_to_app(result, clear_cookie=False):
     return resp
 
 
+def pending_signin(word):
+    """A Google sign-in waiting for the beta code, in this browser only. Raises ApiError when it is gone."""
+    data = google.peek("pending", word)
+    if not data or not google.bound(data, signin_cookie()):
+        raise ApiError("That sign-in took too long. Please sign in again.", 400, "expired_signin")
+    return data
+
+
+@app.post("/api/auth/pending")
+def auth_pending():
+    """Who is waiting at the beta screen: the address Google gave, so the page can say whose account it is."""
+    rate_limit(f"pending-ip:{client_ip()}", 60, 3600)
+    return jsonify(email=pending_signin(body().get("pending"))["email"])
+
+
 @app.post("/api/auth/beta")
 def auth_beta():
-    """The closed beta's access code, needed once to create a treehouse. Wrong, expired and unset all read the same."""
+    """The closed beta's access code, asked for after Google and before anything is saved. Wrong, expired and unset all read the
+    same. The right code turns the pending sign-in into a session; a wrong one leaves it waiting, so the person can try again."""
     # Per address only. A limit shared by everyone would let one stranger lock every invited family out for an hour.
     rate_limit(f"beta-ip:{client_ip()}", 10, 3600)
-    if google.check_code(body().get("code")) != "ok":
-        raise ApiError("That code didn't work. Check it and try again, or ask whoever gave it to you.", 400, "bad_beta_code")
-    return jsonify(gate=google.put("gate", google.GATE_TTL, {}))
+    data = body()
+    pending_signin(data.get("pending"))
+    if google.check_code(data.get("code")) != "ok":
+        raise ApiError("That code didn't work. Check it and try again.", 400, "bad_beta_code")
+    who = google.take("pending", data.get("pending"))
+    if not who:
+        raise ApiError("That sign-in took too long. Please sign in again.", 400, "expired_signin")
+    c = conn()
+    # Starting over: a setup someone left before their treehouse was made is forgotten, so they begin again from here.
+    if not c.execute("SELECT 1 FROM grown_up g JOIN treehouse t ON t.id=g.treehouse_id WHERE g.email=? AND t.left_at IS NULL",
+                     (who["email"],)).fetchone():
+        c.execute("DELETE FROM session WHERE email=?", (who["email"],))
+    token = secrets.token_urlsafe(32)
+    c.execute("INSERT INTO session(token_hash,email,expires_at,created_at) VALUES(?,?,?,?)",
+              (db.hash_token(token), who["email"], db.iso(now() + dt.timedelta(days=SESSION_DAYS)), db.iso(now())))
+    return set_signin_cookie(jsonify(token=token), "", 0)
 
 
 @app.get("/api/auth/google/start")
@@ -465,12 +494,9 @@ def google_start():
     if not google.configured():
         raise ApiError("Sign in with Google isn't set up.", 404)
     rate_limit(f"gstart-ip:{client_ip()}", 60, 3600)
-    gate = request.args.get("gate") or None
-    if gate and not google.alive("gate", gate):
-        return back_to_app("e.need_code")
     # This browser's own secret: the callback and the exchange only work in the browser that holds it.
     binding = secrets.token_urlsafe(32)
-    resp = redirect(google.start(f"{signin_origin()}/api/auth/google/callback", gate, google.binding_hash(binding)))
+    resp = redirect(google.start(f"{signin_origin()}/api/auth/google/callback", None, google.binding_hash(binding)))
     return set_signin_cookie(resp, binding, google.STATE_TTL)
 
 
@@ -481,7 +507,7 @@ def google_callback():
         google.take("state", request.args.get("state"))
         return back_to_app("e.denied", clear_cookie=True)
     try:
-        email, gate, binding, stepup = google.finish(request.args.get("code"), request.args.get("state"), signin_cookie())
+        email, _gate, binding, stepup = google.finish(request.args.get("code"), request.args.get("state"), signin_cookie())
     except google.GoogleError as err:
         log.warning("google sign-in refused: %s", err.reason)
         if err.reason == "stepup":
@@ -496,9 +522,10 @@ def google_callback():
         return set_stepup_cookie(resp, proof) if done.rowcount == 1 else resp
     known = conn().execute("SELECT 1 FROM grown_up g JOIN treehouse t ON t.id=g.treehouse_id "
                            "WHERE g.email=? AND t.left_at IS NULL", (email,)).fetchone()
-    # A grown-up a parent added signs in with Google alone. Anyone else needs a beta code (a gate) to get as far as making a treehouse.
-    if not known and not (gate and google.take("gate", gate) is not None):
-        return back_to_app("e.need_code", clear_cookie=True)
+    # A grown-up a parent added signs in with Google alone. Anyone else is asked for the beta code next, with nothing saved yet:
+    # the answer waits in memory, bound to this browser's cookie (which stays until the code is accepted).
+    if not known:
+        return back_to_app("p." + google.put("pending", google.GATE_TTL, {"email": email, "binding": binding}))
     # The word is bound to the same cookie, so a copied #/signin/x.<word> link is useless in another browser.
     return back_to_app("x." + google.put("exchange", google.EXCHANGE_TTL, {"email": email, "binding": binding}))
 

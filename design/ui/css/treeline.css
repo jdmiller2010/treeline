@@ -1193,3 +1193,61 @@ body {
 .tl-connect { align-items: stretch; }
 .tl-connect__or { display: flex; align-items: center; gap: var(--space-3); color: var(--ink-muted); font: 500 13px/18px var(--font-sans); }
 .tl-connect__or .tl-fade-line { flex: 1; height: 1px; }
+
+/* Welcome: what Treeline is, in three small plates (the sign-in page only) */
+.tl-front { display: flex; flex-direction: column; gap: var(--space-6); }
+.tl-front__head { display: flex; flex-direction: column; gap: var(--space-3); }
+.tl-front__head > img { width: 168px; height: auto; max-width: 100%; }
+.tl-page--bare:has(.tl-front) { padding-top: var(--space-6); }
+.tl-front__head h1 { margin: 0; }
+.tl-welcome-wrap { container-type: inline-size; }
+.tl-welcome { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-4); }
+.tl-welcome__step { display: grid; grid-template-columns: 112px minmax(0, 1fr); align-items: center; gap: var(--space-5); }
+.tl-welcome__plate { box-sizing: border-box; width: 112px; height: 84px; display: grid; place-items: center; padding: var(--space-2);
+  background: var(--surface); border-radius: 46% 54% 42% 58% / 54% 44% 56% 46%; box-shadow: var(--shadow-sm); }
+.tl-welcome__step:nth-child(2) .tl-welcome__plate { border-radius: 56% 44% 52% 48% / 44% 56% 46% 54%; }
+.tl-welcome__step:nth-child(3) .tl-welcome__plate { border-radius: 42% 58% 48% 52% / 50% 46% 54% 50%; }
+.tl-welcome__plate > svg { width: 100%; height: 100%; }
+.tl-welcome__plate > img { width: 100px; height: 76px; margin: -4px; object-fit: contain; }
+.tl-welcome__step:nth-child(2) .tl-welcome__plate > svg, .tl-welcome__step:nth-child(4) .tl-welcome__plate > svg { width: 84%; height: 84%; }
+.tl-welcome__step:nth-child(4) .tl-welcome__plate { border-radius: 52% 48% 56% 44% / 48% 54% 46% 52%; }
+.tl-welcome__title { margin: 0; font: 500 19px/24px var(--font-display); font-variation-settings: "SOFT" 100; color: var(--ink); }
+.tl-welcome__body { margin: 2px 0 0; font: 400 14px/20px var(--font-sans); color: var(--ink-muted); }
+/* On a phone the whole front door fits one screen: smaller plates, tighter rows */
+@media (max-width: 480px) {
+  .tl-front { gap: var(--space-4); }
+  .tl-front__head { gap: var(--space-1); }
+  .tl-front__head > img { width: 136px; }
+  .tl-front__head h1 { font-size: 26px; line-height: 32px; }
+  .tl-login > .tl-actions { gap: var(--space-2); }
+  .tl-login .tl-btn--md { padding: 0 var(--space-4); }
+  .tl-google-btn { padding: 0 14px 0 10px; }
+}
+@container (max-width: 400px) {
+  .tl-welcome { gap: var(--space-3); }
+  .tl-welcome__step { grid-template-columns: 88px minmax(0, 1fr); gap: var(--space-4); }
+  .tl-welcome__plate { width: 88px; height: 66px; padding: 8px; }
+  .tl-welcome__plate > svg { width: 72px; height: 50px; }
+  .tl-welcome__plate > img { width: 76px; height: 56px; margin: -3px; }
+  .tl-welcome__title { font-size: 17px; line-height: 22px; }
+  .tl-welcome__body { font-size: 13px; line-height: 18px; margin-top: 0; }
+}
+
+/* Sign in with Google: Google's own button (its branding rules, not our tokens: white, a grey hairline, the four-colour G) */
+.tl-google-btn { display: inline-flex; align-items: center; gap: 10px; height: var(--control-md); padding: 0 16px 0 12px; border-radius: var(--radius-pill);
+  background: #fff; color: #1f1f1f; border: 1px solid #747775; font: 500 14px/20px var(--font-sans); letter-spacing: .25px; cursor: pointer; text-decoration: none; }
+.tl-google-btn:hover { background: #f8faff; box-shadow: 0 1px 2px rgba(60, 64, 67, .3), 0 1px 3px 1px rgba(60, 64, 67, .15); }
+.tl-google-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.tl-google-btn:disabled { opacity: var(--opacity-disabled); cursor: not-allowed; }
+.tl-google-btn__g { width: 20px; height: 20px; flex: none; }
+@media (max-width: 480px) { .tl-google-btn__more { display: none; } }
+[data-theme="dark"] .tl-google-btn { background: #131314; color: #e3e3e3; border-color: #8e918f; }
+[data-theme="dark"] .tl-google-btn:hover { background: #1f1f20; }
+
+/* The sign-in card: a title, the two ways in side by side (Google first), and the closed-beta note under them */
+.tl-login { display: flex; flex-direction: column; gap: var(--space-4); }
+.tl-login__head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2) var(--space-3); }
+.tl-login__911 { margin: 0; font: 400 12px/17px var(--font-sans); color: var(--ink-muted); }
+.tl-login > .tl-actions { margin-top: 0; flex-direction: row; justify-content: flex-start; }   /* Google first, also when the row wraps on a phone */
+.tl-login > .tl-actions { flex-wrap: nowrap; }
+.tl-login > .tl-actions > * { flex: 1 1 auto; justify-content: center; white-space: nowrap; }   /* the two ways in share the card's width, edge to edge */

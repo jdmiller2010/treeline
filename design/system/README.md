@@ -167,7 +167,7 @@ Everything pictorial in Treeline is by the same hand: a patient illustrator with
 
 | Scale | What | Where | How much |
 | --- | --- | --- | --- |
-| **Plates** | Illustrations, the logo, empty states, and the Grove map (your house, strings and the families around it, drawn live: houses are the `treehouse` plate in miniature, strings are pencil lines on a wash) | Page headers, empty and first-run states, the Strings page | One per page at most |
+| **Plates** | Illustrations, the logo, empty states, and the Grove map (your house, strings and the families around it, drawn live: houses are the `treehouse` plate in miniature, strings are pencil lines on a wash) | Page headers, empty and first-run states, the Strings page, the sign-in page's `Welcome` (three small plates, read as one) | One per page at most |
 | **Painted cards** | Toned cards: breeze, blossom, oak, fern, seeds, maple (and plank, dusk, night as plain washes) | Cards whose meaning the painting carries | At most a third of the cards, never three in a row |
 | **Marginalia** | Doodles, scenes and paintings (the artist's layer) | The edges of ordinary cards and the gaps between them, always outside the cards | A sprinkle: often none |
 
@@ -190,7 +190,7 @@ Everything pictorial in Treeline is by the same hand: a patient illustrator with
 | `blossom` | A welcome, a first, a celebration | petal pinks | Phone book: the header card (a directory of neighbors is a welcome). Also first-run and milestones |
 | `oak` | Kept safe, kept close. A white-oak twig: lobed leaves with veins, acorns with scaled caps | bark browns | Home: Parent code |
 | `fern` | Quiet, calm, nothing needed from you. Grows up from the lower-right corner (ferns come from the ground), the one painted card that is not top-right | teal greens | Home: Notifications |
-| `seeds` | On its way, in the air, waiting on someone. A dandelion rooted at the lower-right, its seeds (a tiny achene under a fan of fine rays) floating up and away; the second painted card that grows from the bottom | sky blues | Home: Invite a friend's family (a first string on its way). Also "waiting on them" states |
+| `seeds` | On its way, in the air, waiting on someone. A dandelion rooted at the lower-right, its seeds (a tiny achene under a fan of fine rays) floating up and away; the second painted card that grows from the bottom | sky blues | "Waiting on them" states (a first phone and a first string are now a notice at the top of Home) |
 | `maple` | The turning of the year, records, memory | sun and amber | Available |
 
 The rule: at most a third of a page's cards are painted, never three in a row, and never every card. Choose the ones whose meaning the painting carries; the rest stay plain `surface`. The artist's layer leaves painted cards alone: no doodle is drawn on, in or from a toned card. To add a tone, draw it on a 150 × 120 canvas anchored top-right (a stem or branch, five to nine elements, a few loose pieces on the wind), keep the same line weight, give it a pigment trio and a meaning, and add it to the table above before using it.
@@ -404,7 +404,7 @@ Don't recolor the line or the washes, crop the ground line, fill the crowns, add
 
 - Load `tokens.css` (CSS variables for both themes; set `data-theme="dark"` on `<html>` for Lantern), then `components/bundle.css`, then React 18 and `components/bundle.js`. That last one exposes `window.Treeline`.
 - `bundle.css` imports Fraunces and Figtree from Google Fonts, and defines the watercolor recipes and the artwork styles.
-- Plain-HTML pieces (no React): `Grove` (`js/grove.js`), `QrCode` and `CodeShow` (`js/qr.js` + `js/vendor/qrcode.js`).
+- Plain-HTML pieces (no React): `Grove` (`js/grove.js`), `QrCode` and `CodeShow` (`js/qr.js` + `js/vendor/qrcode.js`), `Welcome` and `GoogleButton` (CSS only; `welcome()` and `googleButton()` in `web/shared/ui.js`).
 - Components: `Icon`, `Button`, `IconButton`, `Tag`, `Presence`, `Avatar`, `Switch`, `Checkbox`, `TextField`, `Card` (atoms and containers); `FriendRow`, `ApprovalCard`, `QuietHours`, `CallLogItem` (Treeline patterns); and `Illustration`, `EmptyState`, `LeafDivider`, `LeafLoader` (nature). Each has guidelines, a live preview and plain-HTML markup.
 - **No React?** Every component's guidelines end with its exact HTML. Use it with `tokens.css`, `components/bundle.css` and, for switches, the few lines of script shown in Switch.
 - Build anything new from tokens first, then from these components. If you need a new color, size or radius, add a token rather than a one-off value.
