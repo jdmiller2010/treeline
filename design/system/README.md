@@ -175,9 +175,9 @@ Everything pictorial in Treeline is by the same hand: a patient illustrator with
 
 1. **Pencil line, then wash.** A soft graphite line (`ink-muted`, 1.2 to 1.5px, round caps) with one to three watercolor washes laid slightly off the line, as if painted without looking. Never a hard fill, never an outline in a bright color.
 2. **Pigments come from the tokens.** Greens (`canopy`), warm browns (`bark`), sun yellows (`sun`), sky blues (`sky`), petal pinks (`petal`, `berry`). Nothing outside the palette; each tone has a pigment trio (a dark, a light, a wash) that flips for dark mode.
-3. **Light comes from the top-right.** (A plant that grows from the ground, like the fern, may rise from the bottom-right instead.) Washes pool in the top-right corner and fade out before the middle; shadows fall down and a little left. At least half of any card stays bright `surface`.
+3. **Light comes from the top-right.** (A plant that grows from the ground, like the fern or the dandelion, rises from the bottom-right instead.) Washes pool in the top-right corner and fade out before the middle; shadows fall down and a little left. At least half of any card stays bright `surface`.
 4. **Things are in the world.** A branch or a stem is attached to something; a plant stands on a surface; a butterfly may float. Nothing hovers without a reason.
-5. **Botanical, never mascot.** Leaves, blossoms, acorns, ferns, seeds, maple leaves, small creatures at a glance. No faces, no cartoon characters, no emoji.
+5. **Drawn from life.** Plants are drawn as the plant really is: an oak leaf has rounded lobes and a midrib with side veins, an acorn a scaled cap and a pointed nut, a dandelion seed a tiny achene under a fan of fine rays, a fern pinnae that shrink toward the tip. If it could be any leaf, redraw it. **Botanical, never mascot.** Leaves, blossoms, acorns, ferns, seeds, maple leaves, small creatures at a glance. No faces, no cartoon characters, no emoji.
 6. **The UI is never the picture.** Art goes in corners, on edges and in the gaps between cards; the artist's doodles never go inside a card. It never covers text or a control, and never changes spacing, alignment or size of a component; where a painting needs room, the words keep clear of it.
 7. **Less is the style.** A page can have a few painted cards (at most a third of its cards, never three in a row) and a sprinkle of marginalia. When two pictures compete, the quieter one is removed.
 8. **Gentle motion.** A branch sways, a butterfly bobs, a snail inches. Nothing loops fast; everything stops under reduced motion.
@@ -188,9 +188,9 @@ Everything pictorial in Treeline is by the same hand: a patient illustrator with
 | --- | --- | --- | --- |
 | `breeze` | Good news, play: a friend connected | canopy greens | Home: newly strung |
 | `blossom` | A welcome, a first, a celebration | petal pinks | Available for first-run and milestones |
-| `oak` | Kept safe, kept close | bark browns | Settings: Parent code |
+| `oak` | Kept safe, kept close. A white-oak twig: lobed leaves with veins, acorns with scaled caps | bark browns | Settings: Parent code |
 | `fern` | Quiet, calm, nothing needed from you. Grows up from the lower-right corner (ferns come from the ground), the one painted card that is not top-right | teal greens | Settings: Notifications |
-| `seeds` | On its way, in the air, waiting on someone | sky blues | Available for "waiting on them" states |
+| `seeds` | On its way, in the air, waiting on someone. A dandelion rooted at the lower-right, its seeds (a tiny achene under a fan of fine rays) floating up and away; the second painted card that grows from the bottom | sky blues | Available for "waiting on them" states |
 | `maple` | The turning of the year, records, memory | sun and amber | Available |
 
 The rule: at most a third of a page's cards are painted, never three in a row, and never every card. Choose the ones whose meaning the painting carries; the rest stay plain `surface`. The artist's layer leaves painted cards alone: no doodle is drawn on, in or from a toned card. To add a tone, draw it on a 150 × 120 canvas anchored top-right (a stem or branch, five to nine elements, a few loose pieces on the wind), keep the same line weight, give it a pigment trio and a meaning, and add it to the table above before using it.

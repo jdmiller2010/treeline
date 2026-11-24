@@ -8,9 +8,9 @@ A sheet of paper laid on the papyrus that groups related content.
 - Tones are for meaning. A few toned cards per view at most: no more than a third of the cards, never three in a row. Never a green card.
   - `breeze`: good news and play (a friend connected, kids out at the park). A watercolor leafy branch reaches in from the top-right corner and sways gently, with two loose leaves on the wind and a touch of warm sunlight behind it (`canopy-light`, `canopy-soft`, `wash-leaf`, `ink-muted`). The sway stops under reduced motion.
   - `blossom`: a welcome, a first, a celebration. A blossom branch in `petal` pinks.
-  - `oak`: kept safe, kept close (the parent code). An oak twig with acorns in `bark` browns.
+  - `oak`: kept safe, kept close (the parent code). A white-oak twig with lobed, veined leaves and acorns with scaled caps, in `bark` browns.
   - `fern`: quiet and calm; nothing is needed from you (notifications). Fern fronds in teal greens, rising from the lower-right corner like a fern from the ground.
-  - `seeds`: on its way, waiting on someone. A dandelion and loose seeds on the wind in `sky` blues.
+  - `seeds`: on its way, waiting on someone. A dandelion rooted at the lower-right corner, its seeds floating up across the card, in `sky` blues.
   - `maple`: the turning of the year; records and memory. Maple leaves in amber.
   - These five are painted exactly like breeze: one botanical in the top-right corner, a pool of pigment behind it, a gentle sway (still under reduced motion). Unlike breeze they reserve their space on the text only (eyebrow, title, body, header get 96px of right padding, 84px in narrow content), so buttons and rows below keep the card's full width. The artist's layer never draws on or inside any toned card.
   - `night`: nighttime (the phone is sleeping, quiet hours are on now). A deep night-sky sheet (`night` to `night-low`) with a crescent `moon` and a few stars; text is `on-night` and `on-night-muted`, and the focus ring switches to `on-night`.
