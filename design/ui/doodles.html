@@ -9,17 +9,16 @@
  .d-grid .d-art { height: 76px; display: flex; align-items: flex-end; justify-content: center; }
  .d-grid svg { position: static; transform: scale(1.6); transform-origin: 50% 100%; }
  .d-grid figcaption { font: var(--text-caption, 12px/16px var(--font-sans)); color: var(--ink-muted); margin-top: var(--space-2); }
- .d-demo { position: relative; display: grid; gap: 84px; padding-top: 70px; }
  .d-bar { display: flex; gap: var(--space-3); align-items: center; flex-wrap: wrap; }
 </style></head>
 <body class="tl-root">
 <div class="d-wrap">
   <header class="tl-stack"><h1 class="display-md">Doodles</h1>
-    <p class="body tl-measure" style="color:var(--ink-muted)">The artist's layer: tiny pencil-and-wash drawings placed over the page as if by hand, differently on every load. The UI underneath never changes. The approach and rules are in the design system README under "The artist's layer".</p>
-    <div class="d-bar"><button class="tl-btn" id="again" type="button"><span class="tl-btn__label">Draw the page again</span></button><button class="tl-btn tl-btn--quiet" id="theme" type="button"><span class="tl-btn__label">Light / dark</span></button></div></header>
+    <p class="body tl-measure" style="color:var(--ink-muted)">The artist's layer: tiny pencil-and-wash drawings on the top edge of a card, in the gap above it, as if by hand. Different each day, the same all day. The UI underneath never changes. The approach and rules are in the design system README under "The artist's layer".</p>
+    <div class="d-bar"><button class="tl-btn" id="again" type="button"><span class="tl-btn__label">The next day</span></button><button class="tl-btn tl-btn--quiet" id="theme" type="button"><span class="tl-btn__label">Light / dark</span></button></div></header>
   <section class="tl-stack"><h2 class="title-lg">The set</h2><div class="d-grid" id="set"></div></section>
-  <section class="tl-stack"><h2 class="title-lg">On a page</h2><p class="body" style="color:var(--ink-muted)">A mock page. Press "Draw the page again" to see a new arrangement. Cards marked with a scene get theirs when there is room above them.</p>
-    <div class="d-demo" id="demo">
+  <section class="tl-stack"><h2 class="title-lg">On a page</h2><p class="body" style="color:var(--ink-muted)">A mock page. Press "The next day" to see another day's arrangement. Cards marked with a scene get theirs when there is room above them.</p>
+    <div class="tl-stack tl-stack--sections" id="demo"><p class="caption" style="color:var(--ink-muted)" data-day></p>
       <section class="tl-card" data-scene="sprout"><p class="tl-card__eyebrow">Setup</p><h3 class="tl-card__title">Name your treehouse</h3><p class="tl-card__body">Families you string with see this name.</p></section>
       <section class="tl-card" data-scene="forest"><p class="tl-card__eyebrow">Records</p><h3 class="tl-card__title">The forest floor</h3><p class="tl-card__body">Every change a grown-up makes is written down.</p></section>
       <section class="tl-card"><p class="tl-card__eyebrow">Today</p><h3 class="tl-card__title">3 calls, 42 minutes</h3><p class="tl-card__body">Two kids, two phones, five approved friends.</p></section>
@@ -31,9 +30,13 @@
  var set = document.getElementById("set");
  Object.keys(TLDoodles.SET).forEach(function (n) { var d = TLDoodles.SET[n];
    set.insertAdjacentHTML("beforeend", '<figure><div class="d-art"><svg class="tl-doodle" viewBox="0 0 ' + d[0] + " " + d[1] + '" width="' + d[0] + '" height="' + d[1] + '" aria-hidden="true">' + d[3] + "</svg></div><figcaption>" + n + " · " + d[2] + "</figcaption></figure>"); });
- var demo = document.getElementById("demo"), n = 0;
- function draw() { TLDoodles.scatter(demo, "demo" + (n++) + Math.random()); }
- document.getElementById("again").onclick = draw;
+ var demo = document.getElementById("demo"), day = new Date();
+ function draw() {   // what is drawn depends only on the page and the day, so "the next day" is how to see another arrangement
+   window.TL_DOODLE_DAY = day.getFullYear() + "-" + (day.getMonth() + 1) + "-" + day.getDate();
+   demo.querySelector("[data-day]").textContent = "Drawn for " + day.toDateString() + ". Often there are none: that's the sprinkle.";
+   TLDoodles.scatter(demo, "demo");
+ }
+ document.getElementById("again").onclick = function () { day.setDate(day.getDate() + 1); draw(); };
  document.getElementById("theme").onclick = function () { var r = document.documentElement; r.dataset.theme = r.dataset.theme === "dark" ? "light" : "dark"; };
- draw(); document.fonts && document.fonts.ready.then(draw);
+ draw();
 </script></body></html>

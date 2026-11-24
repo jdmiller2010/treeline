@@ -64,7 +64,7 @@ def sign_in(page, email):
 
 
 DOODLE_JS = """() => {
-  const ds = [...document.querySelectorAll('.tl-doodle[data-doodle]')];
+  const ds = [...document.querySelectorAll('.tl-doodle[data-doodle]')].filter(d => d.getClientRects().length);   // shown (the second spot hides on phones)
   const text = [...document.querySelectorAll('.tl-card__title,.tl-card__eyebrow,.tl-card__body,.tl-btn,input,select,textarea,a,h1,h2,p,.tl-row__title,.tl-tag,.tl-steps__label,.tl-steps__summary')];
   const textRects = (el) => { const out = [], w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
     while (w.nextNode()) { if (!w.currentNode.nodeValue.trim()) continue; const g = document.createRange(); g.selectNodeContents(w.currentNode); out.push(...g.getClientRects()); } return out; };
@@ -80,25 +80,43 @@ DOODLE_JS = """() => {
       if (rects.some(q => hit(r, q))) bad.push(d.dataset.doodle + ' over ' + (t.textContent || t.tagName).trim().slice(0, 24));
     }
   }
+  for (const d of ds) {                       // on the card's top edge or in the gap above it: never over the card's own surface
+    const card = d.closest('.tl-card'), r = d.getBoundingClientRect();
+    if (!card) bad.push(d.dataset.doodle + ' is not on a card');
+    else {
+      // Feet rest on the edge (2px, plus up to ~2px from a small tilt): never as far as the card's content, which starts 20px or more in.
+      const top = card.getBoundingClientRect().top;
+      if (r.bottom > top + 6) bad.push(d.dataset.doodle + ' reaches ' + (r.bottom - top).toFixed(1) + 'px over its card');
+      if (r.top < top - 48) bad.push(d.dataset.doodle + ' rises ' + (top - r.top).toFixed(1) + 'px, above the 48px gap');
+    }
+  }
+  const spots = [...document.querySelectorAll('.tl-doodle-spot')].filter(s => s.getClientRects().length).length;
+  if (spots > (innerWidth < 600 ? 1 : 2)) bad.push(spots + ' spots at ' + innerWidth + 'px: a sprinkle is at most one on a phone, two on a wide screen');
   return { n: ds.length, bad, wide: document.documentElement.scrollWidth > innerWidth + 1,
-           sig: ds.map(d => d.dataset.doodle + Math.round(d.getBoundingClientRect().left / 12)).sort().join(',') };
+           sig: ds.map(d => d.dataset.doodle + '@' + d.dataset.at).sort().join(',') };
 }"""
 
 LAYOUT_JS = """() => {
-  const layer = document.querySelector('.tl-doodle-layer');
-  const snap = () => [...document.body.querySelectorAll('*')].filter(e => !e.closest('.tl-doodle-layer') && !e.classList.contains('tl-doodle-layer'))
+  const spots = [...document.querySelectorAll('.tl-doodle-spot')];
+  const snap = () => [...document.body.querySelectorAll('*')].filter(e => !e.closest('.tl-doodle-spot'))
     .map(e => { const r = e.getBoundingClientRect(); return [e.tagName, Math.round(r.left * 10), Math.round(r.top * 10), Math.round(r.width * 10), Math.round(r.height * 10)].join(); })
     .concat([document.documentElement.scrollWidth, document.documentElement.scrollHeight].join()).join('|');
-  const inTree = document.querySelectorAll('main .tl-doodle, .tl-card .tl-doodle, #app .tl-doodle').length;
   const withDoodles = snap();
-  if (layer) layer.style.display = 'none';
+  spots.forEach(s => s.style.display = 'none');
   const without = snap();
-  if (layer) layer.style.display = '';
-  return { same: withDoodles === without, inTree, layers: document.querySelectorAll('.tl-doodle-layer').length };
+  spots.forEach(s => s.style.display = '');
+  return { same: withDoodles === without, layers: document.querySelectorAll('.tl-doodle-layer').length,
+           loose: document.querySelectorAll('.tl-doodle[data-doodle]:not(.tl-doodle-spot > .tl-doodle)').length };
+}"""
+
+# Draw the current page for each of `days` days (the drawing depends only on the page and the day) and check every arrangement.
+DAYS_JS = """([days, key]) => {
+  const main = document.querySelector('.tl-app__main') || document.querySelector('main'), out = [];
+  for (const day of days) { window.TL_DOODLE_DAY = day; window.TLDoodles.scatter(main, key); out.push(day); }
+  return out;
 }"""
 
 def doodle_check(page, where):
-    page.wait_for_timeout(700)
     r = page.evaluate(DOODLE_JS)
     check(not r["bad"] and not r["wide"], f"doodles on {where} stay off text and controls, take no room, and never scroll the page sideways" + (f" ({r['bad'][:2]})" if r["bad"] else ""))
     pc = page.evaluate("""() => { const all = [...document.querySelectorAll('.tl-card')].filter(c => c.offsetParent && !c.parentElement.closest('.tl-card'));
@@ -106,13 +124,26 @@ def doodle_check(page, where):
       let run = 0, worst = 0; for (const c of all) { run = is(c) ? run + 1 : 0; worst = Math.max(worst, run); }
       return { n: all.length, painted: all.filter(is).length, run: worst }; }""")
     check(pc["painted"] <= max(1, pc["n"] // 3) and pc["run"] < 3, f"on {where}, painted cards are reasonable ({pc['painted']} of {pc['n']}, longest run {pc['run']})")
-    inside = page.evaluate("""() => [...document.querySelectorAll('.tl-doodle-layer > *')].filter(d => { const r = d.getBoundingClientRect(), cy = r.top + r.height / 2, cx = r.left + r.width / 2;
-      return [...document.querySelectorAll('.tl-card')].some(c => { const q = c.getBoundingClientRect(); return cx > q.left && cx < q.right && cy > q.top + 6 && cy < q.bottom - 6; }); }).length""")
-    check(inside == 0, f"on {where}, no doodle is drawn inside a card")
     lay = page.evaluate(LAYOUT_JS)
-    check(lay["same"] and lay["inTree"] == 0, f"on {where}, every element is exactly where it would be without the doodles, and none are inside the app's own markup")
-    check(lay["layers"] <= 1, f"on {where}, there is only ever one doodle layer")
+    check(lay["same"], f"on {where}, every element is exactly where it would be without the doodles")
+    check(lay["layers"] == 0 and lay["loose"] == 0, f"on {where}, every doodle is in a spot on a card (no overlay layer, none loose)")
     return r
+
+
+def doodle_days(page, where, key, days=30):
+    """Every arrangement a month of days draws on this page: each passes the checks, the same day draws the same thing twice,
+    and the days differ. The drawing depends only on the page and the day, so this is deterministic: it can't be flaky."""
+    dates = [f"2026-1-{d}" for d in range(1, days + 1)]
+    sigs, bad = [], []
+    for day in dates:
+        page.evaluate(DAYS_JS, [[day], key])
+        r = doodle_check(page, f"{where} on {day}")
+        sigs.append(r["sig"])
+    page.evaluate(DAYS_JS, [[dates[0]], key])
+    again = page.evaluate(DOODLE_JS)["sig"]
+    check(again == sigs[0], f"{where}: the same day draws the same doodles again ({sigs[0] or 'none'})")
+    check(len(set(sigs)) > 1 and any(sigs), f"{where}: different days draw different doodles, and some days draw some ({len(set(sigs))} arrangements in {days} days)")
+    return sigs
 
 def shoot(page, name):
     os.makedirs(SHOTS, exist_ok=True)
@@ -184,7 +215,7 @@ def admin_pages(browser, a, s, central, tdb, ui_db):
     a.click("[data-admin-link]"); a.wait_for_selector("text=For running Treeline")
     check(a.locator(".tl-row[data-href]").count() == 5, "the overview lists Treehouses, Logs, Releases, Admins and the audit log")
     a.wait_for_timeout(600)
-    check(a.locator(".tl-doodle-layer svg").count() == 0, "no doodles on the admin pages (working screens)")
+    check(a.locator(".tl-doodle").count() == 0, "no doodles on the admin pages (working screens)")
     check(a.locator("h1").count() == 1, "one h1 on the admin overview")
     for w in WIDTHS:
         a.set_viewport_size({"width": w, "height": 900}); a.wait_for_timeout(150)
@@ -271,7 +302,7 @@ def admin_pages(browser, a, s, central, tdb, ui_db):
     check("911" in s.inner_text("main") and s.locator("[data-paused-signout]").count() == 1 and s.locator("#paused-delete").count() == 1,
           "Sam sees a plain paused page that says Treeline never connects to 911, and can still sign out or delete")
     s.wait_for_timeout(500)
-    check(s.locator(".tl-doodle-layer svg").count() == 0 and s.locator("h1").count() == 1, "the paused page has one h1 and no doodles")
+    check(s.locator(".tl-doodle").count() == 0 and s.locator("h1").count() == 1, "the paused page has one h1 and no doodles")
     shoot(s, "paused-family-390")
     a.wait_for_selector("[data-restore]"); a.click("[data-restore]"); a.wait_for_selector("text=Sam's house is back")
     s.goto(f"{BASE}/parent/#/home"); s.wait_for_selector("[data-pause]")
@@ -593,11 +624,15 @@ def main():
         # picture-with-text, centered). Scrolled up under the title bar, the name moves into the title bar instead.
         a.goto(f"{BASE}/parent/#/home"); a.wait_for_selector(".tl-home-hero")
         r = doodle_check(a, "Home"); shoot(a, "doodles-home-390")
+        first = a.evaluate(DOODLE_JS)["sig"]
+        a.reload(); a.wait_for_selector(".tl-home-hero")
+        check(a.evaluate(DOODLE_JS)["sig"] == first, "a reload on the same day draws the same doodles (they don't jump around)")
+        for width in (390, 1280):
+            a.set_viewport_size({"width": width, "height": 900}); a.wait_for_timeout(200)
+            doodle_days(a, f"Home {width}", "probe#/home")
+        a.set_viewport_size({"width": 390, "height": 844})
         a.goto(f"{BASE}/parent/#/quiet"); a.wait_for_selector("#quiet-form")
-        sigs = set()
-        for _ in range(8):
-            a.reload(); a.wait_for_selector("#quiet-form"); r = doodle_check(a, "Quiet hours"); sigs.add(r["sig"])
-        check(len(sigs) > 1, "the doodles are drawn differently on each load of the same page")
+        r = doodle_check(a, "Quiet hours")
         shoot(a, "doodles-quiet-390")
         a.goto(f"{BASE}/parent/#/home"); a.wait_for_selector(".tl-home-hero")
         a.set_viewport_size({"width": 390, "height": 700}); a.wait_for_timeout(400)
